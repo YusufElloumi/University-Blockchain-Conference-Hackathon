@@ -1,0 +1,374 @@
+# Development Plan - Loser Buys
+
+**Source of truth for progress.** Update the checkboxes and the progress log as work happens.
+
+- Submission deadline: **Friday, November 20, 2026, 12:00 PM CST**. Internal target: submit by **10:00 AM**.
+- In-person judging: Saturday, November 21, 2026.
+- Plan written: Saturday, November 14, 2026. Nothing below has been built or verified yet.
+- Background and reasoning: see `docs/ARCHITECTURE.md`. Session rules: see `CLAUDE.md`.
+
+**Checkbox rule:** only tick a box when the task is verified (code runs, tests pass, or the program is deployed and called successfully). If something is partly done, leave it unticked and add a note under it.
+
+## The MVP in one paragraph
+
+A friend signs up with their email and gets a Solana wallet without ever seeing one. They open an invite link, tap "Join for 1 USDC", and their devnet USDC moves into a prize pool held by our Anchor program. During the week they earn points from fitness activities (Strava, or a mock/manual source). The leaderboard and activity feed update live, driven by a QuickNode Stream that watches our program. When the week ends (or an admin taps "End week now"), our server reports the winner to the program and the program pays out the pool.
+
+## Feature tiers
+
+| Tier | Features |
+|---|---|
+| Essential (never cut) | Anchor program on devnet (create, join, settle, refund); email login with embedded wallet; deposit of devnet USDC; one challenge template; leaderboard; one QuickNode Stream feeding the activity feed and deposit/payout status; admin "End week now"; ties split the pool; README, video, written answers |
+| Important (cut only if behind) | Live Strava connection (otherwise mock/manual source plus a documented Strava flow); second challenge template; automatic end-of-week timer; refund button in the UI; polished mobile layout |
+| Bounty-only | QuickNode: webhook signature check, `streams/filter.js` kept in the repo, README section. Gemini: weekly pick'em tiebreaker (Stage 7). Grok: challenge helper (Stage 8) |
+| Later (not for the hackathon) | Leaving a challenge before it starts, friends backing a participant, dispute window, multi-signer results, mainnet, more data sources (WHOOP, Garmin, Apple Health) |
+
+## Schedule at a glance
+
+One main developer, roughly 40 focused hours before the cut line. Estimates assume Claude Code writes most of the code and the developer reviews and tests.
+
+| Stage | When | Est. hours | What | Prize |
+|---|---|---|---|---|
+| 0 | Sat Nov 14 | 2-3 | Tooling, accounts, repo skeleton | All |
+| 1 | Sat-Sun Nov 14-15 | 6-8 | RISK: Anchor program deployed and called on devnet | Solana, Consumer |
+| 2 | Sun-Mon Nov 15-16 | 4-6 | RISK: email login, embedded wallet, deposit with no wallet popup | Consumer, Solana |
+| 3 | Mon Nov 16 | 3-4 | RISK: QuickNode Stream to webhook | QuickNode |
+| 4 | Tue Nov 17 | 6-8 | Backend, database, fitness data layer, scoring | Consumer |
+| 5 | Tue-Wed Nov 17-18 | 6-8 | Product screens end to end | Consumer |
+| 6 | Wed Nov 18 | 3-4 | Settlement, payout, admin early end | Solana, Consumer |
+| - | Wed Nov 18, 8 PM | - | CUT LINE REVIEW | - |
+| 7 | Thu Nov 19 | 3-4 | Stretch: Gemini pick'em | Gemini |
+| 8 | Thu Nov 19 | 2-3 | Optional: Grok | Grok |
+| 9 | Thu-Fri Nov 19-20 | 5-6 | Deploy, README, video, written answers, submit (never cut) | All |
+
+Office hours (Nov 16-19) fall on Stages 2-7. Bring the questions listed near the end of this file.
+
+---
+
+## Stage 0 - Setup and accounts (Sat Nov 14, 2-3 h)
+
+**Goal:** every tool and account we need exists, so later stages are not blocked by sign-ups or installs.
+
+**Working result:** `anchor --version` and `solana --version` print versions inside WSL; `solana balance` shows devnet SOL; every account below exists and its keys are in a local `.env` that git ignores.
+
+**Satisfies:** groundwork for every prize; "public GitHub repo with setup instructions" starts here.
+
+- [x] Fill in `docs/HACKATHON_GUIDE.md` and re-check every checklist in this file against it. (Done Nov 14: guide added, checklists and open questions updated.)
+- [ ] Decide who is listed on the Devpost submission. The guide allows teams of 1-4; README lists four names, the brief says two people. Everyone listed must attend the closing ceremony in person on Nov 21 to qualify for any prize.
+- [ ] Get the office hours and workshop times from the schedule linked in the guide (or the Telegram) and put them on the calendar.
+- [x] Confirm skills. (Confirmed Nov 14: Python, some JavaScript/React, no Rust or Solana experience. Stack stands.)
+- [x] Install WSL2 with Ubuntu (`wsl --install -d Ubuntu`, may need a restart). Anchor does not support native Windows. (Done Nov 14: Ubuntu 26.04 on WSL2, after enabling virtualization in the BIOS.)
+- [ ] Clone the repo inside the WSL home folder (for example `~/dev/...`), not under OneDrive. Rust builds on a OneDrive-synced Windows path are very slow and OneDrive will try to sync build folders.
+- [x] In WSL, run the Solana one-line installer (installs Rust, Solana CLI, Anchor, Node, Yarn). Record the real versions in `CLAUDE.md`. (Done Nov 14, installed piece by piece instead of the one-liner because it needs a sudo password: Rust 1.100.0, Solana CLI 4.3.2, Anchor 1.2.2, Node 26.13.1, Yarn 1.22.22.)
+- [x] `solana config set -ud`, create a deploy keypair, and collect devnet SOL (`solana airdrop 2`, plus https://faucet.solana.com). Start early: faucets are rate-limited and deploying a program needs a few SOL. (Done Nov 14: `solana airdrop` was rate-limited; the web faucet worked. Deploy wallet 5 SOL, treasury 5 SOL, checked with `solana balance`.)
+- [x] Create the server wallets (keypair files outside git): `oracle` (reports results) and `treasury` (hands out test SOL and test USDC). (Done Nov 14: in WSL at `~/.config/solana/loser-buys/`; addresses in `CLAUDE.md`.)
+- [ ] Start collecting devnet USDC for the treasury at https://faucet.circle.com (20 USDC per 2 hours per address). Repeat through the week.
+  - Note (Nov 14): started. Treasury 20 USDC, deploy wallet 20 USDC (checked with `spl-token accounts`). Keep repeating for the treasury.
+- [ ] Create accounts: Privy (free Developer plan), QuickNode (free trial; note whether a card is required), Vercel, Render, Neon. Flag anything that asks for payment.
+- [ ] Strava: check whether a team member already has a Strava subscription. Strava's docs say a subscription is required to create an API app. **This may cost money.** If nobody has one, skip live Strava and use the mock/manual source.
+  - Note (Nov 14): nobody has a subscription yet; the team will decide as we go. Build on the mock/manual source until then.
+- [x] Add `.gitignore` (`.env`, keypair files, `target/`, `node_modules/`, `.anchor/`, `*.db`) and `.env.example` with variable names only. (Done Nov 14. Keypairs are matched by `*keypair*.json`, not `*.json`, so `package.json` and the IDL can be committed. Checked with `git check-ignore`.)
+- [x] Create the folder skeleton: `onchain/`, `web/`, `api/`, `streams/`, `scripts/`. (Done Nov 14, with `.gitkeep` placeholders.)
+- [ ] Fallback check: open https://beta.solpg.io and confirm it can build an Anchor project in the browser, in case WSL setup fails.
+
+## Stage 1 - RISK: Anchor program on devnet (Sat-Sun, 6-8 h)
+
+**Goal:** the prize pool program exists on devnet and has been called successfully from a script.
+
+**Working result:** `anchor test` passes locally. The program is deployed to devnet. A script creates a challenge, has two test wallets join with devnet USDC, settles, and the winner's USDC balance goes up. All transaction links open in Solana Explorer.
+
+**Satisfies:** Solana award (core onchain functionality, Anchor, SPL token/devnet USDC, program ID in README); Consumer track ("interact with the blockchain").
+
+Program design (kept small on purpose):
+
+| Instruction | Who can call | What it does |
+|---|---|---|
+| `create_challenge` | Anyone (the group creator) | Creates the challenge account and a token vault owned by the program. Stores buy-in, token mint, start and end time, max players (8), and the oracle address |
+| `join_challenge` | Any player, before start time | Moves the buy-in from the player's token account into the vault and adds the player to the list |
+| `end_early` | Oracle only | Sets the end time to now (demo and testing) |
+| `settle` | Oracle only, after end time | Takes a list of winners (must be players) and a hash of the final score sheet. Splits the vault equally among winners and pays them in the same transaction |
+| `refund` | Anyone | Returns every buy-in if fewer than 2 players joined by start time, or if the oracle has not settled within 72 hours of the end time |
+
+Each instruction emits an event (`ChallengeCreated`, `PlayerJoined`, `ChallengeEnded`, `ChallengeSettled`, `ChallengeRefunded`) so the QuickNode Stream has something to read.
+
+- [ ] `anchor init` the workspace in `onchain/`, program name `loser_buys`.
+- [ ] Write the `Challenge` account, the vault, and the five instructions with events and clear error codes.
+- [ ] Tests on a local validator: happy path, tie (2 winners), join after start rejected, settle by a non-oracle rejected, winner not in player list rejected, settle before end rejected, refund paths.
+- [ ] Deploy to devnet. Record the program ID in `CLAUDE.md` and `README.md`.
+- [ ] `scripts/devnet_smoke` runs the full create, join, join, settle flow on devnet using the real devnet USDC mint (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
+- [ ] Decide how the Python server calls the program: try `solders` plus `solana-py` (or `anchorpy`) to send `settle`. If that is not working within 2 hours, use a tiny Node script with the official Anchor client instead, and log the decision.
+- [ ] Fallback if devnet USDC is scarce: create our own test token. The mint is a parameter, so no program change is needed.
+
+## Stage 2 - RISK: Invisible wallet flow (Sun-Mon, 4-6 h)
+
+**Goal:** a person with only an email address can deposit into a challenge without seeing a wallet, a seed phrase, or a gas fee.
+
+**Working result:** in the browser, log in with an email code, see a balance in dollars, press one button, and a `join_challenge` transaction lands on devnet signed by the embedded wallet with no wallet popup. Works on a phone browser too.
+
+**Satisfies:** Consumer track (working frontend, invisible crypto, no seed phrases, no gas confusion); Solana award (onchain call from the real app).
+
+- [ ] React + Vite + TypeScript app in `web/` with `@privy-io/react-auth`.
+- [ ] Email login through Privy's login modal, with `embeddedWallets.solana.createOnLogin: 'users-without-wallets'`. (Automatic wallet creation only works through Privy's modal, not a custom code form.)
+- [ ] Turn off wallet confirmation popups (`showWalletUIs: false`) and replace them with our own plain-language confirm button ("Join for 1 USDC").
+- [ ] FastAPI server in `api/` with one endpoint that verifies the Privy access token (ES256 JWT; check signature, expiry, issuer `privy.io`, audience = our app ID).
+- [ ] Gas plan A ("gas drip"): on first login the server sends a small amount of devnet SOL from the treasury to the new wallet. The user never sees it.
+- [ ] "Add test funds" button: the server sends 5 devnet USDC from the treasury (stands in for a card on-ramp in the demo). Limit to once per user.
+- [ ] Build and send `join_challenge` from the browser with the Anchor TypeScript client and the Privy wallet. Pin package versions (`@anchor-lang/core` works with `@solana/web3.js` v1 only).
+- [ ] Optional upgrade if time: Privy native gas sponsorship (`sponsor: true`). Needs TEE execution and prepaid credits; check whether devnet is free before enabling.
+- [ ] Test on one phone browser.
+
+## Stage 3 - RISK: QuickNode Stream (Mon, 3-4 h)
+
+**Goal:** our server learns about every onchain event from a QuickNode Stream, not by polling.
+
+**Working result:** running the Stage 1 smoke script makes rows appear in the `chain_events` table within seconds, delivered by the Stream's webhook and passing the signature check.
+
+**Satisfies:** QuickNode Streams bounty (Stream configured with a filter and a destination; Streams is a core data source).
+
+- [ ] Create one Stream: network Solana Devnet, dataset "Programs + Logs" (fall back to "Block" if the payload lacks what we need), start at chain tip.
+- [ ] Write the filter in `streams/filter.js`: keep only successful transactions that call our program ID; return signature, slot, block time, and log lines; return `null` otherwise. Test it with the dashboard's "Run Test".
+- [ ] Destination: webhook to `POST /webhooks/quicknode` on the API. For local work use a tunnel (for example `cloudflared`).
+- [ ] Verify each delivery: HMAC-SHA256 over nonce + timestamp + body using the Stream's security token (`X-QN-Nonce`, `X-QN-Timestamp`, `X-QN-Signature`).
+- [ ] Decode the program's events from the log lines and store them, de-duplicated by transaction signature (the free plan has no reorg handling, so the handler must be safe to run twice).
+- [ ] Record the Stream ID, network, dataset, and destination in `CLAUDE.md`.
+- [ ] Note for later: a Stream pauses after 3 failed deliveries. If the server sleeps or restarts, re-activate the Stream.
+
+## Stage 4 - Backend, database, fitness layer (Tue, 6-8 h)
+
+**Goal:** the server can turn fitness activities into daily points, from any data source.
+
+**Working result:** with the mock source, adding an activity for a user changes their points; switching `FITNESS_PROVIDER` between `mock`, `manual`, and `strava` needs no change outside `api/fitness/`. If Strava is available, a real activity recorded on a watch shows up as points within a minute.
+
+**Satisfies:** Consumer track (daily-use value); respects the Strava hard rules.
+
+Database (SQLite locally, free Neon Postgres when deployed; same code through SQLAlchemy):
+
+| Table | Holds |
+|---|---|
+| `users` | Privy ID, email, display name, wallet address |
+| `fitness_connections` | Provider, athlete ID, encrypted tokens, sharing consent time |
+| `challenges` | Name, rules, buy-in, start/end, status, invite code, onchain address |
+| `participants` | Which user is in which challenge, deposit transaction |
+| `score_entries` | Per user, per day: points, source, source activity ID |
+| `chain_events` | Events received from the QuickNode Stream |
+
+- [ ] Create the six tables and the SQLAlchemy models.
+- [ ] Define the `FitnessProvider` interface: `connect_url`, `handle_callback`, `fetch_activities(user, start, end)`, `disconnect`. Every provider returns the same simple `Activity` shape (type, start time, minutes, distance, device, is_manual).
+- [ ] `MockProvider` (scripted activities for demos and tests) and `ManualProvider` (user logs an activity; marked unverified).
+- [ ] Scoring engine with one template: "Daily Mover" - 1 point for each day with at least 20 active minutes, plus 1 point per 5 km, max 3 points per day. Unit tests.
+- [ ] Anti-cheat rules in scoring: ignore manual entries when the source is Strava, ignore activities outside the challenge window, ignore duplicates, cap points per day, reject impossible speeds.
+- [ ] `StravaProvider` (only if a subscription and app exist): OAuth with `activity:read`, token refresh, one webhook subscription, fetch activity on webhook, "Connect with Strava" button and "Powered by Strava" mark.
+- [ ] Strava data rules in code: store only points plus the activity ID, purge raw data within 7 days, delete everything for a user who disconnects, never send Strava data to any AI service.
+- [ ] Write `docs/STRAVA_FLOW.md` describing the intended Strava integration step by step, whether or not it is live.
+
+## Stage 5 - Product screens (Tue-Wed, 6-8 h)
+
+**Goal:** a new user can go from an invite link to a live leaderboard on their phone.
+
+**Working result:** two people on two phones: one creates a challenge and shares a link, the other signs up, adds test funds, joins, and both see the pool total, the leaderboard, and a live activity feed.
+
+**Satisfies:** Consumer track (working frontend, thoughtful UX).
+
+- [ ] Create challenge screen: name, template, buy-in, start and end. Calls `create_challenge`.
+- [ ] Invite link and join screen with a clear consent line: "Share my challenge points with this group."
+- [ ] Deposit status comes from the Stream event, not from the browser guessing ("Deposit confirmed").
+- [ ] Leaderboard: display name, points, daily ticks. Points only; no raw activity details of other people.
+- [ ] "My activity" view (only the owner sees their own activities, with a "View on Strava" link when relevant).
+- [ ] Live feed from `chain_events`: "Maya joined - pool is now 3 USDC", "Week settled - Sam won 4 USDC".
+- [ ] Plain-language money: show "USDC" and dollar amounts, hide addresses behind a "details" link to Solana Explorer.
+- [ ] Mobile layout pass at phone width.
+
+## Stage 6 - Settlement and payout (Wed, 3-4 h)
+
+**Goal:** the week ends, the right person is paid by the program, and everyone can see it.
+
+**Working result:** an admin taps "End week now"; within seconds the winner's balance rises, the challenge shows as settled with an Explorer link, and the feed shows the payout event that arrived through the Stream. A tie pays both winners half.
+
+**Satisfies:** Solana award (program controls the pool and distributes winnings); Consumer track; the "admin action to end a week early" requirement.
+
+- [ ] Finalize step: pull any missing activities, compute final scores, pick winner(s), build the score-sheet hash.
+- [ ] Server sends `settle` signed by the oracle key.
+- [ ] Admin page (admin emails set in `.env`): "End week now" sends `end_early` then `settle`.
+- [ ] Automatic path: a `/internal/tick` endpoint settles challenges whose end time plus a grace period has passed; call it from a free scheduler (for example GitHub Actions cron or cron-job.org).
+- [ ] Refund button for a challenge that never reached 2 players.
+- [ ] Test on devnet: single winner, tie, refund.
+
+## CUT LINE REVIEW - Wednesday, November 18, 8:00 PM
+
+Ask one question: **is Stage 6 verified on devnet?**
+
+- **Yes:** continue to Stage 7 (Gemini) only if at least 4 spare hours remain before Stage 9; otherwise go straight to Stage 9.
+- **No:** drop everything below, in this order, and finish Stages 5-6 on Thursday morning. Stage 9 must start by Thursday 2 PM.
+
+| Drop order | Feature dropped | What we do instead |
+|---|---|---|
+| 1 | Grok (Stage 8) | Nothing |
+| 2 | Gemini (Stage 7) | Mention as future work |
+| 3 | Live Strava | Demo with mock/manual source; show `docs/STRAVA_FLOW.md` and explain why |
+| 4 | Privy native gas sponsorship | Keep the gas drip |
+| 5 | Automatic end-of-week timer | Admin "End week now" only |
+| 6 | Second template, refund button, extra polish | One template; refund stays in the program and is shown by script |
+
+Never cut: program on devnet, email login with embedded wallet, deposit, one working Stream, settle with payout, and all of Stage 9.
+
+## Stage 7 - Stretch: Gemini pick'em tiebreaker (Thu, 3-4 h) - bounty-only
+
+**Goal:** a feature that uses Gemini Prediction Markets data and fits the product.
+
+**Working result:** when creating a challenge, the group can turn on "Pick'em tiebreaker". The app lists live sports events from Gemini with current prices; each member makes one free pick before the week starts; if the week ends in a tie, the correct pick wins instead of splitting.
+
+**Satisfies:** Gemini Prediction Markets bounty (uses the API for market data). The guide confirms market data alone qualifies, and lists "bring prediction market data into other apps, such as ... social" as an objective. This is the largest bounty ($2,500 / $1,000 / $500), so it is the first stretch item to build. See the honest assessment in `docs/ARCHITECTURE.md` before starting.
+
+- [ ] Ask Gemini at office hours first: is a pick'em built on live market data the kind of entry they want to see, and what would make it stronger?
+- [ ] Server proxy for `GET /v1/prediction-markets/events` (public, no key) with a short cache.
+- [ ] Pick screen with event title and current yes/no price; store picks.
+- [ ] Resolve picks from the event's settlement status; apply as tiebreaker in the finalize step.
+- [ ] README section on the Gemini integration.
+
+## Stage 8 - Optional: Grok (Thu, 2-3 h) - bounty-only
+
+**Goal:** only if Stage 7 is done or skipped with time left. Per the guide, Grok Bot is xAI's assistant built into X that can run tasks, automate workflows, and watch onchain activity. The prize is a keyboard and swag, so this is the lowest priority.
+
+**Possible feature:** Grok Bot watches our program's onchain events and posts a group recap on X ("Pool of 4 USDC settled, winner paid"). It would see wallet and pool events only.
+
+**Satisfies:** Grok Bot bounty (Grok Bot is a core part, chat export, 3-4 sentence README, working and technically sound).
+
+- [ ] Redeem X Premium (link from organizers) and test what Grok Bot can actually do with a Solana devnet program.
+- [ ] Keep all fitness data away from Grok. Strava's policy forbids sending Strava data to AI, including derived data such as points.
+- [ ] Chat export and README section.
+
+## Stage 9 - Ship (Thu-Fri, 5-6 h) - never cut
+
+**Goal:** everything the judges need exists and works from a clean start.
+
+**Working result:** a stranger can open the deployed link, sign up, and join a challenge; the repo README lets someone run it locally; the submission form is sent by Friday 10:00 AM.
+
+**Satisfies:** every general submission requirement and each prize's README requirements.
+
+- [ ] Deploy `web/` (Vercel) and `api/` (Render free plan + Neon free Postgres). Point the Stream webhook at the deployed API and re-activate the Stream.
+- [ ] Keep-alive ping so the free server does not sleep during judging; re-check the Stream is active before the demo.
+- [ ] Clean-machine test: follow the README setup steps from scratch.
+- [ ] README: what it is, architecture diagram, setup, program ID(s), how we use Solana, QuickNode section (network, dataset, filter logic, destination, why), security and trust notes, Strava note, devnet-only disclaimer.
+- [ ] Record the 2-3 minute demo video (script: problem, sign-up, join, activity, live feed, end week, payout, Explorer link). Upload to YouTube or Google Drive and check the link opens in a private window.
+- [ ] Write the five answers.
+- [ ] Final secret scan of the repo and git history; make the repo public.
+- [ ] Submit on Devpost (ubc-hackathon-2026.devpost.com): select Consumer Applications, chain award Solana, and opt in to each bounty we actually built.
+- [ ] Prepare the finalist pitch: 5 minutes plus 2 minutes of Q&A, built around the judging criteria (technical execution, product and UX, innovation, impact, demo). Finalists are told by Friday 11:59 PM.
+- [ ] Prepare the in-person demo: seeded challenge, two phones, backup video. The team must be at the closing ceremony to receive any prize.
+
+---
+
+## Submission checklist
+
+**General (every prize)** - from "What to Submit" in `docs/HACKATHON_GUIDE.md`. Submitted on Devpost.
+
+- [ ] Project name, short description, and all team members (Stage 9)
+- [ ] Main track selected: Consumer Applications; chain award selected: Best use of Solana; every bounty we are applying for opted in (Stage 9)
+- [ ] Technologies and sponsor tools used (Stage 9)
+- [ ] Public GitHub repo with source code and setup instructions, built during the hackathon (Stage 0, 9)
+- [ ] README with technical documentation and architecture overview (Stage 9)
+- [ ] Working demo or deployed app (Stage 9)
+- [ ] 2-3 minute demo video on Google Drive or YouTube, accessible to judges (Stage 9)
+- [ ] Track-specific items: program ID(s) and Solana explanation in the README (Stage 1, 9)
+- [ ] Team present in person at the closing ceremony on Nov 21
+- [ ] Answer: What did you build? (Stage 9)
+- [ ] Answer: What problem does it solve? (Stage 9)
+- [ ] Answer: How does it work? (Stage 9)
+- [ ] Answer: What makes it unique? (Stage 9)
+- [ ] Answer: What would you build next? (Stage 9)
+
+**Consumer Applications track**
+
+- [ ] Interacts with the blockchain (Stage 1, 2, 6)
+- [ ] Working user-facing frontend, web or mobile (Stage 2, 5)
+- [ ] Crypto is invisible: no seed phrases (Stage 2), no gas confusion (Stage 2), plain-language money (Stage 5)
+- [ ] Daily-use value: daily points and live feed (Stage 4, 5)
+
+**Best use of Solana**
+
+- [ ] Core onchain functionality on Solana devnet (Stage 1, 6)
+- [ ] Program written with Anchor (Stage 1)
+- [ ] SPL token (devnet USDC) used for the pool (Stage 1)
+- [ ] Program ID(s) listed in the README (Stage 1, 9)
+- [ ] README explains how the project uses Solana (Stage 9)
+
+**QuickNode Streams bounty**
+
+- [ ] At least one Stream configured with a filter and a destination (Stage 3)
+- [ ] Streams is a core data source: deposit status, feed, and payout confirmation all come from it (Stage 3, 5, 6)
+- [ ] README explains network, dataset, filter logic, destination, and why (Stage 9)
+- [ ] Filter source committed at `streams/filter.js` (Stage 3)
+
+**Gemini Prediction Markets bounty (stretch)**
+
+- [ ] Project uses the Gemini Prediction Markets API (Stage 7)
+- [ ] README section describing the use (Stage 7)
+
+**Grok Bot bounty (optional)**
+
+- [ ] Grok Bot is a core part of the project (Stage 8)
+- [ ] Grok Bot chat export included (Stage 8)
+- [ ] 3-4 sentence README section on Grok Bot's role (Stage 8)
+- [ ] Working and technically sound (Stage 8)
+
+## Open questions
+
+Answered by the guide (Nov 14): prizes stack (track + one chain award + bounties + overall winner); teams of 1-4; devnet is fine; market data alone qualifies for Gemini; Grok Bot is the assistant inside X; finalists get 5 minutes plus 2 minutes of Q&A.
+
+**Organizers**
+
+- [ ] Are there rules against apps involving wagering between users, even with test tokens?
+- [ ] "A working demo or deployed application": is a hosted link expected, or is a local demo plus video enough? (We plan to deploy either way.)
+- [ ] Do non-finalist teams demo to judges in person on Nov 21, or only the 13 finalists?
+- [ ] Where is the office hours schedule, and when is each sponsor's session?
+
+**Solana office hours**
+
+- [ ] Review our program accounts and the oracle + refund-timeout trust model. Is there a simple improvement judges would value?
+- [ ] Is paying winners inside `settle` (up to 8 token transfers) fine, or should we use a claim step?
+- [ ] Best way to make fees invisible for a hackathon: gas drip, our own fee payer, or Privy sponsorship?
+- [ ] Is the Python client path (`solders`/`anchorpy`) reliable with the current Anchor version?
+- [ ] Can we get extra devnet SOL if the faucet limits block a deploy?
+- [ ] What do judges look for in "Best use of Solana" beyond a deployed program?
+
+**Circle office hours**
+
+- [ ] Is Circle's devnet USDC mint the right token for a demo, and can we get more than 20 USDC per 2 hours?
+- [ ] We are not entering the Arc award. Does using devnet USDC on Solana qualify for anything from Circle?
+- [ ] For a real launch, what would a compliant on-ramp from card to USDC look like?
+
+**QuickNode**
+
+- [ ] Does the free trial allow a Solana **devnet** Stream with a filter and webhook? Is a card required?
+- [ ] Which dataset is better for program events on Solana: "Programs + Logs" or "Block"? What does the payload look like for our program?
+- [ ] Our webhook server may sleep on a free host. What is the best way to avoid the Stream pausing, and can we replay missed blocks on the free plan (docs say no backfill for Solana)?
+- [ ] What makes Streams count as a "core data source" in the judges' eyes?
+
+**Gemini**
+
+- [ ] What separates a winning entry from one that merely uses the API? Would a pick'em on live odds inside a social app place?
+- [ ] Is our reading correct that third parties cannot create custom markets?
+- [ ] Are prediction markets enabled in the sandbox, and which sports events will be live around Nov 19-21?
+- [ ] Are the public endpoints callable from a browser (CORS) or only from a server?
+
+**Strava (email developers@strava.com; no office hours)**
+
+- [ ] May a small friend group see each other's app-computed points when each user gives explicit consent (API Policy sections 2.3, 5.13, 6.1)?
+- [ ] Does a points-based friend challenge count as "competitive to Strava" (section 5.2)?
+- [ ] Is an app where users put money into a shared pool allowed (section 5.8)?
+- [ ] Do computed scores count as Strava Data for the 7-day cache rule?
+
+**Privy**
+
+- [ ] Is native gas sponsorship free on Solana devnet, and does the free plan allow it?
+- [ ] Recommended way to verify access tokens from a Python server?
+
+## Progress log
+
+| Date | What was done | What is next |
+|---|---|---|
+| 2026-11-14 | Planning only: researched platforms, wrote `CLAUDE.md`, `DEVELOPMENT_PLAN.md`, `docs/ARCHITECTURE.md`, and the PDF. No application code. Found: `docs/HACKATHON_GUIDE.md` is empty; no WSL distribution, Rust, Solana CLI, or Anchor installed on this machine. | Team reviews the plan. Then Stage 0. |
+| 2026-11-14 | `docs/HACKATHON_GUIDE.md` filled in. Reconciled the plan: added Devpost submission items, in-person attendance rule, finalist pitch prep; rewrote the Grok stage now that Grok Bot is defined; removed open questions the guide answers; noted Gemini is the largest bounty and market data alone qualifies. No change to stages 1-6 or the cut line. | Team reviews the plan. Then the rest of Stage 0. |
+| 2026-11-14 | Team named the app **Loser Buys** (program name `loser_buys`). Skills confirmed. No Strava subscription yet, so the mock/manual source is the default. | Team approves the plan. Then the rest of Stage 0. |
+| 2026-11-14 | Name is **Loser Buys** for now (was briefly Easy Money; may change again). WSL install failed: CPU virtualization is disabled in the BIOS (HP, i7-8700). Fix steps are in `COME_BACK_AND_DELETE.md`. | Enable virtualization in BIOS, install Ubuntu, then the toolchain. |
+| 2026-11-14 | WSL2 works (Ubuntu 26.04). Toolchain installed and version-checked in WSL: Rust 1.100.0, Solana CLI 4.3.2, Anchor 1.2.2, Node 26.13.1, Yarn 1.22.22. Created deploy, oracle, and treasury wallets (devnet, keypairs outside the repo). Added `.gitignore`, `.env.example`, folder skeleton. Decided to stay on WSL; Solana Playground is the fallback only. `solana airdrop` is rate-limited, wallets hold 0 SOL. Deleted `COME_BACK_AND_DELETE.md`. | Team funds the deploy and treasury wallets from the web faucets. Commit and push, clone the repo into the WSL home folder, then Stage 1. |
+| 2026-11-14 | Wallets funded from the web faucets and confirmed onchain: deploy 5 SOL + 20 USDC, treasury 5 SOL + 20 USDC, oracle 0 (to be topped up from the treasury). First commit of the plan, docs, and skeleton pushed to GitHub. | Clone the repo into the WSL home folder, then Stage 1. Keep collecting treasury USDC. |
