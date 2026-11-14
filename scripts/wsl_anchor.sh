@@ -10,6 +10,7 @@
 #   wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh test --validator legacy
 #   wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh deploy --provider.cluster devnet
 #   wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh smoke        (devnet smoke test)
+#   wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge   (open devnet challenge for the web app)
 
 [ -s "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
 SRC="$(cd "$(dirname "$0")/.." && pwd)/onchain"
@@ -36,6 +37,9 @@ CMD="${1:-build}"
 shift || true
 if [ "$CMD" = "smoke" ]; then
   node scripts/devnet_smoke.js "$@"
+  code=$?
+elif [ "$CMD" = "create-challenge" ]; then
+  node scripts/create_challenge.js "$@"
   code=$?
 else
   anchor "$CMD" "$@"

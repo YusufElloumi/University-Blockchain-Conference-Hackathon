@@ -92,10 +92,11 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Devnet smoke test | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh smoke` | repo root (verified Nov 14) |
 | Oracle from Python | `python chain.py show\|end-early\|settle <challenge> [winners]` with `ORACLE_KEYPAIR_PATH` set | `api/`, venv (verified Nov 14) |
 | Devnet SOL | https://faucet.solana.com (`solana airdrop 2` is rate-limited) | browser |
-| Run API | `uvicorn main:app --reload` | `api/` |
-| Test API | `pytest` | `api/` |
-| Run web | `npm run dev` | `web/` |
-| Build web | `npm run build` | `web/` |
+| Run API | `.venv\Scripts\python.exe -m uvicorn main:app --reload` | `api/` (verified Nov 14) |
+| Test API | `.venv\Scripts\python.exe -m pytest` | `api/` (verified Nov 14, 13 passing) |
+| Run web | `npm run dev` (http://localhost:5173) | `web/` (verified Nov 14) |
+| Build web | `npm run build` | `web/` (verified Nov 14) |
+| Create a demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` then put the printed address in `VITE_DEMO_CHALLENGE` | repo root (verified Nov 14) |
 | Rebuild plan PDF | `python scripts/build_plan_pdf.py` | repo root (verified Nov 14) |
 
 Environment notes:
@@ -110,7 +111,14 @@ Environment notes:
 - From Windows, run WSL commands as `wsl -d Ubuntu -- bash -lc "<command>"`. For anything with `$` or quotes, write a script file and run that; inline quoting through PowerShell gets mangled. Node needs `source ~/.nvm/nvm.sh` first in non-interactive shells.
 - Keypair files live in WSL only, outside the repo: deploy wallet `~/.config/solana/id.json`; `oracle.json` and `treasury.json` in `~/.config/solana/loser-buys/`. Devnet only. No seed phrases were saved, so the files are the only copy.
 - `solana airdrop` is usually rate-limited; use https://faucet.solana.com instead.
-- Two copies of the repo: the Windows one under OneDrive (where editing, commits, and pushes happen) and a WSL clone at `~/dev/loser-buys` (where Anchor builds run). Git in WSL has no GitHub login, so it can pull (public repo) but not push. Never build Anchor on the OneDrive path.
+- The repo lives at `D:\dev\loser-buys` (moved off OneDrive on Nov 14). Editing, commits, and pushes happen there. Anchor builds run in a WSL build folder at `~/dev/loser-buys/onchain`, filled by `scripts/wsl_anchor.sh`. Never run `anchor` directly on the Windows path.
+- **The C: drive is nearly full** (about 5 GB free on Nov 14, after hitting 0). Keep large things on D:. npm's cache is set to `D:\npm-cache`. Still on C: and growing: the WSL disk (about 10 GB, could be moved with `wsl --manage Ubuntu --move`), pip's cache, and temp files. If an install fails with "no space left", check C: first.
+- One `.env` at the repo root serves both the API (`api/config.py` loads it) and the web app (Vite `envDir: ".."`; only `VITE_` names reach the browser).
+- Web packages are pinned to exact versions. `npm install` in `web/` takes about 20 minutes on a cold cache (Privy pulls a very large dependency tree).
+- Privy React SDK v3: Solana hooks come from `@privy-io/react-auth/solana` and take a serialized transaction (`Uint8Array`). The app builds with Anchor + `@solana/web3.js` v1, signs with `useSignTransaction`, and sends through its own connection (`web/src/chain.ts`).
+- Privy embedded wallets need HTTPS or `localhost`. A phone cannot test against the laptop's LAN `http://` address.
+- The API finds a user's wallet by asking Privy (`GET https://auth.privy.io/api/v1/users/<id>` with the app secret), never from the browser.
+- `.env` is not in git. If the repo is ever cloned again, copy `.env` across by hand.
 - Solana Playground (https://beta.solpg.io) is the fallback only. Using it would put the program source, IDL, and deploy wallet outside the repo.
 
 ## Deployed IDs and addresses
@@ -126,7 +134,8 @@ Fill in as they are created. Public addresses only - never keys.
 | USDC mint (devnet) | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
 | QuickNode Stream ID | TBD (Stage 3) |
 | Stream network / dataset / destination | Solana Devnet / Programs + Logs / webhook `POST /webhooks/quicknode` (planned) |
-| Privy app ID | TBD (Stage 0) |
+| Privy app ID | In `.env` as `PRIVY_APP_ID` and `VITE_PRIVY_APP_ID` (set Nov 14) |
+| Demo challenge (devnet, 1 USDC buy-in, joining closes Nov 16 about 4:30 PM CST) | `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` |
 | Strava app (client ID) | TBD or not used |
 | Deployed web URL | TBD (Stage 9) |
 | Deployed API URL | TBD (Stage 9) |
@@ -142,3 +151,4 @@ Fill in as they are created. Public addresses only - never keys.
 - 2026-11-14: Winners are paid into their standard ("associated") USDC token account. `settle` and `refund` take those accounts as extra accounts, in list order, and the program checks owner and mint.
 - 2026-11-14: `end_early` before the start time also closes joining (start time becomes now).
 - 2026-11-14: Nobody has a Strava subscription yet. Build on the mock/manual provider; revisit Strava as we go.
+- 2026-11-14 (Stage 2): Fees stay hidden with the gas drip (0.02 SOL when a wallet is under 0.005 SOL, max 3 per user). Privy gas sponsorship not used. The `users` table was created now; the other five tables come in Stage 4.

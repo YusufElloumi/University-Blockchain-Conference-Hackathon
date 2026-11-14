@@ -1,0 +1,169 @@
+:root {
+  --bg: #fff8ef;
+  --card: #ffffff;
+  --ink: #2b2118;
+  --muted: #7a6a5c;
+  --accent: #e8590c;
+  --accent-ink: #ffffff;
+  --line: #f0e3d3;
+  --ok: #2b8a3e;
+  --error: #c92a2a;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.page {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}
+
+.demo-banner {
+  margin: 0 -16px;
+  padding: 6px 16px;
+  background: #ffe8cc;
+  color: #7c3a00;
+  font-size: 13px;
+  text-align: center;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 14px;
+}
+
+.center {
+  text-align: center;
+}
+
+.label {
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.balance,
+.pool {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 4px 0;
+}
+
+.pool {
+  font-size: 32px;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 8px 0;
+}
+
+.fine {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary,
+button.secondary {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 14px;
+  border-radius: 14px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+button.primary {
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+button.secondary {
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 8px 0;
+  text-decoration: underline;
+}
+
+.joined {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #ebfbee;
+  color: var(--ok);
+  font-weight: 600;
+  text-align: center;
+}
+
+.message {
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-size: 15px;
+}
+
+.message.ok {
+  background: #ebfbee;
+  color: var(--ok);
+}
+
+.message.error {
+  background: #fff5f5;
+  color: var(--error);
+}
+
+.message a {
+  color: inherit;
+}

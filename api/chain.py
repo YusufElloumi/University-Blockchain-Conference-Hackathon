@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import config  # noqa: F401  (loads .env before the settings below are read)
 from solana.exceptions import SolanaRpcException
 from solana.rpc.api import Client
 from solana.rpc.commitment import Confirmed
@@ -126,9 +127,14 @@ def _retry(call, attempts: int = 6):
 
 
 def _send(client: Client, oracle: Keypair, instruction: Instruction) -> str:
+    return send_instructions(client, oracle, [instruction])
+
+
+def send_instructions(client: Client, payer: Keypair, instructions: list[Instruction]) -> str:
+    """Signs and sends one transaction paid for by `payer`, waits for it, and returns its signature."""
     blockhash = _retry(lambda: client.get_latest_blockhash(commitment=Confirmed)).value.blockhash
-    message = MessageV0.try_compile(oracle.pubkey(), [instruction], [], blockhash)
-    tx = VersionedTransaction(message, [oracle])
+    message = MessageV0.try_compile(payer.pubkey(), instructions, [], blockhash)
+    tx = VersionedTransaction(message, [payer])
     # Sent once only: a failed program check raises here (preflight), and must not be retried blindly.
     signature = client.send_transaction(tx, opts=TxOpts(preflight_commitment=Confirmed)).value
     # Wait until the network confirms it (up to about a minute), then make sure it did not fail.
