@@ -64,7 +64,7 @@ Other rules from `docs/HACKATHON_GUIDE.md` (the source of truth; this table was 
 | Fitness data | `FitnessProvider` interface with Mock, Manual, Strava | Strava may be blocked (subscription, limits, terms); must be swappable |
 | Hosting | Vercel (web), Render (API) | Free tiers |
 
-Open stack decision (Stage 1): how the Python server sends `settle` - `solders`/`solana-py`/`anchorpy`, or a small Node script using the official Anchor client.
+Decided Nov 14 (Stage 1): the Python server sends `end_early` and `settle` itself with `solders` + `solana-py` (`api/chain.py`), building instructions by hand from the IDL. No Node helper, no `anchorpy`.
 
 ## Repo structure (planned; created in Stage 0)
 
@@ -80,14 +80,18 @@ docs/               ARCHITECTURE.md, HACKATHON_GUIDE.md, development_plan.pdf, S
 
 ## Commands
 
-Planned commands. **None verified yet** - correct them here as each is first run.
+Rows marked "verified" have been run successfully; the rest are planned.
+
+`scripts/wsl_anchor.sh` copies `onchain/` into the WSL build folder, runs the command there, and copies the IDL, types, and lock files back. Always go through it; do not run `anchor` on the OneDrive path.
 
 | Task | Command | Where |
 |---|---|---|
-| Build program | `anchor build` | WSL, `onchain/` |
-| Test program | `anchor test` | WSL, `onchain/` |
-| Deploy to devnet | `anchor deploy --provider.cluster devnet` | WSL, `onchain/` |
-| Devnet SOL | `solana airdrop 2` | WSL |
+| Build program | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh build` | repo root, PowerShell (verified Nov 14) |
+| Test program | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh test --validator legacy` | repo root (verified Nov 14, 11 passing) |
+| Deploy to devnet | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh deploy --provider.cluster devnet` | repo root (verified Nov 14) |
+| Devnet smoke test | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh smoke` | repo root (verified Nov 14) |
+| Oracle from Python | `python chain.py show\|end-early\|settle <challenge> [winners]` with `ORACLE_KEYPAIR_PATH` set | `api/`, venv (verified Nov 14) |
+| Devnet SOL | https://faucet.solana.com (`solana airdrop 2` is rate-limited) | browser |
 | Run API | `uvicorn main:app --reload` | `api/` |
 | Test API | `pytest` | `api/` |
 | Run web | `npm run dev` | `web/` |
@@ -96,11 +100,17 @@ Planned commands. **None verified yet** - correct them here as each is first run
 
 Environment notes:
 - Windows 11. Node 22.14 and Python 3.13 are installed on the Windows side.
-- WSL2 with Ubuntu 26.04 (user `yelloumi`), installed Nov 14. Inside WSL: Rust 1.100.0, Solana CLI 4.3.2 (Agave), Anchor CLI 1.2.2 (via `avm`), Node 26.13.1 (via `nvm`), Yarn 1.22.22. Solana CLI is set to devnet.
+- WSL2 with Ubuntu 26.04 (user `yelloumi`), installed Nov 14. Inside WSL: Rust 1.100.0 (the program itself builds with 1.89.0, pinned in `onchain/rust-toolchain.toml`), Solana CLI 4.3.2 (Agave), Anchor CLI 1.2.2 (via `avm`), Node 22.23.5 as the `nvm` default, Yarn 1.22.22. Solana CLI is set to devnet.
+- Node 26 is also installed in WSL but breaks Anchor's mocha test runner. Stay on Node 22.
+- Anchor 1.x differences from older tutorials: the TypeScript package is `@anchor-lang/core`; `CpiContext::new` takes the program ID, not an account; `anchor test` defaults to the `surfpool` validator, which is not installed, so pass `--validator legacy`.
+- The program keypair (decides the program ID) is backed up at `~/.config/solana/loser-buys/program-keypair.json` in WSL. Smoke-test player wallets live in the same folder.
+- The public devnet RPC rate-limits (HTTP 429). Code that talks to it must retry; QuickNode's RPC replaces it in Stage 3.
+- Python venv for the API: `api/.venv` (Windows Python 3.13). From Windows, the oracle key path is `\\wsl.localhost\Ubuntu\home\yelloumi\.config\solana\loser-buys\oracle.json`.
+- The built IDL and TypeScript types are committed in `onchain/idl/` for the web app and API. Rebuild and recommit them whenever the program changes.
 - From Windows, run WSL commands as `wsl -d Ubuntu -- bash -lc "<command>"`. For anything with `$` or quotes, write a script file and run that; inline quoting through PowerShell gets mangled. Node needs `source ~/.nvm/nvm.sh` first in non-interactive shells.
 - Keypair files live in WSL only, outside the repo: deploy wallet `~/.config/solana/id.json`; `oracle.json` and `treasury.json` in `~/.config/solana/loser-buys/`. Devnet only. No seed phrases were saved, so the files are the only copy.
 - `solana airdrop` is usually rate-limited; use https://faucet.solana.com instead.
-- The repo currently sits under OneDrive. For Anchor builds, clone it inside the WSL home folder instead (not done yet; needs a first commit and push).
+- Two copies of the repo: the Windows one under OneDrive (where editing, commits, and pushes happen) and a WSL clone at `~/dev/loser-buys` (where Anchor builds run). Git in WSL has no GitHub login, so it can pull (public repo) but not push. Never build Anchor on the OneDrive path.
 - Solana Playground (https://beta.solpg.io) is the fallback only. Using it would put the program source, IDL, and deploy wallet outside the repo.
 
 ## Deployed IDs and addresses
@@ -109,7 +119,7 @@ Fill in as they are created. Public addresses only - never keys.
 
 | Item | Value |
 |---|---|
-| Program ID (`loser_buys`, devnet) | TBD (Stage 1) |
+| Program ID (`loser_buys`, devnet) | `FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC` (deployed Nov 14) |
 | Deploy wallet public key (pays for deploys, upgrade authority) | `AYvBmTfVifruj1XMCGu5pJShLWqo9wYEa1gJFd6pT9re` |
 | Oracle public key | `6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD` |
 | Treasury public key | `J73KdqANTzJ7P1TMTnd37xNCdXvc3LChG7J8X1XX4XY9` |
@@ -128,4 +138,7 @@ Fill in as they are created. Public addresses only - never keys.
 - 2026-11-14: Leaderboard shows points only, with opt-in consent, to fit Strava's policy. Demo defaults to the mock provider.
 - 2026-11-14: Gemini pick'em and Grok are stretch items, decided at the Wed Nov 18 cut line.
 - 2026-11-14: App name is **Loser Buys** for now (may change; Loser Buys was the other candidate). Program name `loser_buys`. Keep the UI tone friendly, not casino-like.
+- 2026-11-14: Program tests are TypeScript (mocha) rather than Anchor 1.x's default Rust LiteSVM tests, because the same client code is reused by the smoke script and the web app.
+- 2026-11-14: Winners are paid into their standard ("associated") USDC token account. `settle` and `refund` take those accounts as extra accounts, in list order, and the program checks owner and mint.
+- 2026-11-14: `end_early` before the start time also closes joining (start time becomes now).
 - 2026-11-14: Nobody has a Strava subscription yet. Build on the mock/manual provider; revisit Strava as we go.

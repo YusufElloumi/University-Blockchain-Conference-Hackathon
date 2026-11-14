@@ -1,0 +1,877 @@
+{
+  "address": "FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC",
+  "metadata": {
+    "name": "loser_buys",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "create_challenge",
+      "docs": [
+        "Creates a challenge and its empty prize vault."
+      ],
+      "discriminator": [
+        170,
+        244,
+        47,
+        1,
+        1,
+        15,
+        173,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "challenge",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  108,
+                  108,
+                  101,
+                  110,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "arg",
+                "path": "challenge_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "The prize pool. Only this program can move tokens out of it."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "challenge_id",
+          "type": "u64"
+        },
+        {
+          "name": "buy_in",
+          "type": "u64"
+        },
+        {
+          "name": "start_time",
+          "type": "i64"
+        },
+        {
+          "name": "end_time",
+          "type": "i64"
+        },
+        {
+          "name": "max_players",
+          "type": "u8"
+        },
+        {
+          "name": "oracle",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "end_early",
+      "docs": [
+        "Oracle only: ends the challenge now (demo and testing)."
+      ],
+      "discriminator": [
+        109,
+        123,
+        56,
+        49,
+        239,
+        185,
+        241,
+        94
+      ],
+      "accounts": [
+        {
+          "name": "oracle",
+          "signer": true,
+          "relations": [
+            "challenge"
+          ]
+        },
+        {
+          "name": "challenge",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  108,
+                  108,
+                  101,
+                  110,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge.creator",
+                "account": "Challenge"
+              },
+              {
+                "kind": "account",
+                "path": "challenge.challenge_id",
+                "account": "Challenge"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "join_challenge",
+      "docs": [
+        "Deposits the buy-in and adds the caller to the player list. Before the start time only."
+      ],
+      "discriminator": [
+        41,
+        104,
+        214,
+        73,
+        32,
+        168,
+        76,
+        79
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "challenge",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  108,
+                  108,
+                  101,
+                  110,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge.creator",
+                "account": "Challenge"
+              },
+              {
+                "kind": "account",
+                "path": "challenge.challenge_id",
+                "account": "Challenge"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "player_token",
+          "docs": [
+            "The player's own token account that the buy-in is taken from."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refund",
+      "docs": [
+        "Anyone: returns every buy-in when too few players joined or the oracle timed out."
+      ],
+      "discriminator": [
+        2,
+        96,
+        183,
+        251,
+        63,
+        208,
+        46,
+        46
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "docs": [
+            "Anyone can trigger a refund once it is allowed. They only pay the fee."
+          ],
+          "signer": true
+        },
+        {
+          "name": "challenge",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  108,
+                  108,
+                  101,
+                  110,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge.creator",
+                "account": "Challenge"
+              },
+              {
+                "kind": "account",
+                "path": "challenge.challenge_id",
+                "account": "Challenge"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "settle",
+      "docs": [
+        "Oracle only, after the end time: pays the pool to the winners."
+      ],
+      "discriminator": [
+        175,
+        42,
+        185,
+        87,
+        144,
+        131,
+        102,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "oracle",
+          "signer": true,
+          "relations": [
+            "challenge"
+          ]
+        },
+        {
+          "name": "challenge",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  108,
+                  108,
+                  101,
+                  110,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge.creator",
+                "account": "Challenge"
+              },
+              {
+                "kind": "account",
+                "path": "challenge.challenge_id",
+                "account": "Challenge"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "winners",
+          "type": {
+            "vec": "pubkey"
+          }
+        },
+        {
+          "name": "score_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Challenge",
+      "discriminator": [
+        119,
+        250,
+        161,
+        121,
+        119,
+        81,
+        22,
+        208
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ChallengeCreated",
+      "discriminator": [
+        166,
+        178,
+        174,
+        178,
+        11,
+        172,
+        98,
+        243
+      ]
+    },
+    {
+      "name": "ChallengeEnded",
+      "discriminator": [
+        248,
+        126,
+        94,
+        14,
+        182,
+        95,
+        205,
+        128
+      ]
+    },
+    {
+      "name": "ChallengeRefunded",
+      "discriminator": [
+        162,
+        212,
+        42,
+        82,
+        3,
+        200,
+        229,
+        12
+      ]
+    },
+    {
+      "name": "ChallengeSettled",
+      "discriminator": [
+        96,
+        70,
+        232,
+        36,
+        45,
+        207,
+        169,
+        122
+      ]
+    },
+    {
+      "name": "PlayerJoined",
+      "discriminator": [
+        39,
+        144,
+        49,
+        106,
+        108,
+        210,
+        183,
+        38
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidBuyIn",
+      "msg": "Buy-in must be greater than zero"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidTimes",
+      "msg": "Start time must be in the future and before the end time"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidMaxPlayers",
+      "msg": "Max players must be between 2 and 8"
+    },
+    {
+      "code": 6003,
+      "name": "ChallengeNotOpen",
+      "msg": "This challenge is already settled or refunded"
+    },
+    {
+      "code": 6004,
+      "name": "JoinClosed",
+      "msg": "Joining closed when the challenge started"
+    },
+    {
+      "code": 6005,
+      "name": "ChallengeFull",
+      "msg": "The challenge is full"
+    },
+    {
+      "code": 6006,
+      "name": "AlreadyJoined",
+      "msg": "This player has already joined"
+    },
+    {
+      "code": 6007,
+      "name": "NotOracle",
+      "msg": "Only the oracle can do this"
+    },
+    {
+      "code": 6008,
+      "name": "AlreadyEnded",
+      "msg": "The challenge has already ended"
+    },
+    {
+      "code": 6009,
+      "name": "NotEnded",
+      "msg": "The challenge has not ended yet"
+    },
+    {
+      "code": 6010,
+      "name": "NotEnoughPlayers",
+      "msg": "Not enough players joined; use refund instead"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidWinners",
+      "msg": "Winner list is empty, too long, or has duplicates"
+    },
+    {
+      "code": 6012,
+      "name": "WinnerNotPlayer",
+      "msg": "A winner is not in the player list"
+    },
+    {
+      "code": 6013,
+      "name": "RefundNotAllowed",
+      "msg": "Refund is not allowed yet"
+    },
+    {
+      "code": 6014,
+      "name": "WrongNumberOfTokenAccounts",
+      "msg": "Expected one token account per recipient, in order"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidTokenAccount",
+      "msg": "A token account has the wrong owner or the wrong token"
+    },
+    {
+      "code": 6016,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    }
+  ],
+  "types": [
+    {
+      "name": "Challenge",
+      "docs": [
+        "One weekly challenge and its prize pool."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "docs": [
+              "Who created the challenge (and paid for the accounts)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "challenge_id",
+            "docs": [
+              "Number chosen by the creator so one creator can have many challenges."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "oracle",
+            "docs": [
+              "The only key allowed to end early and to report winners."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "docs": [
+              "Token used for the pool (devnet USDC)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "docs": [
+              "Token account that holds the pool. Owned by this challenge account."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "buy_in",
+            "docs": [
+              "Amount each player deposits, in the token's smallest unit."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "start_time",
+            "docs": [
+              "Joining closes at this time (unix seconds)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "end_time",
+            "docs": [
+              "Settlement is allowed from this time (unix seconds)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "max_players",
+            "type": "u8"
+          },
+          {
+            "name": "players",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "ChallengeStatus"
+              }
+            }
+          },
+          {
+            "name": "score_hash",
+            "docs": [
+              "Hash of the final score sheet, set by `settle`. All zeros until then."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChallengeCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "challenge_id",
+            "type": "u64"
+          },
+          {
+            "name": "oracle",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "buy_in",
+            "type": "u64"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "end_time",
+            "type": "i64"
+          },
+          {
+            "name": "max_players",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChallengeEnded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "end_time",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChallengeRefunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "player_count",
+            "type": "u8"
+          },
+          {
+            "name": "refund_each",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChallengeSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "winners",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "pool_total",
+            "type": "u64"
+          },
+          {
+            "name": "payout_each",
+            "type": "u64"
+          },
+          {
+            "name": "score_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChallengeStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Settled"
+          },
+          {
+            "name": "Refunded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerJoined",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "player_count",
+            "type": "u8"
+          },
+          {
+            "name": "pool_total",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "CHALLENGE_SEED",
+      "docs": [
+        "Seed for the challenge account address."
+      ],
+      "type": "bytes",
+      "value": "[99, 104, 97, 108, 108, 101, 110, 103, 101]"
+    },
+    {
+      "name": "MAX_PLAYERS",
+      "docs": [
+        "Most players one challenge can hold."
+      ],
+      "type": "u8",
+      "value": "8"
+    },
+    {
+      "name": "MIN_PLAYERS",
+      "docs": [
+        "A challenge needs at least this many players, otherwise it is refunded."
+      ],
+      "type": "u8",
+      "value": "2"
+    },
+    {
+      "name": "REFUND_TIMEOUT_SECONDS",
+      "docs": [
+        "If the oracle has not settled this long after the end time, anyone can refund."
+      ],
+      "type": "i64",
+      "value": "259200"
+    },
+    {
+      "name": "VAULT_SEED",
+      "docs": [
+        "Seed for the token vault that holds the prize pool."
+      ],
+      "type": "bytes",
+      "value": "[118, 97, 117, 108, 116]"
+    }
+  ]
+}
