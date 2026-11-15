@@ -37,6 +37,7 @@ export default function ChallengePage(props: { address: string; session: Session
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [lastTx, setLastTx] = useState("");
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const seenEvents = useRef(-1);
 
   const loadChain = useCallback(async () => {
@@ -113,6 +114,43 @@ export default function ChallengePage(props: { address: string; session: Session
     }
   }
 
+  /** Asks the server to do whatever is due: pay the winner, or refund. `endNow` is the admin's early end. */
+  const finish = useCallback(
+    async (endNow: boolean) => {
+      const path = endNow ? `/admin/challenges/${address}/end-now` : `/challenges/${address}/finish`;
+      await call("POST", path);
+      await Promise.all([loadChain(), loadState(), refreshBalance()]);
+    },
+    [address, call, loadChain, loadState, refreshBalance],
+  );
+
+  async function onFinish(endNow: boolean) {
+    setBusy(true);
+    setError("");
+    setConfirmEnd(false);
+    try {
+      await finish(endNow);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // When the clock runs out, the first player's screen to notice asks the server to pay out.
+  // The server works out the result itself; asking twice is harmless.
+  const isOver = !!info && info.status === "open" && now >= info.endTime.getTime() && info.players.length >= 2;
+  const mayAsk = !!state?.you.joined;
+  useEffect(() => {
+    if (!isOver || !mayAsk) return;
+    let stopped = false;
+    const attempt = () => finish(false).catch(() => !stopped && setTimeout(attempt, 15000));
+    attempt();
+    return () => {
+      stopped = true;
+    };
+  }, [isOver, mayAsk, finish]);
+
   async function onInvite() {
     const link = `${window.location.origin}${window.location.pathname}?challenge=${address}`;
     try {
@@ -168,7 +206,7 @@ export default function ChallengePage(props: { address: string; session: Session
             {PHASE_LABEL[phase]}
           </div>
         </div>
-        <div className="pool-label">Prize pool</div>
+        <div className="pool-label">{phase === "settled" ? "Paid out" : phase === "refunded" ? "Returned" : "Prize pool"}</div>
         <div className="pool-amount">{money(phase === "settled" || phase === "refunded" ? info.buyIn * info.players.length : pool)}</div>
         <div className="scoreboard-stats">
           <div>
@@ -200,7 +238,18 @@ export default function ChallengePage(props: { address: string; session: Session
           </a>
         </div>
       )}
-      {phase === "ended" && <div className="result">Final whistle. Results are being checked, then the pool is paid out.</div>}
+      {phase === "ended" && info.players.length >= 2 && (
+        <div className="result">Final whistle. Scores are being checked, then the pool is paid out.</div>
+      )}
+      {(phase === "live" || phase === "ended") && info.players.length < 2 && (
+        <section className="card">
+          <b>Not enough players joined.</b>
+          <p className="muted">A challenge needs at least 2. Every buy-in goes back.</p>
+          <button className="primary" onClick={() => onFinish(false)} disabled={busy || !state?.challenge}>
+            {busy ? "Refunding..." : "Refund the buy-in"}
+          </button>
+        </section>
+      )}
 
       {/* Joining */}
       {phase === "joining" && !inOnchain && (
@@ -225,7 +274,7 @@ export default function ChallengePage(props: { address: string; session: Session
           )}
         </section>
       )}
-      {inOnchain && (
+      {inOnchain && info.status === "open" && (
         <div className={`deposit ${state?.you.deposit_confirmed ? "confirmed" : ""}`}>
           {state?.you.deposit_confirmed ? "✓ Deposit confirmed. You're in." : "Deposit sent. Waiting for confirmation..."}
           {lastTx && (
@@ -267,6 +316,29 @@ export default function ChallengePage(props: { address: string; session: Session
           </button>
         ))}
       </nav>
+
+      {state?.you.is_admin && state.challenge && info.status === "open" && info.players.length >= 2 && phase !== "ended" && (
+        <section className="admin">
+          <div className="label">Admin</div>
+          {confirmEnd ? (
+            <>
+              <p className="muted">This ends the challenge for everyone and pays the pool to the current leader.</p>
+              <div className="row">
+                <button className="small danger" onClick={() => onFinish(true)} disabled={busy}>
+                  Yes, end and pay out
+                </button>
+                <button className="link" onClick={() => setConfirmEnd(false)}>
+                  Keep playing
+                </button>
+              </div>
+            </>
+          ) : (
+            <button className="secondary" onClick={() => setConfirmEnd(true)} disabled={busy}>
+              {busy ? "Ending and paying out..." : "End week now"}
+            </button>
+          )}
+        </section>
+      )}
 
       {tab === "table" && <Table state={state} phase={phase} />}
       {tab === "feed" && <Feed state={state} now={now} />}
@@ -403,7 +475,7 @@ function MyWorkouts(props: { session: Session; canAdd: boolean; address: string;
           <button className="primary" onClick={onAdd} disabled={busy}>
             {busy ? "Saving..." : "Add workout"}
           </button>
-          <p className="fine">Source: {config.fitness.label}. Counts as finishing just now.</p>
+          <p className="fine">Source: {config.fitness.label}. Counts from now.</p>
           {outcome && <div className={`message ${outcome.good ? "ok" : "error"}`}>{outcome.text}</div>}
         </section>
       )}

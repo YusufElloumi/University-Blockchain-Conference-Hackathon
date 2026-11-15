@@ -165,6 +165,19 @@ def store_delivery(session: Session, payload) -> int:
     return new
 
 
+def catch_up(session: Session, address: str) -> int:
+    """Fetches a challenge's recent transactions from the network and stores any events we are missing.
+
+    The Stream is the normal source. This exists because a Solana Stream cannot replay blocks it failed
+    to deliver (for example while this server was off). Returns how many events were new.
+    """
+    from solana.rpc.api import Client
+
+    known = set(session.scalars(select(db.ChainEvent.signature).where(db.ChainEvent.challenge == address)))
+    transactions = chain.recent_transactions(Client(chain.RPC_URL), Pubkey.from_string(address), known)
+    return store_delivery(session, {"transactions": transactions})
+
+
 def _update_challenge(session: Session, name: str, fields: dict) -> None:
     """Keeps our copy of a challenge in step with what just happened onchain."""
     challenge = session.scalar(select(db.Challenge).where(db.Challenge.address == fields.get("challenge")))

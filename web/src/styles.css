@@ -565,6 +565,23 @@ button:focus-visible {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+.admin {
+  margin-top: 4px;
+  padding: 14px;
+  border: 1px dashed #3a5446;
+  border-radius: 14px;
+}
+
+.admin .secondary {
+  margin-top: 8px;
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+button.danger {
+  background: var(--gold);
+}
+
 /* League table */
 .standings-head,
 .standing {

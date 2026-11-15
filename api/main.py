@@ -21,6 +21,12 @@ Stage 5 endpoints:
     POST /me/name                       set the name other players see
     GET  /me/challenges                 challenges the caller joined or created
     GET  /challenges/{address}/state    the whole challenge screen in one call: feed, pool, deposit status, leaderboard
+
+Stage 6 endpoints:
+    POST /challenges/{address}/finish          pay the winner or refund, whichever is due (players)
+    POST /admin/challenges/{address}/end-now   "End week now" (admin emails from ADMIN_EMAILS)
+    POST /internal/tick                        finish everything that is due (scheduler, X-Tick-Secret header)
+    GET  /challenges/{address}/score-sheet     final points and the hash stored onchain (players)
 """
 
 from __future__ import annotations
@@ -49,6 +55,7 @@ import db
 import events
 import fitness
 import scores
+import settlement
 import treasury
 
 log = logging.getLogger("loser_buys")
@@ -92,11 +99,16 @@ def current_user(
     return user
 
 
+def _is_admin(user: db.User) -> bool:
+    return bool(user.email) and user.email.lower() in config.ADMIN_EMAILS
+
+
 def _user_view(user: db.User, usdc_units: int | None = None) -> dict:
     return {
         "wallet": user.wallet_address,
         "email": user.email,
         "name": scores.display_name(user),
+        "is_admin": _is_admin(user),
         "test_funds_used": user.funded_at is not None,
         "test_funds_amount": config.TEST_FUNDS_UNITS / 10**config.USDC_DECIMALS,
         "usdc": None if usdc_units is None else usdc_units / 10**config.USDC_DECIMALS,
@@ -213,7 +225,7 @@ class NewActivity(BaseModel):
     type: Literal[fitness.ACTIVITY_TYPES]  # type: ignore[valid-type]
     minutes: float = Field(gt=0, le=24 * 60)
     distance_km: float = Field(default=0, ge=0, le=1000)
-    start: datetime | None = None  # when it began; defaults to "it just finished"
+    start: datetime | None = None  # when it began; defaults to now
 
 
 def onchain_challenge(address: str) -> chain.Challenge:
@@ -373,7 +385,8 @@ def add_activity(
     """Adds an activity for the caller, then updates their points in every challenge they are in."""
     provider = _provider()
     now = datetime.now(timezone.utc)
-    start = db.utc(body.start) if body.start else now - timedelta(minutes=body.minutes)
+    # No start given: it counts from now, so a workout logged just after kick-off is inside the challenge.
+    start = db.utc(body.start) if body.start else now
     if start > now:
         raise HTTPException(400, "An activity cannot start in the future.")
     try:
@@ -490,12 +503,74 @@ def challenge_state(
             "joined": is_player,
             "deposit_confirmed": deposit_confirmed,
             "is_creator": challenge is not None and challenge.creator_id == user.id,
+            "is_admin": _is_admin(user),
         },
+        "settle_tx": challenge.settle_tx if challenge else None,
         "pool": None if pool_units is None else pool_units / 10**config.USDC_DECIMALS,
         "player_count": player_count,
         "players": players,
         "feed": events.feed(rows, lambda wallet: names.get(wallet, "A player")),
     }
+
+
+# ---------- Stage 6: settlement and payout ----------
+
+
+def _finish(session: Session, challenge: db.Challenge, end_now: bool = False) -> dict:
+    try:
+        return settlement.finish(session, challenge, end_now=end_now)
+    except settlement.NotYet as e:
+        raise HTTPException(409, str(e)) from e
+    except TimeoutError as e:
+        log.exception("Settlement not confirmed for %s", challenge.address)
+        raise HTTPException(504, "This is taking longer than usual. Check again in a minute.") from e
+    except Exception as e:
+        log.exception("Could not finish %s", challenge.address)
+        raise HTTPException(503, "Could not finish the challenge right now. Try again in a moment.") from e
+
+
+@app.post("/challenges/{address}/finish")
+def finish_challenge(
+    address: str, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    """Does whatever is due: pays the winner once the challenge is over, or refunds if fewer than 2 joined.
+
+    Any player may ask; the server decides what is due and works out the result itself.
+    """
+    challenge = _stored_challenge(session, address)
+    if not (_is_player(session, challenge, user) or challenge.creator_id == user.id or _is_admin(user)):
+        raise HTTPException(403, "Only players of this challenge can do that.")
+    return _finish(session, challenge)
+
+
+@app.post("/admin/challenges/{address}/end-now")
+def end_now(address: str, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    """Admin "End week now": ends the challenge onchain, then settles it (or refunds). For demos and testing."""
+    if not _is_admin(user):
+        raise HTTPException(403, "Only an admin can end a challenge early.")
+    return _finish(session, _stored_challenge(session, address), end_now=True)
+
+
+@app.post("/internal/tick")
+def tick(request: Request, session: Session = Depends(db.get_session)) -> dict:
+    """The automatic path: a scheduler calls this every few minutes to finish every challenge that is due."""
+    if not config.TICK_SECRET:
+        raise HTTPException(503, "TICK_SECRET is not set on the server")
+    if not secrets.compare_digest(request.headers.get("x-tick-secret", ""), config.TICK_SECRET):
+        raise HTTPException(401, "Wrong secret")
+    return {"finished": settlement.finish_all_due(session)}
+
+
+@app.get("/challenges/{address}/score-sheet")
+def score_sheet(address: str, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    """The final points behind a settlement, with the hash that was stored onchain, so players can check it."""
+    challenge = _stored_challenge(session, address)
+    if not _is_player(session, challenge, user):
+        raise HTTPException(403, "Only players of this challenge can see its score sheet.")
+    if not challenge.score_sheet:
+        raise HTTPException(404, "This challenge has not been settled.")
+    sheet = json.loads(challenge.score_sheet)
+    return {"sheet": sheet, "sha256": settlement.sheet_hash(sheet).hex(), "transaction": challenge.settle_tx}
 
 
 @app.delete("/me/fitness")

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, ForeignKey, Text, UniqueConstraint, create_engine, update
+from sqlalchemy import BigInteger, ForeignKey, Text, UniqueConstraint, create_engine, inspect, text, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 import config
@@ -98,6 +98,8 @@ class Challenge(Base):
     invite_code: Mapped[str] = mapped_column(unique=True, index=True)
     creator_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(default=_now)
+    settle_tx: Mapped[str | None]  # the transaction that paid out or refunded
+    score_sheet: Mapped[str | None] = mapped_column(Text)  # final points as JSON; its hash is stored onchain
 
 
 class Participant(Base):
@@ -147,6 +149,22 @@ class LoggedActivity(Base):
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """Adds columns that were introduced after a table was first created (create_all never alters tables).
+
+    Only handles new optional columns, which is all we have needed so far.
+    """
+    inspector = inspect(engine)
+    with engine.begin() as connection:
+        for table in Base.metadata.sorted_tables:
+            existing = {column["name"] for column in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name not in existing and column.nullable:
+                    kind = column.type.compile(engine.dialect)
+                    connection.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{column.name}" {kind}'))
 
 
 def get_session():

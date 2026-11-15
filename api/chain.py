@@ -187,6 +187,49 @@ def settle(client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pub
     return _send(client, oracle, Instruction(PROGRAM_ID, data, accounts))
 
 
+def refund(client: Client, payer: Keypair, challenge: Pubkey) -> str:
+    """Returns every buy-in. The program allows it when fewer than 2 players joined by the start time,
+    or 72 hours after the end with no result. Anyone may call it; `payer` only pays the fee."""
+    state = fetch_challenge(client, challenge)
+    accounts = [
+        AccountMeta(payer.pubkey(), is_signer=True, is_writable=False),
+        AccountMeta(challenge, is_signer=False, is_writable=True),
+        AccountMeta(state.vault, is_signer=False, is_writable=True),
+        AccountMeta(TOKEN_PROGRAM_ID, is_signer=False, is_writable=False),
+    ]
+    # One token account per player, in the same order as the player list.
+    accounts += [
+        AccountMeta(token_account_for(p, state.mint), is_signer=False, is_writable=True) for p in state.players
+    ]
+    return _send(client, payer, Instruction(PROGRAM_ID, _discriminator("refund"), accounts))
+
+
+def recent_transactions(client: Client, address: Pubkey, skip: set[str], limit: int = 25) -> list[dict]:
+    """Recent successful transactions that touched `address`, in the shape the QuickNode Stream delivers.
+
+    Used only to catch up on events the Stream could not deliver (it cannot replay missed blocks).
+    """
+    found = []
+    signatures = _retry(lambda: client.get_signatures_for_address(address, limit=limit, commitment=Confirmed)).value
+    for entry in reversed(signatures):  # oldest first
+        if entry.err is not None or str(entry.signature) in skip:
+            continue
+        tx = _retry(
+            lambda: client.get_transaction(entry.signature, commitment=Confirmed, max_supported_transaction_version=0)
+        ).value
+        if tx is None or tx.transaction.meta is None:
+            continue
+        found.append(
+            {
+                "signature": str(entry.signature),
+                "slot": tx.slot,
+                "blockTime": tx.block_time,
+                "logs": list(tx.transaction.meta.log_messages or []),
+            }
+        )
+    return found
+
+
 def _main(argv: list[str]) -> None:
     if len(argv) < 3:
         print(__doc__)

@@ -237,8 +237,8 @@ def test_adding_an_activity_changes_points(client, challenge):
     players = board(client)
     assert players["maya"]["points"] == 2 and players["maya"]["rank"] == 1 and players["maya"]["is_you"]
     assert players["sam"]["points"] == 0 and players["sam"]["rank"] == 2
-    # The challenge began 2 days ago, so a run that started 30 minutes ago belongs to its second day.
-    assert players["maya"]["ticks"] == [False, True, False]
+    # The challenge began 2 days ago, so a run logged now belongs to its third day.
+    assert players["maya"]["ticks"] == [False, False, True]
 
 
 def test_owner_is_told_why_an_activity_did_not_count(client, challenge):
@@ -365,7 +365,7 @@ def test_name_shows_on_leaderboard_and_in_my_challenges(client, challenge):
 
 def test_state_before_any_stream_event(client, challenge):
     body = state(client)
-    assert body["you"] == {"joined": True, "deposit_confirmed": False, "is_creator": True}
+    assert body["you"] == {"joined": True, "deposit_confirmed": False, "is_creator": True, "is_admin": False}
     assert body["pool"] is None and body["feed"] == [] and len(body["players"]) == 2
 
 

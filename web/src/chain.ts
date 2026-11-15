@@ -147,6 +147,8 @@ export async function sendAndConfirm(signedTransaction: Uint8Array): Promise<str
 
 /** Turns a program or network error into a sentence a person can act on. */
 export function friendlyError(e: unknown): string {
+  // Errors from our own server already carry a sentence written for people.
+  if (e instanceof Error && "status" in e) return e.message;
   const logs = (e as { logs?: string[] } | null)?.logs;
   const text = (e instanceof Error ? e.message : String(e)) + " " + JSON.stringify(logs ?? "");
   if (/AlreadyJoined/.test(text)) return "You're already in this challenge.";

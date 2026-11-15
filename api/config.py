@@ -21,6 +21,11 @@ FITNESS_PROVIDER = os.environ.get("FITNESS_PROVIDER") or "mock"  # mock, manual,
 # The oracle's public address (not its key). New challenges must name it, or we could never settle them.
 ORACLE_PUBLIC_KEY = os.environ.get("ORACLE_PUBLIC_KEY") or "6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD"
 
+# Settlement. Grace period: how long after the end we wait for late activities (0 for demos; 12 hours suits Strava).
+SETTLE_GRACE_SECONDS = int(os.environ.get("SETTLE_GRACE_SECONDS") or 0)
+ADMIN_EMAILS = {e.strip().lower() for e in (os.environ.get("ADMIN_EMAILS") or "").split(",") if e.strip()}
+TICK_SECRET = os.environ.get("TICK_SECRET", "")  # shared secret for the scheduler that calls /internal/tick
+
 # "Gas drip": fee money (devnet SOL) the server quietly sends to a user's wallet so they never see fees.
 GAS_DRIP_LAMPORTS = int(float(os.environ.get("GAS_DRIP_SOL") or 0.02) * 1_000_000_000)
 GAS_LOW_LAMPORTS = 5_000_000  # top up when a wallet holds less than 0.005 SOL

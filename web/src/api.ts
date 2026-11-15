@@ -35,7 +35,8 @@ export type FeedItem = { kind: string; text: string; signature: string; time: st
 
 export type ChallengeState = {
   challenge: ChallengeView | null;
-  you: { joined: boolean; deposit_confirmed: boolean; is_creator: boolean };
+  you: { joined: boolean; deposit_confirmed: boolean; is_creator: boolean; is_admin: boolean };
+  settle_tx: string | null;
   pool: number | null;
   player_count: number | null;
   players: PlayerRow[] | null; // null unless you are a player
