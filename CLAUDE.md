@@ -27,6 +27,7 @@ Social fitness challenges with a prize pool. Friend groups join a weekly challen
   - Use the official "Connect with Strava" button and "Powered by Strava" mark.
 - Fitness data goes through the `FitnessProvider` interface only. Nothing outside `api/fitness/` may import Strava code.
 - Flag anything that costs money before using it. Free tiers only.
+- **NEVER touch `https://yusufelloumi.github.io`.** It is the owner's portfolio site. Do not publish to it, do not use GitHub Pages for this project (a project page would appear under that address), do not use it as an allowed origin or web address anywhere (Render, Privy, QuickNode), and do not change the portfolio's repository or GitHub Pages settings.
 
 ## Prize targets and exact requirements
 
