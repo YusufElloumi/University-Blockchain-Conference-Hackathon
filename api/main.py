@@ -15,6 +15,12 @@ Stage 4 endpoints (all need the login token):
     POST   /me/activities                     add an activity (mock and manual sources) and update points
     GET    /me/activities                     the caller's own activities; never anyone else's
     DELETE /me/fitness                        disconnect: delete the caller's fitness data and points
+
+Stage 5 endpoints:
+    GET  /app-config                    public settings for the web app (oracle address, fitness source)
+    POST /me/name                       set the name other players see
+    GET  /me/challenges                 challenges the caller joined or created
+    GET  /challenges/{address}/state    the whole challenge screen in one call: feed, pool, deposit status, leaderboard
 """
 
 from __future__ import annotations
@@ -90,6 +96,7 @@ def _user_view(user: db.User, usdc_units: int | None = None) -> dict:
     return {
         "wallet": user.wallet_address,
         "email": user.email,
+        "name": scores.display_name(user),
         "test_funds_used": user.funded_at is not None,
         "test_funds_amount": config.TEST_FUNDS_UNITS / 10**config.USDC_DECIMALS,
         "usdc": None if usdc_units is None else usdc_units / 10**config.USDC_DECIMALS,
@@ -284,23 +291,30 @@ def record_challenge(
     state = onchain_challenge(body.address)
     if str(state.creator) != user.wallet_address:
         raise HTTPException(403, "Only the person who created this challenge can set it up.")
+    return _challenge_view(_register(session, body.address, state, body.name.strip(), user.id))
+
+
+def _register(session: Session, address: str, state: chain.Challenge, name: str, creator_id: int | None) -> db.Challenge:
+    """Stores our record of an onchain challenge, after checking it is one this app can settle."""
+    if str(state.oracle) != config.ORACLE_PUBLIC_KEY or str(state.mint) != config.USDC_MINT:
+        raise HTTPException(400, "That challenge was not set up for this app.")
     challenge = db.Challenge(
-        address=body.address,
-        name=body.name.strip(),
+        address=address,
+        name=name,
         buy_in_units=state.buy_in,
         start_time=datetime.fromtimestamp(state.start_time, timezone.utc),
         end_time=datetime.fromtimestamp(state.end_time, timezone.utc),
         status=state.status,
         invite_code=secrets.token_urlsafe(6),
-        creator_id=user.id,
+        creator_id=creator_id,
     )
     session.add(challenge)
     try:
         session.commit()
     except IntegrityError:  # a double click stored it a moment ago
         session.rollback()
-        challenge = _stored_challenge(session, body.address)
-    return _challenge_view(challenge)
+        challenge = _stored_challenge(session, address)
+    return challenge
 
 
 @app.post("/challenges/{address}/join")
@@ -308,11 +322,16 @@ def record_join(
     address: str, body: JoinRecord, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
 ) -> dict:
     """Called after `join_challenge` lands. The player must agree to share points and be in the onchain player list."""
-    challenge = _stored_challenge(session, address)
     if not body.consent:
         raise HTTPException(400, "To join, agree to share your challenge points with this group.")
-    if not _is_player(session, challenge, user):
+    challenge = session.scalar(select(db.Challenge).where(db.Challenge.address == address))
+    state = None
+    if challenge is None:
+        # Created outside the web app (for example by our demo script): record it on first join.
         state = onchain_challenge(address)
+        challenge = _register(session, address, state, "Weekly challenge", None)
+    if not _is_player(session, challenge, user):
+        state = state or onchain_challenge(address)
         if user.wallet_address not in {str(p) for p in state.players}:
             raise HTTPException(409, "We have not seen your deposit yet. Try again in a moment.")
         session.add(
@@ -385,6 +404,98 @@ def my_activities(user: db.User = Depends(current_user), session: Session = Depe
     now = datetime.now(timezone.utc)
     activities = provider.fetch_activities(session, user.id, now - timedelta(days=30), now + timedelta(days=1))
     return [_activity_view(a, provider) for a in reversed(activities)]
+
+
+# ---------- Stage 5: what the screens need ----------
+
+
+class NewName(BaseModel):
+    name: str = Field(min_length=1, max_length=24)
+
+
+@app.get("/app-config")
+def app_config() -> dict:
+    """Public settings the web app needs before it can create a challenge or show the activity form."""
+    provider = _provider()
+    return {
+        "oracle": config.ORACLE_PUBLIC_KEY,
+        "usdc_mint": config.USDC_MINT,
+        "fitness": {
+            "source": provider.name,
+            "label": provider.label,
+            "can_add": isinstance(provider, fitness.LoggedProvider),
+            "types": list(fitness.ACTIVITY_TYPES),
+        },
+    }
+
+
+@app.post("/me/name")
+def set_name(body: NewName, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    """The name other players see on the leaderboard and in the feed."""
+    name = " ".join(body.name.split())
+    if not name:
+        raise HTTPException(400, "Enter a name.")
+    user.display_name = name
+    session.commit()
+    return _user_view(user)
+
+
+@app.get("/me/challenges")
+def my_challenges(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> list[dict]:
+    """Challenges the caller joined or created, newest first."""
+    found = {c.id: c for c in scores.challenges_of(session, user.id)}
+    for c in session.scalars(select(db.Challenge).where(db.Challenge.creator_id == user.id)):
+        found[c.id] = c
+    ordered = sorted(found.values(), key=lambda c: c.start_time, reverse=True)
+    return [_challenge_view(c) for c in ordered]
+
+
+@app.get("/challenges/{address}/state")
+def challenge_state(
+    address: str, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    """Everything the challenge screen shows, in one call. The web app asks for this every few seconds.
+
+    The feed, the pool total, and "deposit confirmed" all come from events the QuickNode Stream delivered.
+    The leaderboard is included only for players of the challenge.
+    """
+    challenge = session.scalar(select(db.Challenge).where(db.Challenge.address == address))
+    rows = events.challenge_events(session, address)
+    wallets = set()
+    pool_units = player_count = None
+    deposit_confirmed = False
+    for row in rows:
+        data = json.loads(row.data)
+        wallets.update(w for w in [data.get("creator"), data.get("player"), *data.get("winners", [])] if w)
+        if row.name == "PlayerJoined":
+            pool_units, player_count = data["pool_total"], data["player_count"]
+            deposit_confirmed = deposit_confirmed or data["player"] == user.wallet_address
+        elif row.name in ("ChallengeSettled", "ChallengeRefunded"):
+            pool_units = 0
+    names = {
+        u.wallet_address: scores.display_name(u)
+        for u in session.scalars(select(db.User).where(db.User.wallet_address.in_(wallets)))
+    } if wallets else {}
+    is_player = challenge is not None and _is_player(session, challenge, user)
+    players = None
+    if is_player:
+        players = [
+            {"rank": r["rank"], "name": r["name"], "points": r["points"], "ticks": r["ticks"],
+             "is_you": r["user_id"] == user.id}
+            for r in scores.leaderboard(session, challenge)
+        ]
+    return {
+        "challenge": _challenge_view(challenge) if challenge else None,
+        "you": {
+            "joined": is_player,
+            "deposit_confirmed": deposit_confirmed,
+            "is_creator": challenge is not None and challenge.creator_id == user.id,
+        },
+        "pool": None if pool_units is None else pool_units / 10**config.USDC_DECIMALS,
+        "player_count": player_count,
+        "players": players,
+        "feed": events.feed(rows, lambda wallet: names.get(wallet, "A player")),
+    }
 
 
 @app.delete("/me/fitness")

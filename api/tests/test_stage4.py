@@ -1,5 +1,8 @@
 """Daily Mover scoring, anti-cheat rules, fitness providers, and the Stage 4 endpoints. No network needed."""
 
+import base64
+import json
+import struct
 import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -8,12 +11,15 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
+from solders.pubkey import Pubkey
 from sqlalchemy import create_engine, select
 from sqlalchemy.pool import StaticPool
 
 import auth
+import chain
 import config
 import db
+import events
 import fitness
 import main
 import scores
@@ -146,6 +152,7 @@ def fakes(monkeypatch):
     now = datetime.now(timezone.utc)
     onchain = SimpleNamespace(
         creator=WALLETS["maya"], buy_in=1_000_000, status="open", players=[WALLETS["maya"], WALLETS["sam"]],
+        oracle=config.ORACLE_PUBLIC_KEY, mint=config.USDC_MINT,
         start_time=int((now - timedelta(days=2)).timestamp()), end_time=int((now + timedelta(days=5)).timestamp()),
     )
     monkeypatch.setattr(main, "onchain_challenge", lambda address: onchain)
@@ -310,6 +317,100 @@ def test_disconnect_deletes_activities_and_points(client, challenge):
     assert client.get("/me/activities", headers=make_token("maya")).json() == []
     players = board(client)
     assert players["maya"]["points"] == 0 and players["sam"]["points"] == 1  # still in the pool, score zero
+
+
+# ---------- Stage 5: what the screens need ----------
+
+
+def add_event(name, data, signature):
+    with db.SessionLocal() as session:
+        session.add(db.ChainEvent(signature=signature, event_index=0, name=name, challenge=CHALLENGE, slot=1,
+                                  data=json.dumps({"challenge": CHALLENGE, **data})))
+        session.commit()
+
+
+def state(client, who="maya"):
+    reply = client.get(f"/challenges/{CHALLENGE}/state", headers=make_token(who))
+    assert reply.status_code == 200
+    return reply.json()
+
+
+def test_app_config_is_public(client):
+    body = client.get("/app-config").json()
+    assert body["oracle"] == config.ORACLE_PUBLIC_KEY
+    assert body["fitness"]["source"] == "mock" and body["fitness"]["can_add"] is True
+
+
+def test_challenge_with_another_oracle_is_refused(client, fakes):
+    fakes.oracle = WALLETS["zoe"]
+    reply = client.post("/challenges", json={"address": CHALLENGE, "name": "Rigged"}, headers=make_token("maya"))
+    assert reply.status_code == 400
+
+
+def test_joining_a_challenge_made_outside_the_app_records_it(client):
+    assert client.post(f"/challenges/{CHALLENGE}/join", json={"consent": True},
+                       headers=make_token("sam")).status_code == 200
+    body = state(client, "sam")
+    assert body["challenge"]["name"] == "Weekly challenge" and body["you"]["joined"] is True
+
+
+def test_name_shows_on_leaderboard_and_in_my_challenges(client, challenge):
+    assert client.post("/me/name", json={"name": "  Maya   R "}, headers=make_token("maya")).json()["name"] == "Maya R"
+    assert client.post("/me/name", json={"name": "   "}, headers=make_token("maya")).status_code == 400
+    assert "Maya R" in board(client)
+    mine = client.get("/me/challenges", headers=make_token("maya")).json()
+    assert [c["address"] for c in mine] == [CHALLENGE]
+    assert client.get("/me/challenges", headers=make_token("zoe")).json() == []
+
+
+def test_state_before_any_stream_event(client, challenge):
+    body = state(client)
+    assert body["you"] == {"joined": True, "deposit_confirmed": False, "is_creator": True}
+    assert body["pool"] is None and body["feed"] == [] and len(body["players"]) == 2
+
+
+def test_feed_pool_and_deposit_status_come_from_stream_events(client, challenge):
+    add_event("ChallengeCreated", {"creator": WALLETS["maya"]}, "s1")
+    add_event("PlayerJoined", {"player": WALLETS["maya"], "player_count": 1, "pool_total": 1_000_000}, "s2")
+    body = state(client, "sam")
+    assert body["you"]["deposit_confirmed"] is False and body["pool"] == 1 and body["player_count"] == 1
+    add_event("PlayerJoined", {"player": WALLETS["sam"], "player_count": 2, "pool_total": 2_000_000}, "s3")
+    add_event("ChallengeEnded", {"end_time": 1}, "s4")
+    add_event("ChallengeSettled", {"winners": [WALLETS["sam"], WALLETS["zoe"]], "pool_total": 2_000_000,
+                                   "payout_each": 1_000_000, "score_hash": "00"}, "s5")
+    body = state(client, "sam")
+    assert body["you"]["deposit_confirmed"] is True and body["pool"] == 0
+    assert [item["text"] for item in body["feed"]] == [
+        "maya started the challenge",
+        "maya joined - pool is now 1 USDC",
+        "sam joined - pool is now 2 USDC",
+        "The challenge ended",
+        "Settled - sam and A player won 1 USDC each",
+    ]
+    assert body["feed"][1]["signature"] == "s2"
+
+
+def test_outsiders_see_the_feed_but_not_the_leaderboard(client, challenge):
+    add_event("PlayerJoined", {"player": WALLETS["maya"], "player_count": 1, "pool_total": 1_000_000}, "s2")
+    body = state(client, "zoe")
+    assert body["players"] is None and body["you"]["joined"] is False and len(body["feed"]) == 1
+
+
+def test_stream_events_update_the_stored_challenge(client, challenge):
+    ended_at = int(time.time()) - 60
+
+    def log(name, extra):
+        disc = bytes(next(e["discriminator"] for e in chain.IDL["events"] if e["name"] == name))
+        return "Program data: " + base64.b64encode(disc + bytes(Pubkey.from_string(CHALLENGE)) + extra).decode()
+
+    winner = struct.pack("<I", 1) + bytes(Pubkey.from_string(WALLETS["sam"]))
+    logs = [log("ChallengeEnded", struct.pack("<q", ended_at)),
+            log("ChallengeSettled", winner + struct.pack("<QQ", 2_000_000, 2_000_000) + bytes(32))]
+    with db.SessionLocal() as session:
+        assert events.store_delivery(session, {"transactions": [{"signature": "sig", "slot": 9, "logs": logs}]}) == 2
+        stored = session.scalar(select(db.Challenge))
+        assert stored.status == "settled" and int(db.utc(stored.end_time).timestamp()) == ended_at
+    assert state(client)["feed"][-1]["text"] == "Settled - sam won 2 USDC"
 
 
 def test_settled_challenges_keep_their_points(client, challenge):

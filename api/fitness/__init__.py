@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import config
 from fitness.base import ACTIVITY_TYPES, Activity, FitnessProvider, NotSupported
+from fitness.logged import LoggedProvider
 from fitness.manual import ManualProvider
 from fitness.mock import MockProvider
 
-__all__ = ["ACTIVITY_TYPES", "Activity", "FitnessProvider", "NotSupported", "get_provider"]
+__all__ = ["ACTIVITY_TYPES", "Activity", "FitnessProvider", "LoggedProvider", "NotSupported", "get_provider"]
 
 _PROVIDERS = {"mock": MockProvider, "manual": ManualProvider}
 

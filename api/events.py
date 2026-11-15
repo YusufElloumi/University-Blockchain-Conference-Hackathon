@@ -160,4 +160,63 @@ def store_delivery(session: Session, payload) -> int:
                 new += 1
             except IntegrityError:  # another delivery stored it at the same moment
                 session.rollback()
+                continue
+            _update_challenge(session, name, fields)
     return new
+
+
+def _update_challenge(session: Session, name: str, fields: dict) -> None:
+    """Keeps our copy of a challenge in step with what just happened onchain."""
+    challenge = session.scalar(select(db.Challenge).where(db.Challenge.address == fields.get("challenge")))
+    if challenge is None:
+        return
+    if name == "ChallengeEnded":
+        challenge.end_time = datetime.fromtimestamp(fields["end_time"], timezone.utc)
+        if db.utc(challenge.start_time) > db.utc(challenge.end_time):
+            challenge.start_time = challenge.end_time  # ended before it began
+    elif name == "ChallengeSettled":
+        challenge.status = "settled"
+    elif name == "ChallengeRefunded":
+        challenge.status = "refunded"
+    session.commit()
+
+
+def _usdc(units: int) -> str:
+    amount = units / 1_000_000
+    return f"{amount:g} USDC" if amount == round(amount, 2) else f"{amount:.2f} USDC"
+
+
+def _names(people: list[str]) -> str:
+    return people[0] if len(people) == 1 else ", ".join(people[:-1]) + " and " + people[-1]
+
+
+def challenge_events(session: Session, address: str) -> list[db.ChainEvent]:
+    return list(
+        session.scalars(
+            select(db.ChainEvent).where(db.ChainEvent.challenge == address).order_by(db.ChainEvent.slot, db.ChainEvent.id)
+        )
+    )
+
+
+def feed(rows: list[db.ChainEvent], name_of) -> list[dict]:
+    """The stored events of one challenge as plain sentences, oldest first. `name_of` turns a wallet into a name."""
+    items = []
+    for row in rows:
+        data = json.loads(row.data)
+        if row.name == "ChallengeCreated":
+            text = f"{name_of(data['creator'])} started the challenge"
+        elif row.name == "PlayerJoined":
+            text = f"{name_of(data['player'])} joined - pool is now {_usdc(data['pool_total'])}"
+        elif row.name == "ChallengeEnded":
+            text = "The challenge ended"
+        elif row.name == "ChallengeSettled":
+            winners = [name_of(w) for w in data["winners"]]
+            each = " each" if len(winners) > 1 else ""
+            text = f"Settled - {_names(winners)} won {_usdc(data['payout_each'])}{each}"
+        elif row.name == "ChallengeRefunded":
+            text = f"Refunded - everyone got {_usdc(data['refund_each'])} back"
+        else:
+            continue
+        when = row.block_time or row.received_at
+        items.append({"kind": row.name, "text": text, "signature": row.signature, "time": db.utc(when).isoformat()})
+    return items

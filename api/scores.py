@@ -63,7 +63,7 @@ def recompute_user(session: Session, user_id: int) -> dict[str, scoring.ScoreShe
     return {c.address: recompute(session, c, user_id) for c in challenges_of(session, user_id)}
 
 
-def _display_name(user: db.User) -> str:
+def display_name(user: db.User) -> str:
     return user.display_name or (user.email or "").split("@")[0] or "Player"
 
 
@@ -86,7 +86,7 @@ def leaderboard(session: Session, challenge: db.Challenge, now: datetime | None 
         rows.append(
             {
                 "user_id": user.id,
-                "name": _display_name(user),
+                "name": display_name(user),
                 "wallet": user.wallet_address,
                 "points": sum(e.points for e in days.values()),
                 "ticks": [bool(days[d].active) if d in days else False for d in range(days_so_far)],
