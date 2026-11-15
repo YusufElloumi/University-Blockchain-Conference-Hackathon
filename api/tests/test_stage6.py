@@ -195,3 +195,11 @@ def test_database_address_forgives_copy_paste_slips():
         with pytest.raises(RuntimeError) as error:
             config.clean_database_url(bad)
         assert "secret" not in str(error.value)
+
+
+def test_web_origin_is_cut_down_to_scheme_and_host():
+    import config
+
+    for pasted in ("https://someone.github.io", "https://someone.github.io/", " 'https://someone.github.io/my-repo/' "):
+        assert config.clean_origin(pasted) == "https://someone.github.io"
+    assert config.clean_origin("http://localhost:5173") == "http://localhost:5173"

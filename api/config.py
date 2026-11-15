@@ -12,10 +12,15 @@ load_dotenv(API_DIR.parent / ".env")
 
 PRIVY_APP_ID = os.environ.get("PRIVY_APP_ID", "")
 PRIVY_APP_SECRET = os.environ.get("PRIVY_APP_SECRET", "")
+def clean_origin(value: str) -> str:
+    """A web address cut down to what a browser sends as its origin: scheme and host, no path or slash."""
+    value = value.strip().strip("\"'").strip()
+    scheme, separator, rest = value.partition("://")
+    return f"{scheme}://{rest.split('/', 1)[0]}" if separator else value.rstrip("/")
+
+
 WEB_ORIGINS = [
-    o.strip().strip("\"'").rstrip("/")  # a browser's origin never ends with a slash
-    for o in (os.environ.get("WEB_ORIGIN") or "http://localhost:5173").split(",")
-    if o.strip()
+    clean_origin(o) for o in (os.environ.get("WEB_ORIGIN") or "http://localhost:5173").split(",") if o.strip()
 ]
 
 
