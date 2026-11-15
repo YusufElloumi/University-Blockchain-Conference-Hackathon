@@ -120,9 +120,17 @@ def test_unwrapped_and_gzipped_bodies_work(client):
     assert response.status_code == 200 and response.json()["new_events"] == 1
 
 
-def test_rejects_unsigned_wrong_token_tampered_and_old(client):
+def test_unsigned_request_is_answered_but_stores_nothing(client):
     body = json.dumps(delivery([joined_log()])).encode()
-    assert client.post("/webhooks/quicknode", content=body).status_code == 401
+    response = client.post("/webhooks/quicknode", content=body)
+    assert response.status_code == 200 and response.json()["new_events"] == 0
+    assert client.get(f"/challenges/{CHALLENGE}/events").json() == []
+
+
+def test_rejects_wrong_token_tampered_partly_signed_and_old(client):
+    body = json.dumps(delivery([joined_log()])).encode()
+    partly = {k: v for k, v in signed(body).items() if k != "X-QN-Signature"}
+    assert client.post("/webhooks/quicknode", content=body, headers=partly).status_code == 401
     assert client.post("/webhooks/quicknode", content=body, headers=signed(body, token="wrong")).status_code == 401
     assert client.post("/webhooks/quicknode", content=body + b" ", headers=signed(body)).status_code == 401
     old = str(int(time.time()) - 3600)

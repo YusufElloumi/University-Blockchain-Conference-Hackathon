@@ -97,7 +97,7 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Run web | `npm run dev` (http://localhost:5173) | `web/` (verified Nov 14) |
 | Build web | `npm run build` | `web/` (verified Nov 14) |
 | Create a demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` then put the printed address in `VITE_DEMO_CHALLENGE` | repo root (verified Nov 14) |
-| Rebuild plan PDF | `python scripts/build_plan_pdf.py` | repo root (verified Nov 14) |
+| Rebuild plan PDF | `C:\Python313\python.exe scripts/build_plan_pdf.py` (the API venv has no `reportlab`) | repo root (verified Nov 14) |
 
 Environment notes:
 - Windows 11. Node 22.14 and Python 3.13 are installed on the Windows side.
@@ -118,6 +118,8 @@ Environment notes:
 - Privy React SDK v3: Solana hooks come from `@privy-io/react-auth/solana` and take a serialized transaction (`Uint8Array`). The app builds with Anchor + `@solana/web3.js` v1, signs with `useSignTransaction`, and sends through its own connection (`web/src/chain.ts`).
 - Privy embedded wallets need HTTPS or `localhost`. A phone cannot test against the laptop's LAN `http://` address.
 - The API finds a user's wallet by asking Privy (`GET https://auth.privy.io/api/v1/users/<id>` with the app secret), never from the browser.
+- Local webhook tunnel: `cloudflared tunnel --url http://localhost:8000`. The Stream pauses after 3 failed deliveries, so pause it in the QuickNode dashboard whenever the API or tunnel is off, and resume it after.
+- QuickNode's "Check Connection" sends an unsigned request. `POST /webhooks/quicknode` answers unsigned requests with OK and stores nothing; anything with signature headers must verify.
 - `.env` is not in git. If the repo is ever cloned again, copy `.env` across by hand.
 - Solana Playground (https://beta.solpg.io) is the fallback only. Using it would put the program source, IDL, and deploy wallet outside the repo.
 
@@ -132,8 +134,8 @@ Fill in as they are created. Public addresses only - never keys.
 | Oracle public key | `6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD` |
 | Treasury public key | `J73KdqANTzJ7P1TMTnd37xNCdXvc3LChG7J8X1XX4XY9` |
 | USDC mint (devnet) | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
-| QuickNode Stream ID | TBD (Stage 3) |
-| Stream network / dataset / destination | Solana Devnet / Programs + Logs / webhook `POST /webhooks/quicknode` (planned) |
+| QuickNode Stream ID | `daf4568b-a005-4eea-aa1a-732df56eb9ff` (created Nov 14, free plan, no card asked; also in `.env` as `QUICKNODE_STREAM_ID`) |
+| Stream network / dataset / destination | Solana Devnet / Programs + Logs / webhook `POST /webhooks/quicknode` (verified Nov 14 through a cloudflared tunnel; the tunnel address changes on every restart, so update the Stream's destination URL each time until the API is deployed) |
 | Privy app ID | In `.env` as `PRIVY_APP_ID` and `VITE_PRIVY_APP_ID` (set Nov 14) |
 | Demo challenge (devnet, 1 USDC buy-in, joining closes Nov 16 about 4:30 PM CST) | `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` |
 | Strava app (client ID) | TBD or not used |

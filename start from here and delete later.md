@@ -1,90 +1,52 @@
-# Start from here (delete this file once Stage 3 is done)
+# Start from here (delete this file once Stage 4 is under way)
 
-Written Sat Nov 14, 2026, end of session. This is a handoff note. `DEVELOPMENT_PLAN.md` is still the source of truth for progress.
+Written Sat Nov 14, 2026, evening. Handoff note only. `DEVELOPMENT_PLAN.md` is the source of truth for progress.
 
 ## Where things stand
 
 | Stage | State |
 |---|---|
-| 0 Setup | Mostly done. QuickNode account now exists (school email). Still open: Devpost team list, office hours times, Vercel/Render/Neon accounts, Solana Playground fallback check |
+| 0 Setup | Mostly done. Still open: Devpost team list, office hours times, Vercel/Render/Neon accounts, Solana Playground fallback check, more treasury USDC |
 | 1 Anchor program | Done. Deployed on devnet |
-| 2 Invisible wallet flow | Done and tested in the browser, except the phone test (needs HTTPS) and optional Privy gas sponsorship |
-| 3 QuickNode Stream | Code written and tested locally. **Manual setup not done yet.** No boxes ticked |
+| 2 Invisible wallet flow | Done, except the phone test (needs HTTPS) and optional Privy gas sponsorship |
+| 3 QuickNode Stream | **Done.** Stream `daf4568b-a005-4eea-aa1a-732df56eb9ff` delivers our program's events to the API |
+| 4 Backend, database, fitness layer, scoring | **Next. Not started** |
 
-**Nothing from Stage 2 or Stage 3 is committed.** All of it is in the working tree. Commit before doing anything risky.
+Everything is committed and pushed to `main`.
 
-## What was built today
+## What works today
 
-**Stage 2 (verified)**
-- `web/`: React + Vite + Privy app. Email login, wallet created invisibly, balance in dollars, "Add test funds", "Join for 1 USDC" with no wallet popup.
-- `api/`: FastAPI server.
-  - `auth.py` checks the Privy login token.
-  - `treasury.py` sends fee money (gas drip) and test USDC.
-  - `db.py` has the `users` table.
-  - `main.py` has `POST /me/setup` and `POST /me/fund`.
-- `onchain/scripts/create_challenge.js` plus a `create-challenge` command in `scripts/wsl_anchor.sh`.
-- Two browser accounts joined the demo challenge `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` on devnet. Joining closes Mon Nov 16 around 4:30 PM CST; make a new one after that.
+- Sign in with email, get a wallet invisibly, add test funds, join a challenge with one button and no wallet popup.
+- The QuickNode Stream watches Solana devnet, keeps only our program's transactions (`streams/filter.js`), and posts them to `POST /webhooks/quicknode`. The API checks the signature, decodes the events, and stores them in `chain_events`.
+- Proof: the smoke test's 5 events (created, 2 joined, ended, settled) for challenge `HkeqS9dqAGiEQjiNqnTNkbKN1QhwtSPAbSncWiYKe718` arrived within seconds.
+- 22 API tests pass.
 
-**Stage 3 (code only, not yet proven with a real Stream)**
-- `streams/filter.js`: the Stream filter. Check it with `node streams/test_filter.js`.
-- `api/events.py`: checks QuickNode's signature, decodes the program's events from log lines, stores them without duplicates.
-- `api/db.py`: new `chain_events` table.
-- `api/main.py`: `POST /webhooks/quicknode` and `GET /challenges/{address}/events`.
-- 21 API tests pass. The decoder was also run against today's real devnet transactions and read `ChallengeCreated` and two `PlayerJoined` events correctly.
+## Starting a work session (the Stream needs all three)
 
-## Your next steps (Stage 3 manual setup)
+1. API, in `api/`: `.venv\Scripts\python.exe -m uvicorn main:app --reload`
+2. Tunnel, in a second window: `cloudflared tunnel --url http://localhost:8000`
+3. **The tunnel address is new every time.** In the QuickNode dashboard, open the Stream, set the destination URL to `https://<new-address>/webhooks/quicknode`, and resume the Stream if it is paused.
+4. Web (only when needed), in `web/`: `npm run dev`, then http://localhost:5173
 
-**1. Tunnel, so QuickNode can reach your laptop**
-1. PowerShell: `winget install --id Cloudflare.cloudflared`
-2. New PowerShell window: `cloudflared tunnel --url http://localhost:8000`
-3. Copy the `https://<random-words>.trycloudflare.com` address. Leave the window open. The address changes every restart.
+## Leaving the desk, sleep, and shutdown
 
-**2. Create the Stream** (dashboard.quicknode.com, Streams, "+ New Stream")
-1. Name `loser-buys-devnet`, network **Solana Devnet**, start at the latest block.
-2. Dataset **Programs + Logs**.
-3. "Customize your payload": clear the editor and paste all of `streams/filter.js`.
-4. **Run test**. `null` is the normal result. An error is not.
-5. Destination **Webhook**, URL `https://<your-tunnel-address>/webhooks/quicknode`, compression None, other settings default.
-6. Copy the **Security token**. Do not create the Stream yet.
+- The Stream only calls the API when someone uses our program. If nobody does, nothing is sent and nothing can fail.
+- If the computer sleeps or shuts down, the API and tunnel stop. That is harmless unless a transaction for our program happens meanwhile. If one does, QuickNode retries 3 times, then pauses the Stream, and those events are lost (Solana Streams cannot replay).
+- After any restart, do the three steps above. Lost events only affect the feed and status display; the money onchain is unaffected.
+- This goes away in Stage 9, when the API is deployed with a permanent address.
 
-**3. Token and API**
-1. In `.env` at the repo root set `QUICKNODE_STREAM_SECURITY_TOKEN=<the token>`.
-2. In `api/`: `.venv\Scripts\python.exe -m uvicorn main:app --reload`
-3. In QuickNode: **Check Connection**, then **Create a Stream**.
+## Next: Stage 4
 
-**4. Prove it**
-1. Repo root: `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh smoke`
-2. The API window should log "Stored N onchain event(s) from the Stream" within seconds.
-3. Tell Claude the Stream ID so it can verify the rows, record the ID in `CLAUDE.md`, and tick the Stage 3 boxes.
+Database tables (`challenges`, `participants`, `score_entries`, `fitness_connections`), the `FitnessProvider` interface with mock and manual providers, the "Daily Mover" scoring engine, and anti-cheat rules. None of it needs the Stream or the tunnel running. See Stage 4 in `DEVELOPMENT_PLAN.md`.
 
-## Known risks and open points
+## Open points
 
-- **"Check Connection" may fail with 401.** The webhook rejects unsigned requests. If QuickNode will not let you continue, that one case needs loosening.
-- **Payload shape is unconfirmed.** The filter and the webhook were written from QuickNode's docs and handle a few possible shapes, but no real delivery has been seen yet.
-- **Dashboard labels may differ** from the names above.
-- **The Stream pauses after 3 failed deliveries.** Pause it yourself when the API or tunnel is off; resume it in the dashboard.
-- **No replay of missed events** on Solana.
-- **Did QuickNode ask for a card?** Record the answer in the plan (Stage 0 asks for it).
-- **Treasury USDC is low** (about 7 USDC). Top up at https://faucet.circle.com before more people test, or set `TEST_FUNDS_USDC` lower in `.env`.
-- **Phone test** still needs an HTTPS address. The cloudflared tunnel could also serve the web app for this.
-- **Servers:** the API was stopped at the end of the session. The web dev server may still be running on port 5173.
-
-## How to run things
-
-| Task | Command | Where |
-|---|---|---|
-| API | `.venv\Scripts\python.exe -m uvicorn main:app --reload` | `api/` |
-| API tests | `.venv\Scripts\python.exe -m pytest` | `api/` |
-| Web | `npm run dev`, then http://localhost:5173 | `web/` |
-| New demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge`, then put the address in `VITE_DEMO_CHALLENGE` in `.env` | repo root |
-| Smoke test | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh smoke` | repo root |
+- **Treasury USDC is low** (roughly 7 USDC). Top up at https://faucet.circle.com (20 USDC per 2 hours), or set `TEST_FUNDS_USDC` lower in `.env`.
+- **Demo challenge** `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` stops accepting joins Mon Nov 16 around 4:30 PM CST. Make a new one with `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` (from the repo root) and put the address in `VITE_DEMO_CHALLENGE` in `.env`.
+- **Phone test** still needs an HTTPS address for the web app.
+- **Team:** confirm who is on the Devpost submission and that everyone can attend in person on Sat Nov 21.
+- **Strava:** still nobody with a subscription, so the mock/manual provider is the plan.
 
 ## What to tell Claude next session
 
-"Read `start from here and delete later.md`, then continue Stage 3." If the Stream is already created, include the Stream ID and whether the smoke test produced the "Stored N onchain event(s)" log line.
-
-## Still to update once Stage 3 is verified
-
-- Tick the Stage 3 boxes and add a progress log row in `DEVELOPMENT_PLAN.md`, then rebuild the PDF with `C:\Python313\python.exe scripts/build_plan_pdf.py` (plain `python` picks the API venv, which lacks `reportlab`).
-- Fill in the Stream ID in `CLAUDE.md`.
-- Delete this file.
+"Read `start from here and delete later.md`, then start Stage 4."

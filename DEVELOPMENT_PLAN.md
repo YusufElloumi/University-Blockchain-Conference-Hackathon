@@ -64,6 +64,7 @@ Office hours (Nov 16-19) fall on Stages 2-7. Bring the questions listed near the
 - [ ] Start collecting devnet USDC for the treasury at https://faucet.circle.com (20 USDC per 2 hours per address). Repeat through the week.
   - Note (Nov 14): started. Treasury 20 USDC, deploy wallet 20 USDC (checked with `spl-token accounts`). Keep repeating for the treasury.
 - [ ] Create accounts: Privy (free Developer plan), QuickNode (free trial; note whether a card is required), Vercel, Render, Neon. Flag anything that asks for payment.
+  - Note (Nov 14): Privy and QuickNode accounts exist (QuickNode under the school email, free plan, no card asked). Vercel, Render, and Neon still to create.
 - [ ] Strava: check whether a team member already has a Strava subscription. Strava's docs say a subscription is required to create an API app. **This may cost money.** If nobody has one, skip live Strava and use the mock/manual source.
   - Note (Nov 14): nobody has a subscription yet; the team will decide as we go. Build on the mock/manual source until then.
 - [x] Add `.gitignore` (`.env`, keypair files, `target/`, `node_modules/`, `.anchor/`, `*.db`) and `.env.example` with variable names only. (Done Nov 14. Keypairs are matched by `*keypair*.json`, not `*.json`, so `package.json` and the IDL can be committed. Checked with `git check-ignore`.)
@@ -126,13 +127,13 @@ Each instruction emits an event (`ChallengeCreated`, `PlayerJoined`, `ChallengeE
 
 **Satisfies:** QuickNode Streams bounty (Stream configured with a filter and a destination; Streams is a core data source).
 
-- [ ] Create one Stream: network Solana Devnet, dataset "Programs + Logs" (fall back to "Block" if the payload lacks what we need), start at chain tip.
-- [ ] Write the filter in `streams/filter.js`: keep only successful transactions that call our program ID; return signature, slot, block time, and log lines; return `null` otherwise. Test it with the dashboard's "Run Test".
-- [ ] Destination: webhook to `POST /webhooks/quicknode` on the API. For local work use a tunnel (for example `cloudflared`).
-- [ ] Verify each delivery: HMAC-SHA256 over nonce + timestamp + body using the Stream's security token (`X-QN-Nonce`, `X-QN-Timestamp`, `X-QN-Signature`).
-- [ ] Decode the program's events from the log lines and store them, de-duplicated by transaction signature (the free plan has no reorg handling, so the handler must be safe to run twice).
-- [ ] Record the Stream ID, network, dataset, and destination in `CLAUDE.md`.
-- [ ] Note for later: a Stream pauses after 3 failed deliveries. If the server sleeps or restarts, re-activate the Stream.
+- [x] Create one Stream: network Solana Devnet, dataset "Programs + Logs" (fall back to "Block" if the payload lacks what we need), start at chain tip. (Done Nov 14: Stream `loser-buys-devnet`, Solana Devnet, Programs + Logs, started at the chain tip.)
+- [x] Write the filter in `streams/filter.js`: keep only successful transactions that call our program ID; return signature, slot, block time, and log lines; return `null` otherwise. Test it with the dashboard's "Run Test". (Done Nov 14: pasted into the dashboard; the smoke test's five transactions all came through it. Local check: `node streams/test_filter.js`.)
+- [x] Destination: webhook to `POST /webhooks/quicknode` on the API. For local work use a tunnel (for example `cloudflared`). (Done Nov 14: through a `cloudflared` quick tunnel. The dashboard's "Check Connection" sends an unsigned request, so the endpoint answers unsigned requests with OK and stores nothing.)
+- [x] Verify each delivery: HMAC-SHA256 over nonce + timestamp + body using the Stream's security token (`X-QN-Nonce`, `X-QN-Timestamp`, `X-QN-Signature`). (Done Nov 14: `api/events.py`. Real deliveries passed the check; wrong token, changed body, partly signed, and old deliveries are rejected in tests.)
+- [x] Decode the program's events from the log lines and store them, de-duplicated by transaction signature (the free plan has no reorg handling, so the handler must be safe to run twice). (Done Nov 14: `chain_events` table. The smoke test produced 5 rows: ChallengeCreated, 2 PlayerJoined, ChallengeEnded, ChallengeSettled. 22 API tests pass.)
+- [x] Record the Stream ID, network, dataset, and destination in `CLAUDE.md`. (Done Nov 14: Stream `daf4568b-a005-4eea-aa1a-732df56eb9ff`.)
+- [x] Note for later: a Stream pauses after 3 failed deliveries. If the server sleeps or restarts, re-activate the Stream. (Noted Nov 14 in `CLAUDE.md`. The filter returns nothing for blocks without our program, so failures only happen if someone uses the program while the API or tunnel is down.)
 
 ## Stage 4 - Backend, database, fitness layer (Tue, 6-8 h)
 
@@ -340,7 +341,7 @@ Answered by the guide (Nov 14): prizes stack (track + one chain award + bounties
 
 **QuickNode**
 
-- [ ] Does the free trial allow a Solana **devnet** Stream with a filter and webhook? Is a card required?
+- [x] Does the free trial allow a Solana **devnet** Stream with a filter and webhook? Is a card required? (Answered Nov 14 by doing it: yes on the free plan, no card.)
 - [ ] Which dataset is better for program events on Solana: "Programs + Logs" or "Block"? What does the payload look like for our program?
 - [ ] Our webhook server may sleep on a free host. What is the best way to avoid the Stream pausing, and can we replay missed blocks on the free plan (docs say no backfill for Solana)?
 - [ ] What makes Streams count as a "core data source" in the judges' eyes?
@@ -376,3 +377,5 @@ Answered by the guide (Nov 14): prizes stack (track + one chain award + bounties
 | 2026-11-14 | Wallets funded from the web faucets and confirmed onchain: deploy 5 SOL + 20 USDC, treasury 5 SOL + 20 USDC, oracle 0 (to be topped up from the treasury). First commit of the plan, docs, and skeleton pushed to GitHub. | Clone the repo into the WSL home folder, then Stage 1. Keep collecting treasury USDC. |
 | 2026-11-14 | **Stage 1 done.** Program `loser_buys` written (5 instructions, 5 events), 11 local tests pass, deployed to devnet as `FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC`. Devnet smoke test passed with real devnet USDC. Python (`solders` + `solana-py`) sent `end_early` and `settle` on devnet, so the server needs no Node helper. Found along the way: Anchor 1.x defaults to the `surfpool` validator (not installed; use `--validator legacy`); its mocha test setup breaks on Node 26, so WSL now uses Node 22; the public devnet RPC rate-limits (HTTP 429), so `api/chain.py` retries. Builds run through `scripts/wsl_anchor.sh`. Untested: the 72-hour refund timeout. | Stage 2 (Privy login and invisible wallet flow). Needs the Privy account. |
 | 2026-11-14 | **Stage 2 done except the phone test.** `web/` (React + Vite + Privy) and `api/` (FastAPI) exist. In the browser: email login, wallet created invisibly, gas drip, "Add test funds", and "Join for 1 USDC" with no wallet popup; two accounts joined a devnet challenge and are in its onchain player list. API has 13 passing tests. Added `create-challenge` to `scripts/wsl_anchor.sh` to make a demo challenge. Found: Privy's React SDK v3 takes transactions as serialized bytes, so the app builds with Anchor + web3.js v1, has Privy sign, and sends through our own RPC connection. Treasury is down to about 7 USDC. | Stage 3 (QuickNode Stream). Needs the QuickNode account. Keep collecting treasury USDC. Phone test once there is an HTTPS address. |
+| 2026-11-14 | Stage 3 code written, no boxes ticked: `streams/filter.js`, signed webhook `POST /webhooks/quicknode`, event decoding, `chain_events` table, `GET /challenges/{address}/events`. 21 API tests pass. QuickNode account created. The Stream itself is not created yet, so nothing has been delivered for real. Stage 2 and this code committed and pushed (`d887135`). | Manual Stream setup (steps in `start from here and delete later.md`): cloudflared tunnel, create the Stream, token into `.env`, run the smoke test. Then verify, record the Stream ID, tick Stage 3. |
+| 2026-11-14 | **Stage 3 working.** QuickNode Stream (Solana Devnet, Programs + Logs, filter from `streams/filter.js`) delivers to `POST /webhooks/quicknode` through a cloudflared tunnel. Running the smoke test put 5 events for challenge `HkeqS9dqAGiEQjiNqnTNkbKN1QhwtSPAbSncWiYKe718` into `chain_events` within seconds, each passing the signature check. Found: the dashboard's "Check Connection" is unsigned, so unsigned requests get an OK but store nothing. | Stream ID recorded (`daf4568b-a005-4eea-aa1a-732df56eb9ff`), so **Stage 3 is done**. Next: Stage 4. Update the Stream's destination URL whenever the tunnel restarts. |

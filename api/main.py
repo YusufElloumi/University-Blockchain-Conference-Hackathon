@@ -131,6 +131,9 @@ async def quicknode_webhook(request: Request, session: Session = Depends(db.get_
     """The QuickNode Stream calls this for every block that contains a transaction for our program."""
     if not config.QUICKNODE_STREAM_SECURITY_TOKEN:
         raise HTTPException(503, "QUICKNODE_STREAM_SECURITY_TOKEN is not set on the server")
+    if not any(request.headers.get(h) for h in ("x-qn-nonce", "x-qn-timestamp", "x-qn-signature")):
+        # QuickNode's "Check Connection" button sends an unsigned test request. Say hello, store nothing.
+        return {"status": "ok", "new_events": 0}
     try:
         body = events.decode_body(await request.body(), request.headers.get("content-encoding"))
         events.verify_delivery(
