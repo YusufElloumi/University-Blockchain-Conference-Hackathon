@@ -178,3 +178,20 @@ def test_new_columns_are_added_to_an_existing_table():
     finally:
         db.engine = old
     assert {"settle_tx", "score_sheet"} <= {c["name"] for c in inspect(engine).get_columns("challenges")}
+
+
+def test_database_address_forgives_copy_paste_slips():
+    import pytest
+
+    import config
+
+    want = "postgresql+psycopg://u:p@host.example/db?sslmode=require"
+    plain = "postgresql://u:p@host.example/db?sslmode=require"
+    for pasted in (plain, f"  {plain}\n", f'"{plain}"', f"'{plain}'", f"DATABASE_URL={plain}",
+                   f'DATABASE_URL="{plain}"', f"psql '{plain}'", plain.replace("postgresql://", "postgres://")):
+        assert config.clean_database_url(pasted) == want
+    assert config.clean_database_url("sqlite://") == "sqlite://"
+    for bad in ("", "host.example/db", "postgresql://u:secret@host /db"):
+        with pytest.raises(RuntimeError) as error:
+            config.clean_database_url(bad)
+        assert "secret" not in str(error.value)

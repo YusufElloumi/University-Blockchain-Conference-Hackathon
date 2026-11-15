@@ -12,11 +12,38 @@ load_dotenv(API_DIR.parent / ".env")
 
 PRIVY_APP_ID = os.environ.get("PRIVY_APP_ID", "")
 PRIVY_APP_SECRET = os.environ.get("PRIVY_APP_SECRET", "")
-WEB_ORIGINS = [o.strip() for o in (os.environ.get("WEB_ORIGIN") or "http://localhost:5173").split(",") if o.strip()]
-DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{(API_DIR / 'loser_buys.db').as_posix()}"
-if DATABASE_URL.startswith(("postgres://", "postgresql://")):
-    # Hosts such as Neon hand out a plain postgres address; tell SQLAlchemy which driver to use.
-    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL.split("://", 1)[1]
+WEB_ORIGINS = [
+    o.strip().strip("\"'").rstrip("/")  # a browser's origin never ends with a slash
+    for o in (os.environ.get("WEB_ORIGIN") or "http://localhost:5173").split(",")
+    if o.strip()
+]
+
+
+def clean_database_url(value: str) -> str:
+    """Tidies a database address pasted into a host's settings page.
+
+    Forgives the usual copy-paste slips: spaces or line breaks around it, quote marks, a leading
+    `DATABASE_URL=`, or the whole `psql '...'` command. Fails with a plain message (never showing
+    the address, which holds a password) if what is left is not a database address.
+    """
+    value = value.strip()
+    if value.startswith("psql "):
+        value = value[5:].strip()
+    if value.startswith("DATABASE_URL="):
+        value = value[len("DATABASE_URL="):].strip()
+    value = value.strip("\"'").strip()
+    if value.startswith(("postgres://", "postgresql://")):
+        # Hosts such as Neon hand out a plain postgres address; tell SQLAlchemy which driver to use.
+        value = "postgresql+psycopg://" + value.split("://", 1)[1]
+    if not value.startswith(("postgresql+psycopg://", "sqlite://")) or any(c.isspace() for c in value):
+        raise RuntimeError(
+            "DATABASE_URL is not a database address. It must be one line starting with postgresql:// "
+            f"(got {len(value)} characters starting with {value[:8]!r})."
+        )
+    return value
+
+
+DATABASE_URL = clean_database_url(os.environ.get("DATABASE_URL") or f"sqlite:///{(API_DIR / 'loser_buys.db').as_posix()}")
 USDC_MINT = os.environ.get("USDC_MINT") or "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 USDC_DECIMALS = 6
 QUICKNODE_STREAM_SECURITY_TOKEN = os.environ.get("QUICKNODE_STREAM_SECURITY_TOKEN", "")
