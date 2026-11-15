@@ -27,6 +27,7 @@ import chain
 import config
 import db
 import events
+import pickem
 import scores
 
 log = logging.getLogger("loser_buys")
@@ -114,7 +115,10 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
         if now < state.end_time + grace:
             raise NotYet("The challenge has not finished yet.")
         sheet = build_sheet(session, challenge, [str(p) for p in state.players])
-        winners = winners_of(sheet)
+        # A tie is broken by the pick'em: a tied player whose pick was right wins outright.
+        winners, tiebreak = pickem.break_tie(session, challenge, winners_of(sheet))
+        if tiebreak:
+            sheet["tiebreak"] = tiebreak
         signature = chain.settle(client, oracle, address, [Pubkey.from_string(w) for w in winners], sheet_hash(sheet))
         challenge.status, challenge.settle_tx, challenge.score_sheet = "settled", signature, json.dumps(sheet)
         result.update(action="settled", status="settled", signature=signature, winners=winners)

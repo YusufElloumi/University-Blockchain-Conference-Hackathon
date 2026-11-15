@@ -27,6 +27,10 @@ Stage 6 endpoints:
     POST /admin/challenges/{address}/end-now   "End week now" (admin emails from ADMIN_EMAILS)
     POST /internal/tick                        finish everything that is due (scheduler, X-Tick-Secret header)
     GET  /challenges/{address}/score-sheet     final points and the hash stored onchain (players)
+
+Stage 7 endpoints (pick'em tiebreaker, data from Gemini Prediction Markets):
+    GET  /pickem/games                  upcoming games with live odds
+    POST /challenges/{address}/pick     the caller's one pick, changeable until kick-off
 """
 
 from __future__ import annotations
@@ -54,6 +58,7 @@ import chain
 import db
 import events
 import fitness
+import pickem
 import scores
 import settlement
 import treasury
@@ -491,12 +496,19 @@ def challenge_state(
     } if wallets else {}
     is_player = challenge is not None and _is_player(session, challenge, user)
     players = None
+    pick_info = None
     if is_player:
+        picks = pickem.picks_of(session, challenge)
+        started = datetime.now(timezone.utc) >= db.utc(challenge.start_time)
         players = [
             {"rank": r["rank"], "name": r["name"], "points": r["points"], "ticks": r["ticks"],
-             "is_you": r["user_id"] == user.id}
+             "is_you": r["user_id"] == user.id,
+             # Picks stay secret until kick-off, so nobody can copy one.
+             "pick": picks[r["user_id"]].option_label if started and r["user_id"] in picks else None}
             for r in scores.leaderboard(session, challenge)
         ]
+        pick_info = {"open": not started and challenge.status == "open", "made": len(picks),
+                     "yours": pickem.pick_view(picks.get(user.id))}
     return {
         "challenge": _challenge_view(challenge) if challenge else None,
         "you": {
@@ -509,6 +521,7 @@ def challenge_state(
         "pool": None if pool_units is None else pool_units / 10**config.USDC_DECIMALS,
         "player_count": player_count,
         "players": players,
+        "pickem": pick_info,
         # A wallet with no account here (or one that never shared a name) is shown by its last 4 characters.
         "feed": events.feed(rows, lambda wallet: names.get(wallet, f"Player {wallet[-4:]}")),
     }
@@ -572,6 +585,44 @@ def score_sheet(address: str, user: db.User = Depends(current_user), session: Se
         raise HTTPException(404, "This challenge has not been settled.")
     sheet = json.loads(challenge.score_sheet)
     return {"sheet": sheet, "sha256": settlement.sheet_hash(sheet).hex(), "transaction": challenge.settle_tx}
+
+
+# ---------- Stage 7: pick'em tiebreaker (Gemini Prediction Markets) ----------
+
+
+class NewPick(BaseModel):
+    ticker: str = Field(min_length=1, max_length=80)
+    option_id: str = Field(min_length=1, max_length=40)
+
+
+@app.get("/pickem/games")
+def pickem_games(_user: db.User = Depends(current_user)) -> list[dict]:
+    """Upcoming games with live odds from Gemini Prediction Markets, for the tiebreaker pick."""
+    try:
+        return pickem.list_games()
+    except Exception as e:
+        log.exception("Could not load games from Gemini")
+        raise HTTPException(503, "Couldn't load the games right now. Try again in a moment.") from e
+
+
+@app.post("/challenges/{address}/pick")
+def make_pick(
+    address: str, body: NewPick, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    """Saves the caller's one tiebreaker pick. It can be changed until the challenge starts."""
+    challenge = _stored_challenge(session, address)
+    if not _is_player(session, challenge, user):
+        raise HTTPException(403, "Join this challenge to make a pick.")
+    if challenge.status != "open" or datetime.now(timezone.utc) >= db.utc(challenge.start_time):
+        raise HTTPException(409, "Picks closed when the challenge started.")
+    try:
+        pick = pickem.save_pick(session, challenge, user.id, body.ticker, body.option_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    except Exception as e:
+        log.exception("Could not check the pick with Gemini")
+        raise HTTPException(503, "Couldn't save your pick right now. Try again in a moment.") from e
+    return pickem.pick_view(pick)
 
 
 @app.delete("/me/fitness")

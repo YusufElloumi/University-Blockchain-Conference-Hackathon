@@ -1,7 +1,8 @@
 """Database setup and tables. SQLite locally, Postgres when deployed (same code through SQLAlchemy).
 
-Seven tables: the six in the plan plus `logged_activities`, which holds activities typed into our
-own app (the mock and manual sources). Strava activities are never stored there.
+Eight tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
+the mock and manual sources; Strava activities are never stored there) and `picks` (the pick'em
+tiebreaker).
 
 Times are stored in UTC. SQLite hands them back without a timezone, so read them through `utc()`.
 """
@@ -129,6 +130,23 @@ class ScoreEntry(Base):
     source: Mapped[str]  # which fitness provider the points came from
     source_activity_ids: Mapped[str] = mapped_column(Text)  # JSON list of the activities that counted
     updated_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class Pick(Base):
+    """A player's one free tiebreaker pick for a challenge: which side wins a game listed on Gemini."""
+
+    __tablename__ = "picks"
+    __table_args__ = (UniqueConstraint("challenge_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    event_ticker: Mapped[str]  # Gemini's ID for the game
+    event_title: Mapped[str]
+    option_id: Mapped[str]  # Gemini's ID for the side picked
+    option_label: Mapped[str]
+    chance: Mapped[int | None]  # the market's chance for that side when the pick was made, in percent
+    created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
 class LoggedActivity(Base):

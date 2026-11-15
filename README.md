@@ -2,7 +2,7 @@
 
 **Out-move your friends. Winner takes the pool.**
 
-University Blockchain Conference Hackathon 2026. Track: Consumer Applications. Chain award: Solana. Bounty: QuickNode Streams.
+University Blockchain Conference Hackathon 2026. Track: Consumer Applications. Chain award: Solana. Bounties: QuickNode Streams, Gemini Prediction Markets.
 Team: Yusuf Elloumi, Shaan Bhasin, Rohan Bhasin, Mahdi Khani.
 
 A friend group starts a fitness challenge. Each person chips in a buy-in, workouts earn points, and at the end the pool is paid to whoever is top of the table. The pool is held and paid out by a program on Solana, so no friend has to hold the money and nobody can run off with it.
@@ -122,6 +122,22 @@ Our server does not poll the blockchain to find out what happened. A QuickNode S
 
 **One honest limit.** A Solana Stream cannot replay blocks it failed to deliver, and it pauses after repeated failures (for example when our server is off). So after each settlement or refund the server runs a small catch-up (`events.catch_up`) that fetches that challenge's recent transactions and stores any missed events through the same code path. The Stream is the normal source; the catch-up only fills gaps.
 
+## How we use Gemini Prediction Markets
+
+**The pick'em tiebreaker.** Fitness contests among friends tie often, and splitting the pool is a flat ending. So before kick-off each player may make one free pick: who wins a real upcoming game. If the challenge ends in a tie at the top, a tied player whose pick was right takes the pool instead of splitting it.
+
+Gemini's public Prediction Markets API (`GET /v1/prediction-markets/events`, market data, no key) does three jobs (`api/pickem.py`):
+
+| Job | What we read |
+|---|---|
+| Find games | Active Sports events with exactly two sides and a start time in the next 7 days |
+| Show live odds | Each side's market price, shown as a chance (a price of 0.62 is shown as 62%) |
+| Decide who was right | After the game, the contract Gemini settled with `resolutionSide: "yes"` is the winner |
+
+Rules that keep it fair: one pick each, changeable until kick-off, hidden from other players until kick-off, and locked after. Points always come first; the pick only matters in a tie. If the game has not settled when the challenge ends, or the picks cannot separate the tied players, they split the pool as usual. The picks and their outcome are written into the score sheet whose hash goes onchain.
+
+Picks are free and no trading happens: we read market data only. Nothing about our users, and no fitness data, is sent to Gemini. The server caches the game list for a minute, well inside Gemini's public rate limit.
+
 ## Trust and security
 
 Fitness data lives off the blockchain, so something has to report who won. That is the **oracle**: a key held by our server, whose address is stored in each challenge. This is the main trust assumption, and we would rather state it than hide it.
@@ -199,7 +215,7 @@ wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh join <challenge address>
 
 | What | Command | Where |
 |---|---|---|
-| API (73 tests: login, webhook, scoring, anti-cheat, settlement) | `.venv\Scripts\python.exe -m pytest` | `api/` |
+| API (87 tests: login, webhook, scoring, anti-cheat, settlement, pick'em) | `.venv\Scripts\python.exe -m pytest` | `api/` |
 | Program (11 tests on a local validator) | `anchor test --validator legacy` | `onchain/` |
 | Program from Windows | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh test --validator legacy` | repo root |
 | Stream filter | `node streams/test_filter.js` | repo root |
@@ -217,6 +233,7 @@ api/                FastAPI server
   scoring.py        Daily Mover rules and anti-cheat (pure functions)
   settlement.py     final scores, winners, score-sheet hash, settle and refund
   events.py         QuickNode webhook: signature check, event decoding, feed
+  pickem.py         pick'em tiebreaker on Gemini Prediction Markets data
   chain.py          talks to the program as the oracle
 streams/filter.js   the QuickNode Stream filter
 scripts/            WSL helper for Anchor, plan PDF builder

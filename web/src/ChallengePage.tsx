@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { retryWhileNotReady, type ActivityResult, type ActivityView, type ChallengeState } from "./api";
+import {
+  retryWhileNotReady,
+  type ActivityResult,
+  type ActivityView,
+  type ChallengeState,
+  type Game,
+} from "./api";
 import type { Session } from "./App";
 import { buildJoinTransaction, explorerTx, fetchChallenge, friendlyError, type ChallengeInfo } from "./chain";
 import { ago, countdown, money, usdc, when } from "./format";
@@ -301,6 +307,9 @@ export default function ChallengePage(props: { address: string; session: Session
           </button>
         </section>
       )}
+      {state?.pickem && (state.pickem.open || state.pickem.yours) && (
+        <Pickem session={session} address={address} pickem={state.pickem} onPicked={loadState} />
+      )}
       {phase === "joining" && !full && (
         <button className="secondary" onClick={onInvite}>
           {copied ? "Link copied!" : "Invite friends"}
@@ -352,6 +361,106 @@ export default function ChallengePage(props: { address: string; session: Session
   );
 }
 
+/** The tiebreaker: one free pick on a real game, with live odds from Gemini Prediction Markets. */
+function Pickem(props: {
+  session: Session;
+  address: string;
+  pickem: NonNullable<ChallengeState["pickem"]>;
+  onPicked: () => void;
+}) {
+  const { call } = props.session;
+  const { open, yours } = props.pickem;
+  const [games, setGames] = useState<Game[] | null>(null);
+  const [choosing, setChoosing] = useState(false);
+  const [saving, setSaving] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open || !choosing) return;
+    call<Game[]>("GET", "/pickem/games")
+      .then(setGames)
+      .catch((e) => setError((e as Error).message));
+  }, [open, choosing, call]);
+
+  async function choose(game: Game, optionId: string) {
+    setSaving(optionId);
+    setError("");
+    try {
+      await call("POST", `/challenges/${props.address}/pick`, { ticker: game.ticker, option_id: optionId });
+      props.onPicked();
+      setChoosing(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving("");
+    }
+  }
+
+  return (
+    <section className="card pickem">
+      <div className="row tight">
+        <div className="label">Tiebreaker pick</div>
+        <div className="powered">Odds from Gemini Prediction Markets</div>
+      </div>
+      {yours && !choosing ? (
+        <div className="row">
+          <div>
+            <div className="pick-made">{yours.pick}</div>
+            <div className="fine">
+              {yours.game}
+              {yours.chance ? ` · ${yours.chance}% when you picked` : ""}
+            </div>
+          </div>
+          {open && (
+            <button className="link" onClick={() => setChoosing(true)}>
+              Change
+            </button>
+          )}
+        </div>
+      ) : !choosing ? (
+        <>
+          <p className="muted">Tied at the top? A correct pick wins the pool instead of splitting it. Free, one pick each.</p>
+          <button className="secondary" onClick={() => setChoosing(true)}>
+            Make my pick
+          </button>
+        </>
+      ) : games === null ? (
+        <p className="muted">{error || "Loading games..."}</p>
+      ) : games.length === 0 ? (
+        <p className="muted">No games are open right now.</p>
+      ) : (
+        <>
+          <p className="fine">Who wins? Picks stay hidden until kick-off, and lock then.</p>
+          {games.map((game) => (
+            <div key={game.ticker} className="game">
+              <div className="fine">
+                {game.league} · {when(new Date(game.starts))}
+              </div>
+              <div className="sides">
+                {game.options.map((o) => (
+                  <button
+                    key={o.id}
+                    className={yours?.option_id === o.id ? "side on" : "side"}
+                    onClick={() => choose(game, o.id)}
+                    disabled={saving !== ""}
+                  >
+                    <span>{o.label}</span>
+                    <b>{saving === o.id ? "..." : o.chance ? `${o.chance}%` : "-"}</b>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <button className="link center-link" onClick={() => setChoosing(false)}>
+            Close
+          </button>
+        </>
+      )}
+      {error && games !== null && <div className="message error">{error}</div>}
+    </section>
+  );
+}
+
 function Table({ state, phase }: { state: ChallengeState | null; phase: Phase }) {
   if (!state) return <p className="muted center">Loading...</p>;
   if (!state.players) return <p className="muted center">Join this challenge to see the table.</p>;
@@ -369,8 +478,12 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
           <span className="rank">{p.rank}</span>
           <span className="who">
             <span className="avatar">{p.name.slice(0, 1).toUpperCase()}</span>
-            <span className="who-name">{p.name}</span>
-            {p.is_you && <span className="tag">You</span>}
+            <span className="who-text">
+              <span className="who-name">
+                {p.name} {p.is_you && <span className="tag">You</span>}
+              </span>
+              {p.pick && <span className="who-pick">Pick: {p.pick}</span>}
+            </span>
           </span>
           <span className="form" aria-label={`${p.ticks.filter(Boolean).length} active days of ${p.ticks.length}`}>
             {p.ticks.slice(-7).map((hit, d) => (

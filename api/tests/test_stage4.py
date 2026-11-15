@@ -181,10 +181,10 @@ def board(client, who="maya"):
     return {p["name"]: p for p in reply.json()["players"]}
 
 
-def test_all_seven_tables_exist():
+def test_all_tables_exist():
     assert set(db.Base.metadata.tables) == {
         "users", "fitness_connections", "challenges", "participants", "score_entries", "chain_events",
-        "logged_activities",
+        "logged_activities", "picks",
     }
 
 

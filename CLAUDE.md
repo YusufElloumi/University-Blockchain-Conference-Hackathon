@@ -59,7 +59,7 @@ Other rules from `docs/HACKATHON_GUIDE.md` (the source of truth; this table was 
 | Auth + wallet | Privy: email login, embedded Solana wallet, wallet popups off | Invisible crypto for the Consumer track; free at our size |
 | Fees | "Gas drip": server sends new wallets a little devnet SOL | Simplest way to hide gas; Privy sponsorship is an optional upgrade |
 | Backend | Python + FastAPI | Team's strongest language; holds scoring, Strava, webhooks, oracle key |
-| Database | SQLAlchemy; SQLite locally, Neon free Postgres when deployed | Simplest option; free hosts wipe local files, so deployed needs Postgres. Seven tables only |
+| Database | SQLAlchemy; SQLite locally, Neon free Postgres when deployed | Simplest option; free hosts wipe local files, so deployed needs Postgres. Eight tables only |
 | Onchain events | QuickNode Stream (Solana Devnet) -> webhook | Bounty; replaces RPC polling |
 | Fitness data | `FitnessProvider` interface with Mock, Manual, Strava | Strava may be blocked (subscription, limits, terms); must be swappable |
 | Hosting | Vercel (web), Render (API) | Free tiers |
@@ -93,7 +93,7 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Oracle from Python | `python chain.py show\|end-early\|settle <challenge> [winners]` with `ORACLE_KEYPAIR_PATH` set | `api/`, venv (verified Nov 14) |
 | Devnet SOL | https://faucet.solana.com (`solana airdrop 2` is rate-limited) | browser |
 | Run API | `.venv\Scripts\python.exe -m uvicorn main:app --reload` | `api/` (verified Nov 14) |
-| Test API | `.venv\Scripts\python.exe -m pytest` | `api/` (verified Nov 14, 73 passing) |
+| Test API | `.venv\Scripts\python.exe -m pytest` | `api/` (verified Nov 14, 87 passing) |
 | Run web | `npm run dev` (http://localhost:5173) | `web/` (verified Nov 14) |
 | Build web | `npm run build` | `web/` (verified Nov 14) |
 | Create a demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` then put the printed address in `VITE_DEMO_CHALLENGE` | repo root (verified Nov 14) |
@@ -170,4 +170,5 @@ Fill in as they are created. Public addresses only - never keys.
 - 2026-11-14 (Stage 6): Any player's screen asks the server to finish a challenge when its clock runs out; the server decides the result. `/internal/tick` does the same for every due challenge and needs the `X-Tick-Secret` header.
 - 2026-11-14 (Stage 6): `events.catch_up` fetches missed events from the network after a settlement or refund, because a Solana Stream cannot replay missed blocks. The Stream is still the normal source.
 - 2026-11-14 (Stage 6): New columns on an existing table are added at startup by `db._add_missing_columns` (optional columns only). `create_all` alone never alters a table.
+- 2026-11-14 (Stage 7): Pick'em tiebreaker built on Gemini's public market data (`api/pickem.py`, table `picks`). Available in every challenge, one free pick per player, hidden and changeable until kick-off. It only matters in a tie. Look up one event by its `ticker` (`GET /v1/prediction-markets/events/<ticker>`; the numeric ID and the slug return 404). The winning side is the contract with `resolutionSide: "yes"`. No user or fitness data is sent to Gemini.
 - Tests read the real `.env`. A test that depends on a setting must set it itself (see `TICK_SECRET` in `test_stage6.py`).

@@ -30,7 +30,24 @@ export type ChallengeView = {
   invite_code: string;
 };
 
-export type PlayerRow = { rank: number; name: string; points: number; ticks: boolean[]; is_you: boolean };
+export type PlayerRow = {
+  rank: number;
+  name: string;
+  points: number;
+  ticks: boolean[];
+  is_you: boolean;
+  pick: string | null; // their tiebreaker pick, hidden until kick-off
+};
+
+/** A game from Gemini Prediction Markets, with the market's current chance for each side. */
+export type Game = {
+  ticker: string;
+  title: string;
+  league: string;
+  starts: string;
+  options: { id: string; label: string; chance: number | null }[];
+};
+export type MyPick = { ticker: string; game: string; option_id: string; pick: string; chance: number | null };
 export type FeedItem = { kind: string; text: string; signature: string; time: string };
 
 export type ChallengeState = {
@@ -40,6 +57,7 @@ export type ChallengeState = {
   pool: number | null;
   player_count: number | null;
   players: PlayerRow[] | null; // null unless you are a player
+  pickem: { open: boolean; made: number; yours: MyPick | null } | null;
   feed: FeedItem[];
 };
 

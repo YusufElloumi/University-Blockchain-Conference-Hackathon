@@ -641,10 +641,80 @@ button.danger {
   font-weight: 600;
 }
 
+.who-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .who-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.who-pick {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* Pick'em tiebreaker */
+.row.tight {
+  margin-top: 0;
+}
+
+.powered {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pick-made {
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.game {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.game:first-of-type {
+  margin-top: 10px;
+}
+
+.sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-weight: 600;
+  text-align: left;
+}
+
+.side b {
+  font-family: var(--display);
+  font-size: 20px;
+  color: var(--accent);
+}
+
+.side.on {
+  border-color: var(--accent);
+  background: rgba(198, 244, 50, 0.12);
 }
 
 .tag {
