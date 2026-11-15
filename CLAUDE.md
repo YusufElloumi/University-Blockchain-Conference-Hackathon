@@ -122,6 +122,7 @@ Environment notes:
 - The API finds a user's wallet by asking Privy (`GET https://auth.privy.io/api/v1/users/<id>` with the app secret), never from the browser.
 - Local webhook tunnel: `cloudflared tunnel --url http://localhost:8000`. The Stream pauses after 3 failed deliveries, so pause it in the QuickNode dashboard whenever the API or tunnel is off, and resume it after.
 - QuickNode's "Check Connection" sends an unsigned request. `POST /webhooks/quicknode` answers unsigned requests with OK and stores nothing; anything with signature headers must verify.
+- Neon's command-line tool is installed (`neon`, signed in). The repo is linked through the `.neon` file (ignored by git). Refresh the addresses with `neon env pull --file .env.local -s postgres`. Always pass `--file .env.local`: without it the tool writes `DATABASE_URL` into `.env`, which would switch local runs from SQLite to the live database.
 - `.env` is not in git. If the repo is ever cloned again, copy `.env` across by hand.
 - Solana Playground (https://beta.solpg.io) is the fallback only. Using it would put the program source, IDL, and deploy wallet outside the repo.
 
@@ -140,6 +141,7 @@ Fill in as they are created. Public addresses only - never keys.
 | Stream network / dataset / destination | Solana Devnet / Programs + Logs / webhook `POST /webhooks/quicknode` (verified Nov 14 through a cloudflared tunnel; the tunnel address changes on every restart, so update the Stream's destination URL each time until the API is deployed) |
 | Privy app ID | In `.env` as `PRIVY_APP_ID` and `VITE_PRIVY_APP_ID` (set Nov 14) |
 | Demo challenge (devnet, 1 USDC buy-in, joining closes Nov 16 about 4:30 PM CST) | `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` |
+| Neon database | Project `loser buys`, ID `noisy-truth-03069747`, branch `production`, AWS Oregon (created Nov 15, free plan). Addresses are in `.env.local`: `DATABASE_URL` (pooled, the one for Render) and `DATABASE_URL_UNPOOLED` |
 | Strava app (client ID) | TBD or not used |
 | Deployed web URL | TBD (Stage 9) |
 | Deployed API URL | TBD (Stage 9) |
