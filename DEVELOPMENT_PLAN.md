@@ -177,14 +177,21 @@ Not yet verified: these endpoints have only been run in tests (with a fake chain
 
 **Satisfies:** Consumer track (working frontend, thoughtful UX).
 
-- [ ] Create challenge screen: name, template, buy-in, start and end. Calls `create_challenge`.
-- [ ] Invite link and join screen with a clear consent line: "Share my challenge points with this group."
+- [x] Create challenge screen: name, template, buy-in, start and end. Calls `create_challenge`. (Done Nov 14: `web/src/CreateChallenge.tsx`. Start and end are picked as "friends can join for" and "then it runs for". Two challenges created from the browser on devnet with no wallet popup.)
+- [x] Invite link and join screen with a clear consent line: "Share my challenge points with this group." (Done Nov 14. The Join button stays off until the box is ticked. "Invite friends" uses the phone's share sheet, or copies the link.)
 - [ ] Deposit status comes from the Stream event, not from the browser guessing ("Deposit confirmed").
-- [ ] Leaderboard: display name, points, daily ticks. Points only; no raw activity details of other people.
-- [ ] "My activity" view (only the owner sees their own activities, with a "View on Strava" link when relevant).
+  - Note (Nov 14): built, and it shows "Deposit confirmed" from a stored `PlayerJoined` event. But the Stream was paused during this session, so the events came from the catch-up (see Stage 6), not from a live Stream delivery. Tick after one join is confirmed with the Stream running.
+- [x] Leaderboard: display name, points, daily ticks. Points only; no raw activity details of other people. (Done Nov 14: the "Table" tab, shown only to players who agreed to share points.)
+- [x] "My activity" view (only the owner sees their own activities, with a "View on Strava" link when relevant). (Done Nov 14: the "My workouts" tab, with a "Log a workout" form for the mock and manual sources. A logged run scored 2 points in the browser. No Strava link, since Strava is not connected.)
 - [ ] Live feed from `chain_events`: "Maya joined - pool is now 3 USDC", "Week settled - Sam won 4 USDC".
-- [ ] Plain-language money: show "USDC" and dollar amounts, hide addresses behind a "details" link to Solana Explorer.
+  - Note (Nov 14): built (the "Feed" tab) and showing real devnet events, but not yet seen updating from a live Stream delivery. Same check as the deposit status.
+- [x] Plain-language money: show "USDC" and dollar amounts, hide addresses behind a "details" link to Solana Explorer. (Done Nov 14. No wallet address appears anywhere in the app.)
 - [ ] Mobile layout pass at phone width.
+  - Note (Nov 14): the layout is a single 460-pixel column with large tap targets, but it has only been looked at in a desktop browser. Needs the phone test (HTTPS).
+
+Look and feel (asked for on Nov 14): styled like a fantasy league app. A scoreboard header with the pool, player count, and a countdown to kick-off; a league table with rank, form dots for active days, and points; a live feed; three tabs. Dark "pitch" theme with one bright accent colour.
+
+Not done from the "working result": two people on two phones. One real account plus a scripted test player (`scripts/wsl_anchor.sh join <challenge>`) were used instead.
 
 ## Stage 6 - Settlement and payout (Wed, 3-4 h)
 
@@ -194,12 +201,20 @@ Not yet verified: these endpoints have only been run in tests (with a fake chain
 
 **Satisfies:** Solana award (program controls the pool and distributes winnings); Consumer track; the "admin action to end a week early" requirement.
 
-- [ ] Finalize step: pull any missing activities, compute final scores, pick winner(s), build the score-sheet hash.
-- [ ] Server sends `settle` signed by the oracle key.
-- [ ] Admin page (admin emails set in `.env`): "End week now" sends `end_early` then `settle`.
+- [x] Finalize step: pull any missing activities, compute final scores, pick winner(s), build the score-sheet hash. (Done Nov 14: `api/settlement.py`. The sheet holds wallet and points only, plus a random salt. After a real settlement, the hash stored onchain matched the sheet in our database.)
+- [x] Server sends `settle` signed by the oracle key. (Done Nov 14, on devnet from the running API.)
+- [x] Admin page (admin emails set in `.env`): "End week now" sends `end_early` then `settle`. (Done Nov 14. It is a section on the challenge screen, shown only to emails in `ADMIN_EMAILS`, with a second "Yes, end and pay out" tap. Used for both devnet settlements below.)
 - [ ] Automatic path: a `/internal/tick` endpoint settles challenges whose end time plus a grace period has passed; call it from a free scheduler (for example GitHub Actions cron or cron-job.org).
-- [ ] Refund button for a challenge that never reached 2 players.
-- [ ] Test on devnet: single winner, tie, refund.
+  - Note (Nov 14): the endpoint exists, is protected by `TICK_SECRET`, and answered correctly on the running API (nothing was due). The scheduler is not set up; it needs the deployed API address (Stage 9). Also, the challenge screen asks the server to pay out as soon as the clock runs out (`POST /challenges/{address}/finish`), so a payout does not depend on the scheduler while someone has the page open. That screen-triggered path passed its tests but was not watched live.
+- [x] Refund button for a challenge that never reached 2 players. (Done Nov 14: appears once the challenge has started with fewer than 2 players. The server sends `refund`; the oracle only pays the fee.)
+- [x] Test on devnet: single winner, tie, refund. (Done Nov 14, all through the web app with one real account and a scripted test player.)
+  - Refund: challenge `JMjBkJYw2mopKmVdKHYacpoQa52jwfaCTxmb8j9Y2WD`, 1 player, balance went from 3 back to 4 USDC.
+  - Single winner: challenge `6xr7yYYLKur31ZBnf4NnD7YrDVJoxYWax9zp6TiTdsLt`, scores 1 and 0, winner's balance went from 3 to 5 USDC.
+  - Tie: challenge `9fXUkUszcHksGWTmDNht32cKSNCYRKXK3kEqDvcoRGep`, ended before kick-off with nobody scoring, each player received 1 USDC.
+
+Added beyond the plan: a catch-up (`events.catch_up`) that fetches a challenge's recent transactions from the network and stores any events we missed. It runs after every settlement or refund. Reason: a Solana Stream cannot replay blocks it failed to deliver, and the Stream was paused during this session. The Stream stays the normal source; the README must describe this honestly.
+
+Still to verify for the "working result": the payout event arriving through the live Stream (it was paused), and the feed updating on a second person's screen.
 
 ## CUT LINE REVIEW - Wednesday, November 18, 8:00 PM
 
@@ -386,3 +401,4 @@ Answered by the guide (Nov 14): prizes stack (track + one chain award + bounties
 | 2026-11-14 | Stage 3 code written, no boxes ticked: `streams/filter.js`, signed webhook `POST /webhooks/quicknode`, event decoding, `chain_events` table, `GET /challenges/{address}/events`. 21 API tests pass. QuickNode account created. The Stream itself is not created yet, so nothing has been delivered for real. Stage 2 and this code committed and pushed (`d887135`). | Manual Stream setup (steps in `start from here and delete later.md`): cloudflared tunnel, create the Stream, token into `.env`, run the smoke test. Then verify, record the Stream ID, tick Stage 3. |
 | 2026-11-14 | **Stage 3 working.** QuickNode Stream (Solana Devnet, Programs + Logs, filter from `streams/filter.js`) delivers to `POST /webhooks/quicknode` through a cloudflared tunnel. Running the smoke test put 5 events for challenge `HkeqS9dqAGiEQjiNqnTNkbKN1QhwtSPAbSncWiYKe718` into `chain_events` within seconds, each passing the signature check. Found: the dashboard's "Check Connection" is unsigned, so unsigned requests get an OK but store nothing. | Stream ID recorded (`daf4568b-a005-4eea-aa1a-732df56eb9ff`), so **Stage 3 is done**. Next: Stage 4. Update the Stream's destination URL whenever the tunnel restarts. |
 | 2026-11-14 | **Stage 4 done except live Strava.** Added the `challenges`, `participants`, `score_entries`, and `fitness_connections` tables; the `FitnessProvider` interface with mock and manual sources; the Daily Mover scoring engine with anti-cheat rules; six endpoints for recording challenges and joins, adding activities, the leaderboard, and disconnecting; `docs/STRAVA_FLOW.md`. 51 API tests pass. Plan changes: a seventh table (`logged_activities`) because mock and manual activities need somewhere to live; consent is stored per challenge; a scoring day is a 24-hour block from the challenge start. Limit to know for the demo: activities must start inside the challenge dates and may not overlap, so in a challenge created minutes before a demo each player can add about one workout. Deleted `start from here and delete later.md`. | Stage 5 (product screens), which is also the first real run of the new endpoints against devnet. Still open from Stage 0: Devpost team list, Vercel/Render/Neon accounts, treasury USDC (about 7 left). The demo challenge stops taking joins Mon Nov 16 around 4:30 PM CST. |
+| 2026-11-14 | **Stage 5 mostly done, Stage 6 verified on devnet.** Screens: home, create challenge, challenge scoreboard with table, feed, and workouts, styled like a fantasy league app. Server: one "challenge screen" call, feed sentences from stored events, names, settlement, refunds, admin "End week now", `/internal/tick`, score-sheet hash. From the browser on devnet: created 3 challenges, joined, logged a workout (2 points), refunded one, settled one to a single winner, settled one as a tie. 73 API tests pass. Fixes found by testing: a logged workout now counts from the moment it is logged (it used to be dated before kick-off and never counted); server error messages now reach the screen. New helper: `scripts/wsl_anchor.sh join <challenge>` makes a test player join. | Needs a person: resume the QuickNode Stream and confirm one join shows "Deposit confirmed" and a feed line from a live delivery; test on a phone and with a second real account; create Vercel, Render, and Neon accounts for Stage 9. Then README, deploy, scheduler for `/internal/tick`, video. Stage 7 (Gemini) and Stage 8 (Grok) are still to be decided at the cut line. |

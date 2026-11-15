@@ -509,7 +509,8 @@ def challenge_state(
         "pool": None if pool_units is None else pool_units / 10**config.USDC_DECIMALS,
         "player_count": player_count,
         "players": players,
-        "feed": events.feed(rows, lambda wallet: names.get(wallet, "A player")),
+        # A wallet with no account here (or one that never shared a name) is shown by its last 4 characters.
+        "feed": events.feed(rows, lambda wallet: names.get(wallet, f"Player {wallet[-4:]}")),
     }
 
 

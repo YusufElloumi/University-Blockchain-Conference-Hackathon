@@ -93,10 +93,12 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Oracle from Python | `python chain.py show\|end-early\|settle <challenge> [winners]` with `ORACLE_KEYPAIR_PATH` set | `api/`, venv (verified Nov 14) |
 | Devnet SOL | https://faucet.solana.com (`solana airdrop 2` is rate-limited) | browser |
 | Run API | `.venv\Scripts\python.exe -m uvicorn main:app --reload` | `api/` (verified Nov 14) |
-| Test API | `.venv\Scripts\python.exe -m pytest` | `api/` (verified Nov 14, 51 passing) |
+| Test API | `.venv\Scripts\python.exe -m pytest` | `api/` (verified Nov 14, 73 passing) |
 | Run web | `npm run dev` (http://localhost:5173) | `web/` (verified Nov 14) |
 | Build web | `npm run build` | `web/` (verified Nov 14) |
 | Create a demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` then put the printed address in `VITE_DEMO_CHALLENGE` | repo root (verified Nov 14) |
+| Add a test player to a challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh join <challenge address>` (uses the `smoke-player-2` wallet; the treasury pays its buy-in) | repo root (verified Nov 14) |
+| Run the scheduler step by hand | `POST http://localhost:8000/internal/tick` with header `X-Tick-Secret: <TICK_SECRET from .env>` | anywhere (verified Nov 14) |
 | Rebuild plan PDF | `C:\Python313\python.exe scripts/build_plan_pdf.py` (the API venv has no `reportlab`) | repo root (verified Nov 14) |
 
 Environment notes:
@@ -160,3 +162,12 @@ Fill in as they are created. Public addresses only - never keys.
 - 2026-11-14 (Stage 4): Pure scoring rules live in `api/scoring.py`; storing points and the leaderboard live in `api/scores.py`. Both get activities only through `fitness.get_provider()`.
 - 2026-11-14 (Stage 4): The API never trusts the browser about a challenge. `POST /challenges` and `/join` read buy-in, dates, creator, and players from the chain.
 - 2026-11-14 (Stage 4): Activities must start inside the challenge dates and may not overlap. In a challenge created minutes before a demo, each player can add about one workout; for a fuller leaderboard, create the demo challenge a day or more ahead.
+- 2026-11-14 (Stage 5): A workout logged in the app counts from the moment it is logged (not dated backwards), so it lands inside a challenge that has just kicked off. A second one within its length is rejected as overlapping.
+- 2026-11-14 (Stage 5): The challenge screen polls one call, `GET /challenges/{address}/state`, every 4 seconds. A new Stream event triggers a re-read of the pool and balance; a slow 30-second re-read is the safety net.
+- 2026-11-14 (Stage 5): The UI is styled like a fantasy league app (scoreboard, league table with form dots, feed, tabs), dark theme, one accent colour. Friendly, not casino-like. No wallet addresses on screen.
+- 2026-11-14 (Stage 5): Challenges are only recorded if they name our oracle and the devnet USDC mint. A challenge made outside the web app is recorded on its first join.
+- 2026-11-14 (Stage 6): Settlement lives in `api/settlement.py`. `finish` does whatever is due: refund (fewer than 2 players after the start) or settle (after the end plus `SETTLE_GRACE_SECONDS`). If nobody scored, everyone ties and the pool is split. A player who deposited but never agreed to share points scores zero.
+- 2026-11-14 (Stage 6): Any player's screen asks the server to finish a challenge when its clock runs out; the server decides the result. `/internal/tick` does the same for every due challenge and needs the `X-Tick-Secret` header.
+- 2026-11-14 (Stage 6): `events.catch_up` fetches missed events from the network after a settlement or refund, because a Solana Stream cannot replay missed blocks. The Stream is still the normal source.
+- 2026-11-14 (Stage 6): New columns on an existing table are added at startup by `db._add_missing_columns` (optional columns only). `create_all` alone never alters a table.
+- Tests read the real `.env`. A test that depends on a setting must set it itself (see `TICK_SECRET` in `test_stage6.py`).

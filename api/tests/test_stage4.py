@@ -385,7 +385,7 @@ def test_feed_pool_and_deposit_status_come_from_stream_events(client, challenge)
         "maya joined - pool is now 1 USDC",
         "sam joined - pool is now 2 USDC",
         "The challenge ended",
-        "Settled - sam and A player won 1 USDC each",
+        "Settled - sam and Player T9re won 1 USDC each",
     ]
     assert body["feed"][1]["signature"] == "s2"
 

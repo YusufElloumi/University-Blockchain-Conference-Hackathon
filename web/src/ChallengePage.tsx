@@ -72,9 +72,12 @@ export default function ChallengePage(props: { address: string; session: Session
     loadState();
     const poll = setInterval(loadState, 4000);
     const clock = setInterval(() => setNow(Date.now()), 1000);
+    // Safety net: Stream events refresh the pool at once; this slow re-read covers a missed delivery.
+    const slow = setInterval(loadChain, 30000);
     return () => {
       clearInterval(poll);
       clearInterval(clock);
+      clearInterval(slow);
     };
   }, [loadChain, loadState]);
 
