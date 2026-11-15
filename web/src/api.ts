@@ -1,15 +1,62 @@
-// Calls to our own API server. Every call carries the Privy login token.
+// Calls to our own API server. Calls about a person carry their Privy login token.
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export type Me = {
   wallet: string;
   email: string | null;
+  name: string;
   test_funds_used: boolean;
   test_funds_amount: number;
   usdc: number | null;
   ready?: boolean;
   signature?: string;
+};
+
+export type AppConfig = {
+  oracle: string;
+  usdc_mint: string;
+  fitness: { source: string; label: string; can_add: boolean; types: string[] };
+};
+
+export type ChallengeView = {
+  address: string;
+  name: string;
+  template: string;
+  buy_in: number;
+  start: string;
+  end: string;
+  status: "open" | "settled" | "refunded";
+  invite_code: string;
+};
+
+export type PlayerRow = { rank: number; name: string; points: number; ticks: boolean[]; is_you: boolean };
+export type FeedItem = { kind: string; text: string; signature: string; time: string };
+
+export type ChallengeState = {
+  challenge: ChallengeView | null;
+  you: { joined: boolean; deposit_confirmed: boolean; is_creator: boolean };
+  pool: number | null;
+  player_count: number | null;
+  players: PlayerRow[] | null; // null unless you are a player
+  feed: FeedItem[];
+};
+
+export type ActivityView = {
+  id: string;
+  type: string;
+  start: string;
+  minutes: number;
+  distance_km: number;
+  device: string | null;
+  verified: boolean;
+  source: string;
+  source_label: string;
+};
+
+export type ActivityResult = {
+  activity: ActivityView;
+  challenges: { address: string; name: string; points: number; counted: boolean; reason: string | null }[];
 };
 
 export class ApiError extends Error {
@@ -20,34 +67,43 @@ export class ApiError extends Error {
   }
 }
 
-async function post(path: string, token: string): Promise<Me> {
+/** One request to the API. `Call` is this with the login token already filled in. */
+export type Call = <T>(method: "GET" | "POST" | "DELETE", path: string, body?: unknown) => Promise<T>;
+
+export async function request<T>(method: string, path: string, token: string | null, body?: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(API_URL + path, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    response = await fetch(API_URL + path, {
+      method,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
   } catch {
     throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
   }
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(response.status, body.detail || "Something went wrong. Try again.");
-  return body as Me;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = typeof data.detail === "string" ? data.detail : "Something went wrong. Try again.";
+    throw new ApiError(response.status, detail);
+  }
+  return data as T;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Registers the user with the server. Retries while Privy is still creating their wallet (HTTP 409). */
-export async function setupAccount(getToken: () => Promise<string | null>): Promise<Me> {
+/** Repeats a call while the server says "not yet" (HTTP 409), for example while a deposit is still landing. */
+export async function retryWhileNotReady<T>(action: () => Promise<T>, attempts = 10): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    const token = await getToken();
-    if (!token) throw new ApiError(401, "Please sign in again.");
     try {
-      return await post("/me/setup", token);
+      return await action();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409 && attempt < 10) await sleep(1500);
+      if (e instanceof ApiError && e.status === 409 && attempt < attempts) await sleep(1500);
       else throw e;
     }
   }
 }
 
-export async function addTestFunds(token: string): Promise<Me> {
-  return post("/me/fund", token);
-}
+export const getAppConfig = () => request<AppConfig>("GET", "/app-config", null);

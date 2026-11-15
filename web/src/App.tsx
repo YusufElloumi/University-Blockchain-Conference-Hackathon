@@ -1,23 +1,39 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignTransaction, useWallets } from "@privy-io/react-auth/solana";
-import { addTestFunds, setupAccount, type Me } from "./api";
+import { PublicKey } from "@solana/web3.js";
 import {
-  buildJoinTransaction,
-  explorerTx,
-  fetchChallenge,
-  friendlyError,
-  sendAndConfirm,
-  tokenBalance,
-  type ChallengeInfo,
-} from "./chain";
+  getAppConfig,
+  request,
+  retryWhileNotReady,
+  type AppConfig,
+  type Call,
+  type ChallengeView,
+  type Me,
+} from "./api";
+import { sendAndConfirm, tokenBalance } from "./chain";
+import ChallengePage from "./ChallengePage";
+import CreateChallenge from "./CreateChallenge";
+import { money, usdc, when } from "./format";
 
-// Stage 2 shows one challenge: the address in the link (?challenge=...) or the demo one from .env.
-const CHALLENGE_ADDRESS =
-  new URLSearchParams(window.location.search).get("challenge") || import.meta.env.VITE_DEMO_CHALLENGE || "";
+type Route = { view: "home" } | { view: "create" } | { view: "challenge"; address: string };
 
-const money = (n: number) => `$${n.toFixed(2)}`;
-const usdc = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(2)} USDC`;
+function readRoute(): Route {
+  const params = new URLSearchParams(window.location.search);
+  const address = params.get("challenge");
+  if (address) return { view: "challenge", address };
+  return params.has("new") ? { view: "create" } : { view: "home" };
+}
+
+/** What every signed-in screen gets: who you are, how to call the server, and how to send a transaction. */
+export type Session = {
+  me: Me;
+  config: AppConfig;
+  call: Call;
+  send: (transaction: Uint8Array) => Promise<string>;
+  refreshBalance: () => Promise<void>;
+  go: (route: Route) => void;
+};
 
 export default function App() {
   const { ready, authenticated, login, logout, getAccessToken } = usePrivy();
@@ -25,10 +41,34 @@ export default function App() {
   const { signTransaction } = useSignTransaction();
 
   const [me, setMe] = useState<Me | null>(null);
+  const [config, setConfig] = useState<AppConfig | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
-  const [challenge, setChallenge] = useState<ChallengeInfo | null>(null);
-  const [busy, setBusy] = useState<"" | "funds" | "join">("");
-  const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string; link?: string } | null>(null);
+  const [route, setRoute] = useState<Route>(readRoute);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const tokenGetter = useRef(getAccessToken);
+  tokenGetter.current = getAccessToken;
+
+  const call = useCallback<Call>(async (method, path, body) => {
+    const token = await tokenGetter.current();
+    if (!token) throw new Error("Please sign in again.");
+    return request(method, path, token, body);
+  }, []);
+
+  const go = useCallback((next: Route) => {
+    const query = next.view === "challenge" ? `?challenge=${next.address}` : next.view === "create" ? "?new" : "";
+    window.history.pushState(null, "", window.location.pathname + query);
+    setRoute(next);
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    const onBack = () => setRoute(readRoute());
+    window.addEventListener("popstate", onBack);
+    return () => window.removeEventListener("popstate", onBack);
+  }, []);
 
   // After login: tell our server (it tops up fee money behind the scenes) and learn the wallet address.
   useEffect(() => {
@@ -38,166 +78,229 @@ export default function App() {
       return;
     }
     let cancelled = false;
-    setupAccount(getAccessToken)
-      .then((result) => {
+    Promise.all([retryWhileNotReady(() => call<Me>("POST", "/me/setup")), getAppConfig()])
+      .then(([account, settings]) => {
         if (cancelled) return;
-        setMe(result);
-        setBalance(result.usdc);
+        setMe(account);
+        setBalance(account.usdc);
+        setConfig(settings);
       })
-      .catch((e) => !cancelled && setMessage({ kind: "error", text: e.message }));
+      .catch((e) => !cancelled && setError(e.message));
     return () => {
       cancelled = true;
     };
-  }, [ready, authenticated, getAccessToken]);
+  }, [ready, authenticated, call]);
 
-  const refresh = useCallback(async () => {
-    if (!CHALLENGE_ADDRESS) return;
+  const refreshBalance = useCallback(async () => {
+    if (!me || !config) return;
     try {
-      const info = await fetchChallenge(CHALLENGE_ADDRESS);
-      setChallenge(info);
-      if (me) setBalance(await tokenBalance(me.wallet, info.mint));
+      setBalance(await tokenBalance(me.wallet, new PublicKey(config.usdc_mint)));
     } catch (e) {
-      console.error(e);
-      setMessage({ kind: "error", text: "Couldn't load this challenge. Check the link and try again." });
+      console.error(e); // the balance simply stays as it was
     }
-  }, [me]);
+  }, [me, config]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  async function onAddFunds() {
-    setBusy("funds");
-    setMessage(null);
-    try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Please sign in again.");
-      const result = await addTestFunds(token);
-      setMe(result);
-      setBalance(result.usdc);
-      setMessage({ kind: "ok", text: `Added ${usdc(result.test_funds_amount)} of test money.` });
-    } catch (e) {
-      setMessage({ kind: "error", text: (e as Error).message });
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function onJoin() {
-    if (!me || !challenge) return;
-    const wallet = wallets.find((w) => w.address === me.wallet);
-    if (!wallet) {
-      setMessage({ kind: "error", text: "Your account is still loading. Try again in a few seconds." });
-      return;
-    }
-    setBusy("join");
-    setMessage(null);
-    try {
-      const transaction = await buildJoinTransaction(me.wallet, challenge);
+  const send = useCallback(
+    async (transaction: Uint8Array) => {
+      const wallet = wallets.find((w) => w.address === me?.wallet);
+      if (!wallet) throw new Error("Your account is still loading. Try again in a few seconds.");
       const { signedTransaction } = await signTransaction({
         transaction,
         wallet,
         chain: "solana:devnet",
-        options: { uiOptions: { showWalletUIs: false } },
+        options: { uiOptions: { showWalletUIs: false } }, // no wallet popup; our own buttons say what happens
       });
-      const signature = await sendAndConfirm(signedTransaction);
-      setMessage({ kind: "ok", text: `You're in! ${usdc(challenge.buyIn)} went into the pool.`, link: explorerTx(signature) });
-      await refresh();
+      return sendAndConfirm(signedTransaction);
+    },
+    [wallets, me, signTransaction],
+  );
+
+  async function onAddFunds() {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await call<Me>("POST", "/me/fund");
+      setMe(result);
+      setBalance(result.usdc);
+      setNotice(`Added ${usdc(result.test_funds_amount)} of test money.`);
     } catch (e) {
-      console.error(e);
-      setMessage({ kind: "error", text: friendlyError(e) });
+      setError((e as Error).message);
     } finally {
-      setBusy("");
+      setBusy(false);
     }
   }
 
-  const joined = !!me && !!challenge && challenge.players.includes(me.wallet);
-  const joinOpen = !!challenge && challenge.status === "open" && challenge.startTime.getTime() > Date.now();
-  const canAfford = balance !== null && !!challenge && balance >= challenge.buyIn;
+  const session: Session | null = me && config ? { me, config, call, send, refreshBalance, go } : null;
 
   return (
     <div className="page">
       <div className="demo-banner">Demo - test tokens only</div>
       <header>
-        <h1>Loser Buys</h1>
-        {authenticated && (
-          <button className="link" onClick={logout}>
-            Sign out
-          </button>
+        <button className="brand" onClick={() => go({ view: "home" })} aria-label="Home">
+          LOSER<span>BUYS</span>
+        </button>
+        {session && (
+          <div className="wallet-chip" title="Your balance (test money)">
+            {balance === null ? "..." : money(balance)}
+          </div>
         )}
       </header>
 
       {!ready ? (
         <p className="muted center">Loading...</p>
       ) : !authenticated ? (
-        <section className="card center">
-          <h2>Out-move your friends. Winner takes the pool.</h2>
-          <p className="muted">Everyone chips in, everyone gets moving, and the week's top scorer is paid automatically.</p>
+        <section className="hero">
+          <div className="kicker">The weekly fitness league</div>
+          <h1>
+            Out-move your friends.
+            <br />
+            <em>Winner takes the pool.</em>
+          </h1>
+          <ol className="steps">
+            <li>
+              <b>1</b> Everyone chips in
+            </li>
+            <li>
+              <b>2</b> Workouts score points
+            </li>
+            <li>
+              <b>3</b> Top of the table gets paid
+            </li>
+          </ol>
           <button className="primary" onClick={() => login()}>
             Sign in with email
           </button>
-          <p className="fine">No app to install, no passwords. We email you a code.</p>
+          <p className="fine center">No app to install, no passwords. We email you a code.</p>
         </section>
-      ) : !me ? (
-        <p className="muted center">{message?.kind === "error" ? "" : "Setting up your account..."}</p>
+      ) : !session ? (
+        <p className="muted center">{error ? "" : "Setting up your account..."}</p>
+      ) : route.view === "challenge" ? (
+        <ChallengePage key={route.address} address={route.address} session={session} balance={balance} />
+      ) : route.view === "create" ? (
+        <CreateChallenge session={session} balance={balance} />
       ) : (
-        <>
-          <section className="card">
-            <div className="label">Your balance</div>
-            <div className="balance">{balance === null ? "..." : money(balance)}</div>
-            <div className="fine">{balance === null ? "" : `${usdc(balance)} (test money)`}</div>
-            {!me.test_funds_used && (
-              <button className="secondary" onClick={onAddFunds} disabled={busy !== ""}>
-                {busy === "funds" ? "Adding..." : `Add test funds (${usdc(me.test_funds_amount)})`}
-              </button>
-            )}
-          </section>
-
-          {!CHALLENGE_ADDRESS ? (
-            <section className="card">
-              <p className="muted">Open an invite link to join a challenge.</p>
-            </section>
-          ) : !challenge ? (
-            <p className="muted center">Loading challenge...</p>
-          ) : (
-            <section className="card">
-              <div className="label">This week's challenge</div>
-              <div className="pool">{money(challenge.pool)} pool</div>
-              <p className="muted">
-                {challenge.players.length} of {challenge.maxPlayers} spots taken. Starts{" "}
-                {challenge.startTime.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}.
-              </p>
-              {joined ? (
-                <div className="joined">You're in. Good luck!</div>
-              ) : !joinOpen ? (
-                <p className="muted">Joining is closed for this challenge.</p>
-              ) : (
-                <>
-                  <button className="primary" onClick={onJoin} disabled={busy !== "" || !canAfford}>
-                    {busy === "join" ? "Joining..." : `Join for ${usdc(challenge.buyIn)}`}
-                  </button>
-                  <p className="fine">
-                    {canAfford
-                      ? `${usdc(challenge.buyIn)} moves from your balance into the pool. The winner takes the pool.`
-                      : "Add test funds first, then you can join."}
-                  </p>
-                </>
-              )}
-            </section>
-          )}
-        </>
+        <Home
+          session={session}
+          balance={balance}
+          busy={busy}
+          onAddFunds={onAddFunds}
+          onRenamed={setMe}
+          onSignOut={logout}
+        />
       )}
 
-      {message && (
-        <div className={`message ${message.kind}`} role="status">
-          {message.text}{" "}
-          {message.link && (
-            <a href={message.link} target="_blank" rel="noreferrer">
-              Details
-            </a>
-          )}
+      {notice && <div className="message ok">{notice}</div>}
+      {error && (
+        <div className="message error" role="alert">
+          {error}
         </div>
       )}
     </div>
+  );
+}
+
+function Home(props: {
+  session: Session;
+  balance: number | null;
+  busy: boolean;
+  onAddFunds: () => void;
+  onRenamed: (me: Me) => void;
+  onSignOut: () => void;
+}) {
+  const { session, balance } = props;
+  const { me, call, go } = session;
+  const [challenges, setChallenges] = useState<ChallengeView[] | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(me.name);
+  const demo: string = import.meta.env.VITE_DEMO_CHALLENGE || "";
+
+  useEffect(() => {
+    call<ChallengeView[]>("GET", "/me/challenges")
+      .then(setChallenges)
+      .catch(() => setChallenges([]));
+  }, [call]);
+
+  async function saveName() {
+    try {
+      props.onRenamed(await call<Me>("POST", "/me/name", { name }));
+      setEditing(false);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  return (
+    <>
+      <section className="card wallet-card">
+        <div className="label">Your balance</div>
+        <div className="big-number">{balance === null ? "..." : money(balance)}</div>
+        <div className="fine">{balance === null ? "" : `${usdc(balance)} (test money)`}</div>
+        {!me.test_funds_used && (
+          <button className="secondary" onClick={props.onAddFunds} disabled={props.busy}>
+            {props.busy ? "Adding..." : `Add test funds (${usdc(me.test_funds_amount)})`}
+          </button>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="label">Player name</div>
+        {editing ? (
+          <div className="row">
+            <input value={name} maxLength={24} onChange={(e) => setName(e.target.value)} aria-label="Player name" />
+            <button className="small" onClick={saveName} disabled={!name.trim()}>
+              Save
+            </button>
+          </div>
+        ) : (
+          <div className="row">
+            <div className="player-name">
+              <span className="avatar">{me.name.slice(0, 1).toUpperCase()}</span>
+              {me.name}
+            </div>
+            <button className="link" onClick={() => setEditing(true)}>
+              Change
+            </button>
+          </div>
+        )}
+        <p className="fine">This is what friends see on the table.</p>
+      </section>
+
+      <button className="primary" onClick={() => go({ view: "create" })}>
+        + Start a challenge
+      </button>
+
+      <h2 className="section-title">Your challenges</h2>
+      {challenges === null ? (
+        <p className="muted">Loading...</p>
+      ) : challenges.length === 0 ? (
+        <p className="muted">None yet. Start one, or open a friend's invite link.</p>
+      ) : (
+        challenges.map((c) => (
+          <button key={c.address} className="fixture" onClick={() => go({ view: "challenge", address: c.address })}>
+            <div>
+              <div className="fixture-name">{c.name}</div>
+              <div className="fine">
+                {c.status === "open" ? `Ends ${when(new Date(c.end))}` : c.status === "settled" ? "Final" : "Refunded"}
+              </div>
+            </div>
+            <div className="fixture-stake">{money(c.buy_in)}</div>
+          </button>
+        ))
+      )}
+      {demo && !challenges?.some((c) => c.address === demo) && (
+        <button className="fixture" onClick={() => go({ view: "challenge", address: demo })}>
+          <div>
+            <div className="fixture-name">Demo challenge</div>
+            <div className="fine">Open to everyone</div>
+          </div>
+          <div className="fixture-stake">View</div>
+        </button>
+      )}
+
+      <button className="link center-link" onClick={props.onSignOut}>
+        Sign out
+      </button>
+    </>
   );
 }

@@ -1,13 +1,14 @@
 // Everything that talks to Solana from the browser. Devnet only.
 
-import { Program } from "@anchor-lang/core";
+import { BN, Program } from "@anchor-lang/core";
+import { Buffer } from "buffer";
 import {
   getAccount,
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
   TokenAccountNotFoundError,
 } from "@solana/spl-token";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import idl from "../../onchain/idl/loser_buys.json";
 import type { LoserBuys } from "../../onchain/idl/loser_buys.ts";
 
@@ -82,6 +83,56 @@ export async function buildJoinTransaction(player: string, challenge: ChallengeI
   return new Uint8Array(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));
 }
 
+export type NewChallenge = {
+  buyIn: number; // dollars
+  joinWindowSeconds: number; // how long people can join before it starts
+  lengthSeconds: number;
+  oracle: string; // the server's address that is allowed to report results
+  mint: string;
+};
+
+/** Builds the unsigned "create a challenge" transaction. Returns it with the new challenge's address. */
+export async function buildCreateTransaction(
+  creator: string,
+  options: NewChallenge,
+): Promise<{ transaction: Uint8Array; address: string }> {
+  const creatorKey = new PublicKey(creator);
+  const id = new BN(Date.now());
+  // The challenge and its prize vault live at addresses worked out from the creator and this ID.
+  const [challenge] = PublicKey.findProgramAddressSync(
+    [Buffer.from("challenge"), creatorKey.toBuffer(), id.toArrayLike(Buffer, "le", 8)],
+    program.programId,
+  );
+  const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), challenge.toBuffer()], program.programId);
+  // Use the network's clock, not this device's, because the program checks times against the network.
+  const chainNow = await connection.getBlockTime(await connection.getSlot()).catch(() => null);
+  const start = (chainNow ?? Math.floor(Date.now() / 1000)) + options.joinWindowSeconds;
+  const tx = await program.methods
+    .createChallenge(
+      id,
+      new BN(Math.round(options.buyIn * 10 ** USDC_DECIMALS)),
+      new BN(start),
+      new BN(start + options.lengthSeconds),
+      8,
+      new PublicKey(options.oracle),
+    )
+    .accountsPartial({
+      creator: creatorKey,
+      challenge,
+      mint: new PublicKey(options.mint),
+      vault,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .transaction();
+  tx.feePayer = creatorKey;
+  tx.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
+  return {
+    transaction: new Uint8Array(tx.serialize({ requireAllSignatures: false, verifySignatures: false })),
+    address: challenge.toBase58(),
+  };
+}
+
 /** Sends a signed transaction and waits until the network confirms it. Returns its signature. */
 export async function sendAndConfirm(signedTransaction: Uint8Array): Promise<string> {
   const signature = await connection.sendRawTransaction(signedTransaction, { preflightCommitment: "confirmed" });
@@ -105,6 +156,7 @@ export function friendlyError(e: unknown): string {
   if (/insufficient funds|AccountNotInitialized|InvalidTokenAccount/i.test(text))
     return "You don't have enough in your balance yet. Add test funds first.";
   if (/429|Too Many Requests/i.test(text)) return "The network is busy. Wait a few seconds and try again.";
-  if (/longer than usual/.test(text)) return (e as Error).message;
+  if (/InvalidTimes/.test(text)) return "Those dates don't work. Pick a start time a little further away.";
+  if (/longer than usual|still loading|sign in again/.test(text)) return (e as Error).message;
   return "That didn't go through. Please try again.";
 }
