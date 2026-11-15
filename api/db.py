@@ -1,13 +1,16 @@
 """Database setup and tables. SQLite locally, Postgres when deployed (same code through SQLAlchemy).
 
-`users` and `chain_events` exist so far; the other four tables arrive in Stage 4.
+Seven tables: the six in the plan plus `logged_activities`, which holds activities typed into our
+own app (the mock and manual sources). Strava activities are never stored there.
+
+Times are stored in UTC. SQLite hands them back without a timezone, so read them through `utc()`.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Text, UniqueConstraint, create_engine, update
+from sqlalchemy import BigInteger, ForeignKey, Text, UniqueConstraint, create_engine, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 import config
@@ -52,6 +55,94 @@ class ChainEvent(Base):
     block_time: Mapped[datetime | None]
     data: Mapped[str] = mapped_column(Text)  # the event's fields as JSON
     received_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+
+def utc(value: datetime) -> datetime:
+    """A datetime as timezone-aware UTC (database values come back without a timezone on SQLite)."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class FitnessConnection(Base):
+    """A user's link to an outside fitness service (Strava). Not used by the mock and manual sources."""
+
+    __tablename__ = "fitness_connections"
+    __table_args__ = (UniqueConstraint("user_id", "provider"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str]
+    athlete_id: Mapped[str | None]
+    access_token_enc: Mapped[str | None] = mapped_column(Text)  # encrypted, never plain text
+    refresh_token_enc: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None]
+    connected_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class Challenge(Base):
+    """Our record of a challenge that exists onchain. The money and the player list live onchain."""
+
+    __tablename__ = "challenges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    address: Mapped[str] = mapped_column(unique=True, index=True)  # the onchain challenge account
+    name: Mapped[str]
+    template: Mapped[str] = mapped_column(default="daily_mover")  # which scoring rules apply
+    buy_in_units: Mapped[int] = mapped_column(BigInteger)  # USDC in its smallest unit (1 USDC = 1,000,000)
+    start_time: Mapped[datetime]
+    end_time: Mapped[datetime]
+    status: Mapped[str] = mapped_column(default="open")  # open, settled, refunded (mirrors the program)
+    invite_code: Mapped[str] = mapped_column(unique=True, index=True)
+    creator_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class Participant(Base):
+    __tablename__ = "participants"
+    __table_args__ = (UniqueConstraint("challenge_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    deposit_tx: Mapped[str | None]
+    consent_at: Mapped[datetime]  # when they agreed to share their points with this group
+    joined_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class ScoreEntry(Base):
+    """One player's points for one day of one challenge. Points and activity IDs only, no activity details."""
+
+    __tablename__ = "score_entries"
+    __table_args__ = (UniqueConstraint("challenge_id", "user_id", "day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    day: Mapped[int]  # 0 = the first 24 hours after the challenge starts, 1 = the next 24, ...
+    points: Mapped[int]
+    active: Mapped[bool]  # the "daily tick": enough active minutes that day
+    source: Mapped[str]  # which fitness provider the points came from
+    source_activity_ids: Mapped[str] = mapped_column(Text)  # JSON list of the activities that counted
+    updated_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class LoggedActivity(Base):
+    """An activity entered through our own app (mock or manual source)."""
+
+    __tablename__ = "logged_activities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    source: Mapped[str]  # "mock" or "manual"
+    type: Mapped[str]
+    start_time: Mapped[datetime]
+    minutes: Mapped[float]
+    distance_km: Mapped[float]
+    device: Mapped[str | None]
+    created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
 def init_db() -> None:

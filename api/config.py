@@ -17,6 +17,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{(API_DIR / 'loser_
 USDC_MINT = os.environ.get("USDC_MINT") or "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 USDC_DECIMALS = 6
 QUICKNODE_STREAM_SECURITY_TOKEN = os.environ.get("QUICKNODE_STREAM_SECURITY_TOKEN", "")
+FITNESS_PROVIDER = os.environ.get("FITNESS_PROVIDER") or "mock"  # mock, manual, or strava
 
 # "Gas drip": fee money (devnet SOL) the server quietly sends to a user's wallet so they never see fees.
 GAS_DRIP_LAMPORTS = int(float(os.environ.get("GAS_DRIP_SOL") or 0.02) * 1_000_000_000)

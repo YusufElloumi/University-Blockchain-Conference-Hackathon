@@ -7,25 +7,42 @@ Stage 2 endpoints (all need the Privy login token in "Authorization: Bearer <tok
 Stage 3 endpoints:
     POST /webhooks/quicknode            onchain events delivered by the QuickNode Stream (signature checked)
     GET  /challenges/{address}/events   the stored events for one challenge (public onchain data)
+
+Stage 4 endpoints (all need the login token):
+    POST   /challenges                        record a challenge that was just created onchain
+    POST   /challenges/{address}/join         record a player after their deposit, with their consent to share points
+    GET    /challenges/{address}/leaderboard  points and daily ticks; players of that challenge only
+    POST   /me/activities                     add an activity (mock and manual sources) and update points
+    GET    /me/activities                     the caller's own activities; never anyone else's
+    DELETE /me/fitness                        disconnect: delete the caller's fitness data and points
 """
 
 from __future__ import annotations
 
 import logging
+import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import json
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from solana.rpc.api import Client
 from solders.pubkey import Pubkey
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import config
 import auth
+import chain
 import db
 import events
+import fitness
+import scores
 import treasury
 
 log = logging.getLogger("loser_buys")
@@ -170,3 +187,208 @@ def challenge_events(address: str, session: Session = Depends(db.get_session)) -
         }
         for row in rows
     ]
+
+
+# ---------- Stage 4: challenges, activities, points ----------
+
+
+class NewChallenge(BaseModel):
+    address: str
+    name: str = Field(min_length=1, max_length=60)
+
+
+class JoinRecord(BaseModel):
+    consent: bool  # "Share my challenge points with this group"
+    deposit_tx: str | None = Field(default=None, max_length=100)
+
+
+class NewActivity(BaseModel):
+    type: Literal[fitness.ACTIVITY_TYPES]  # type: ignore[valid-type]
+    minutes: float = Field(gt=0, le=24 * 60)
+    distance_km: float = Field(default=0, ge=0, le=1000)
+    start: datetime | None = None  # when it began; defaults to "it just finished"
+
+
+def onchain_challenge(address: str) -> chain.Challenge:
+    """Reads the challenge account from Solana devnet. The chain is the source of truth for money and players."""
+    try:
+        key = Pubkey.from_string(address)
+    except ValueError as e:
+        raise HTTPException(400, "That is not a valid challenge address.") from e
+    try:
+        return chain.fetch_challenge(Client(chain.RPC_URL), key)
+    except ValueError as e:
+        raise HTTPException(404, "No challenge was found at that address.") from e
+    except Exception as e:
+        log.exception("Could not read the challenge from devnet")
+        raise HTTPException(503, "The network is busy. Try again in a moment.") from e
+
+
+def _stored_challenge(session: Session, address: str) -> db.Challenge:
+    challenge = session.scalar(select(db.Challenge).where(db.Challenge.address == address))
+    if challenge is None:
+        raise HTTPException(404, "We do not know that challenge.")
+    return challenge
+
+
+def _is_player(session: Session, challenge: db.Challenge, user: db.User) -> bool:
+    return session.scalar(
+        select(db.Participant.id).where(
+            db.Participant.challenge_id == challenge.id, db.Participant.user_id == user.id
+        )
+    ) is not None
+
+
+def _challenge_view(challenge: db.Challenge) -> dict:
+    return {
+        "address": challenge.address,
+        "name": challenge.name,
+        "template": challenge.template,
+        "buy_in": challenge.buy_in_units / 10**config.USDC_DECIMALS,
+        "start": db.utc(challenge.start_time).isoformat(),
+        "end": db.utc(challenge.end_time).isoformat(),
+        "status": challenge.status,
+        "invite_code": challenge.invite_code,
+    }
+
+
+def _activity_view(activity: fitness.Activity, provider: fitness.FitnessProvider) -> dict:
+    return {
+        "id": activity.id,
+        "type": activity.type,
+        "start": activity.start.isoformat(),
+        "minutes": activity.minutes,
+        "distance_km": activity.distance_km,
+        "device": activity.device,
+        "verified": not activity.is_manual,
+        "source": provider.name,
+        "source_label": provider.label,
+    }
+
+
+def _provider() -> fitness.FitnessProvider:
+    try:
+        return fitness.get_provider()
+    except fitness.NotSupported as e:
+        raise HTTPException(503, str(e)) from e
+
+
+@app.post("/challenges")
+def record_challenge(
+    body: NewChallenge, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    """Called by the web app right after `create_challenge` lands. Details are read from the chain, not the browser."""
+    existing = session.scalar(select(db.Challenge).where(db.Challenge.address == body.address))
+    if existing is not None:
+        return _challenge_view(existing)
+    state = onchain_challenge(body.address)
+    if str(state.creator) != user.wallet_address:
+        raise HTTPException(403, "Only the person who created this challenge can set it up.")
+    challenge = db.Challenge(
+        address=body.address,
+        name=body.name.strip(),
+        buy_in_units=state.buy_in,
+        start_time=datetime.fromtimestamp(state.start_time, timezone.utc),
+        end_time=datetime.fromtimestamp(state.end_time, timezone.utc),
+        status=state.status,
+        invite_code=secrets.token_urlsafe(6),
+        creator_id=user.id,
+    )
+    session.add(challenge)
+    try:
+        session.commit()
+    except IntegrityError:  # a double click stored it a moment ago
+        session.rollback()
+        challenge = _stored_challenge(session, body.address)
+    return _challenge_view(challenge)
+
+
+@app.post("/challenges/{address}/join")
+def record_join(
+    address: str, body: JoinRecord, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    """Called after `join_challenge` lands. The player must agree to share points and be in the onchain player list."""
+    challenge = _stored_challenge(session, address)
+    if not body.consent:
+        raise HTTPException(400, "To join, agree to share your challenge points with this group.")
+    if not _is_player(session, challenge, user):
+        state = onchain_challenge(address)
+        if user.wallet_address not in {str(p) for p in state.players}:
+            raise HTTPException(409, "We have not seen your deposit yet. Try again in a moment.")
+        session.add(
+            db.Participant(
+                challenge_id=challenge.id, user_id=user.id, deposit_tx=body.deposit_tx,
+                consent_at=datetime.now(timezone.utc),
+            )
+        )
+        try:
+            session.commit()
+        except IntegrityError:  # a double click stored it a moment ago
+            session.rollback()
+        scores.recompute(session, challenge, user.id)
+    return {"challenge": _challenge_view(challenge), "joined": True}
+
+
+@app.get("/challenges/{address}/leaderboard")
+def challenge_leaderboard(
+    address: str, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    """Points and daily ticks only. Players agreed to share these with their group, so only the group sees them."""
+    challenge = _stored_challenge(session, address)
+    if not _is_player(session, challenge, user):
+        raise HTTPException(403, "Join this challenge to see its leaderboard.")
+    return {
+        "challenge": _challenge_view(challenge),
+        "players": [
+            {"rank": r["rank"], "name": r["name"], "points": r["points"], "ticks": r["ticks"],
+             "is_you": r["user_id"] == user.id}
+            for r in scores.leaderboard(session, challenge)
+        ],
+    }
+
+
+@app.post("/me/activities")
+def add_activity(
+    body: NewActivity, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    """Adds an activity for the caller, then updates their points in every challenge they are in."""
+    provider = _provider()
+    now = datetime.now(timezone.utc)
+    start = db.utc(body.start) if body.start else now - timedelta(minutes=body.minutes)
+    if start > now:
+        raise HTTPException(400, "An activity cannot start in the future.")
+    try:
+        activity = provider.log_activity(session, user.id, body.type, start, body.minutes, body.distance_km)
+    except fitness.NotSupported as e:
+        raise HTTPException(409, str(e)) from e
+    results = []
+    for challenge in scores.challenges_of(session, user.id):
+        sheet = scores.recompute(session, challenge, user.id)
+        counted = any(activity.id in day.activity_ids for day in sheet.days.values())
+        results.append(
+            {
+                "address": challenge.address,
+                "name": challenge.name,
+                "points": sheet.total,
+                "counted": counted,
+                # Activities outside the dates are never fetched, so they have no recorded reason.
+                "reason": None if counted else sheet.rejected.get(activity.id, "outside the challenge dates"),
+            }
+        )
+    return {"activity": _activity_view(activity, provider), "challenges": results}
+
+
+@app.get("/me/activities")
+def my_activities(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> list[dict]:
+    """The caller's own activities from the last 30 days, newest first. Only ever their own."""
+    provider = _provider()
+    now = datetime.now(timezone.utc)
+    activities = provider.fetch_activities(session, user.id, now - timedelta(days=30), now + timedelta(days=1))
+    return [_activity_view(a, provider) for a in reversed(activities)]
+
+
+@app.delete("/me/fitness")
+def disconnect_fitness(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    """Disconnect: deletes the caller's fitness data and their points in unsettled challenges. They stay in the pool."""
+    scores.forget_user(session, user.id)
+    return {"disconnected": True}

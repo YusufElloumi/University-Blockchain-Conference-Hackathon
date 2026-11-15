@@ -59,7 +59,7 @@ Other rules from `docs/HACKATHON_GUIDE.md` (the source of truth; this table was 
 | Auth + wallet | Privy: email login, embedded Solana wallet, wallet popups off | Invisible crypto for the Consumer track; free at our size |
 | Fees | "Gas drip": server sends new wallets a little devnet SOL | Simplest way to hide gas; Privy sponsorship is an optional upgrade |
 | Backend | Python + FastAPI | Team's strongest language; holds scoring, Strava, webhooks, oracle key |
-| Database | SQLAlchemy; SQLite locally, Neon free Postgres when deployed | Simplest option; free hosts wipe local files, so deployed needs Postgres. Six tables only |
+| Database | SQLAlchemy; SQLite locally, Neon free Postgres when deployed | Simplest option; free hosts wipe local files, so deployed needs Postgres. Seven tables only |
 | Onchain events | QuickNode Stream (Solana Devnet) -> webhook | Bounty; replaces RPC polling |
 | Fitness data | `FitnessProvider` interface with Mock, Manual, Strava | Strava may be blocked (subscription, limits, terms); must be swappable |
 | Hosting | Vercel (web), Render (API) | Free tiers |
@@ -93,7 +93,7 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Oracle from Python | `python chain.py show\|end-early\|settle <challenge> [winners]` with `ORACLE_KEYPAIR_PATH` set | `api/`, venv (verified Nov 14) |
 | Devnet SOL | https://faucet.solana.com (`solana airdrop 2` is rate-limited) | browser |
 | Run API | `.venv\Scripts\python.exe -m uvicorn main:app --reload` | `api/` (verified Nov 14) |
-| Test API | `.venv\Scripts\python.exe -m pytest` | `api/` (verified Nov 14, 13 passing) |
+| Test API | `.venv\Scripts\python.exe -m pytest` | `api/` (verified Nov 14, 51 passing) |
 | Run web | `npm run dev` (http://localhost:5173) | `web/` (verified Nov 14) |
 | Build web | `npm run build` | `web/` (verified Nov 14) |
 | Create a demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` then put the printed address in `VITE_DEMO_CHALLENGE` | repo root (verified Nov 14) |
@@ -154,3 +154,9 @@ Fill in as they are created. Public addresses only - never keys.
 - 2026-11-14: `end_early` before the start time also closes joining (start time becomes now).
 - 2026-11-14: Nobody has a Strava subscription yet. Build on the mock/manual provider; revisit Strava as we go.
 - 2026-11-14 (Stage 2): Fees stay hidden with the gas drip (0.02 SOL when a wallet is under 0.005 SOL, max 3 per user). Privy gas sponsorship not used. The `users` table was created now; the other five tables come in Stage 4.
+- 2026-11-14 (Stage 4): Added a seventh table, `logged_activities`, for activities entered through our own app (mock and manual sources). Strava activities are never stored there.
+- 2026-11-14 (Stage 4): Sharing consent is stored per challenge (`participants.consent_at`), because the consent is given to one group.
+- 2026-11-14 (Stage 4): A scoring "day" is a 24-hour block counted from the challenge start, not a calendar day. No time zones needed.
+- 2026-11-14 (Stage 4): Pure scoring rules live in `api/scoring.py`; storing points and the leaderboard live in `api/scores.py`. Both get activities only through `fitness.get_provider()`.
+- 2026-11-14 (Stage 4): The API never trusts the browser about a challenge. `POST /challenges` and `/join` read buy-in, dates, creator, and players from the chain.
+- 2026-11-14 (Stage 4): Activities must start inside the challenge dates and may not overlap. In a challenge created minutes before a demo, each player can add about one workout; for a fuller leaderboard, create the demo challenge a day or more ahead.
