@@ -62,7 +62,7 @@ Other rules from `docs/HACKATHON_GUIDE.md` (the source of truth; this table was 
 | Database | SQLAlchemy; SQLite locally, Neon free Postgres when deployed | Simplest option; free hosts wipe local files, so deployed needs Postgres. Eight tables only |
 | Onchain events | QuickNode Stream (Solana Devnet) -> webhook | Bounty; replaces RPC polling |
 | Fitness data | `FitnessProvider` interface with Mock, Manual, Strava | Strava may be blocked (subscription, limits, terms); must be swappable |
-| Hosting | Vercel (web), Render (API) | Free tiers |
+| Hosting | GitHub Pages (web), Render (API) | Free tiers. Pages replaced Vercel on Nov 15: one account fewer |
 
 Decided Nov 14 (Stage 1): the Python server sends `end_early` and `settle` itself with `solders` + `solana-py` (`api/chain.py`), building instructions by hand from the IDL. No Node helper, no `anchorpy`.
 
@@ -143,7 +143,7 @@ Fill in as they are created. Public addresses only - never keys.
 | Demo challenge (devnet, 1 USDC buy-in, joining closes Nov 16 about 4:30 PM CST) | `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` |
 | Neon database | Project `loser buys`, ID `noisy-truth-03069747`, branch `production`, AWS Oregon (created Nov 15, free plan). Addresses are in `.env.local`: `DATABASE_URL` (pooled, the one for Render) and `DATABASE_URL_UNPOOLED` |
 | Strava app (client ID) | TBD or not used |
-| Deployed web URL | TBD (Stage 9) |
+| Deployed web URL | Will be `https://yusufelloumi.github.io/University-Blockchain-Conference-Hackathon/` (GitHub Pages; not live yet) |
 | Deployed API URL | TBD (Stage 9) |
 
 ## Decisions log
@@ -173,4 +173,5 @@ Fill in as they are created. Public addresses only - never keys.
 - 2026-11-14 (Stage 6): `events.catch_up` fetches missed events from the network after a settlement or refund, because a Solana Stream cannot replay missed blocks. The Stream is still the normal source.
 - 2026-11-14 (Stage 6): New columns on an existing table are added at startup by `db._add_missing_columns` (optional columns only). `create_all` alone never alters a table.
 - 2026-11-14 (Stage 7): Pick'em tiebreaker built on Gemini's public market data (`api/pickem.py`, table `picks`). Available in every challenge, one free pick per player, hidden and changeable until kick-off. It only matters in a tie. Look up one event by its `ticker` (`GET /v1/prediction-markets/events/<ticker>`; the numeric ID and the slug return 404). The winning side is the contract with `resolutionSide: "yes"`. No user or fitness data is sent to Gemini.
+- 2026-11-15: The web app is published on GitHub Pages by `.github/workflows/pages.yml` instead of Vercel. Vite uses `base: "./"` so it works under the repo-name folder. The build reads repository variables (`VITE_API_URL`, `VITE_PRIVY_APP_ID`, optional `VITE_DEMO_CHALLENGE`), not `.env`. On Render, `WEB_ORIGIN` is `https://yusufelloumi.github.io` (no path). That address must also be an allowed origin in the Privy dashboard.
 - Tests read the real `.env`. A test that depends on a setting must set it itself (see `TICK_SECRET` in `test_stage6.py`).

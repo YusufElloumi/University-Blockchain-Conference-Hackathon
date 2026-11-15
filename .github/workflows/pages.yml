@@ -1,0 +1,67 @@
+# Builds the web app and publishes it on GitHub Pages whenever web/ changes on main.
+#
+# One-time setup in the repository settings:
+#   Settings > Pages > Source: "GitHub Actions"
+#   Settings > Secrets and variables > Actions > Variables tab (these are public values, not secrets):
+#     VITE_API_URL         the deployed API address, for example https://loser-buys-api.onrender.com
+#     VITE_PRIVY_APP_ID    the Privy app ID
+#     VITE_DEMO_CHALLENGE  optional: the challenge shown on the home screen
+#     VITE_SOLANA_RPC_URL  optional: defaults to the public devnet address
+# After changing a variable, run this workflow again (Actions > pages > Run workflow).
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "onchain/idl/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install packages
+        working-directory: web
+        run: npm ci
+      - name: Build
+        working-directory: web
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_PRIVY_APP_ID: ${{ vars.VITE_PRIVY_APP_ID }}
+          VITE_DEMO_CHALLENGE: ${{ vars.VITE_DEMO_CHALLENGE }}
+          VITE_SOLANA_RPC_URL: ${{ vars.VITE_SOLANA_RPC_URL }}
+        run: |
+          if [ -z "$VITE_API_URL" ] || [ -z "$VITE_PRIVY_APP_ID" ]; then
+            echo "::error::Set the repository variables VITE_API_URL and VITE_PRIVY_APP_ID first (see the top of this file)."
+            exit 1
+          fi
+          npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -5,6 +5,8 @@ import { nodePolyfills } from "vite-plugin-node-polyfills";
 export default defineConfig({
   // One .env file at the repo root serves the API and the web app. Only VITE_ names reach the browser.
   envDir: "..",
+  // Relative file addresses, so the built app works under any folder (GitHub Pages serves it from /<repo name>/).
+  base: "./",
   plugins: [
     react(),
     // The Solana and Privy libraries expect a few Node.js globals (Buffer, process) in the browser.
