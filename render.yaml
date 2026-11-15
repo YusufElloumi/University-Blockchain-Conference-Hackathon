@@ -1,4 +1,4 @@
-# Render blueprint for the API (free plan). Not yet used: written on Nov 14, before the Render account existed.
+# Render blueprint: the API and the web app (both free plan).
 # Values marked "sync: false" are secrets typed into Render's dashboard, never committed.
 services:
   - type: web
@@ -20,7 +20,7 @@ services:
         value: "0"
       - key: DATABASE_URL # the Neon Postgres address
         sync: false
-      - key: WEB_ORIGIN # the deployed web address, e.g. https://loser-buys.vercel.app
+      - key: WEB_ORIGIN # the deployed web address, e.g. https://loser-buys-web.onrender.com
         sync: false
       - key: PRIVY_APP_ID
         sync: false
@@ -35,4 +35,21 @@ services:
       - key: ADMIN_EMAILS
         sync: false
       - key: TICK_SECRET
+        sync: false
+
+  # The web app: a static build of web/, served by Render (free).
+  - type: web
+    name: loser-buys-web
+    runtime: static
+    rootDir: web
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: VITE_API_URL
+        value: https://loser-buys-api.onrender.com
+      - key: VITE_PRIVY_APP_ID # public value, same as in .env
+        sync: false
+      - key: VITE_DEMO_CHALLENGE # optional: the challenge shown on the home screen
         sync: false
