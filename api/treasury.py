@@ -32,10 +32,7 @@ _treasury: Keypair | None = None
 def load_treasury() -> Keypair:
     global _treasury
     if _treasury is None:
-        path = os.environ.get("TREASURY_KEYPAIR_PATH")
-        if not path:
-            raise RuntimeError("Set TREASURY_KEYPAIR_PATH to the treasury keypair file (see .env.example)")
-        _treasury = Keypair.from_bytes(bytes(json.loads(Path(path).expanduser().read_text())))
+        _treasury = chain.load_keypair("TREASURY")
     return _treasury
 
 

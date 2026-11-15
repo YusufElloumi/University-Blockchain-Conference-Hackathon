@@ -14,6 +14,9 @@ PRIVY_APP_ID = os.environ.get("PRIVY_APP_ID", "")
 PRIVY_APP_SECRET = os.environ.get("PRIVY_APP_SECRET", "")
 WEB_ORIGINS = [o.strip() for o in (os.environ.get("WEB_ORIGIN") or "http://localhost:5173").split(",") if o.strip()]
 DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{(API_DIR / 'loser_buys.db').as_posix()}"
+if DATABASE_URL.startswith(("postgres://", "postgresql://")):
+    # Hosts such as Neon hand out a plain postgres address; tell SQLAlchemy which driver to use.
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL.split("://", 1)[1]
 USDC_MINT = os.environ.get("USDC_MINT") or "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 USDC_DECIMALS = 6
 QUICKNODE_STREAM_SECURITY_TOKEN = os.environ.get("QUICKNODE_STREAM_SECURITY_TOKEN", "")

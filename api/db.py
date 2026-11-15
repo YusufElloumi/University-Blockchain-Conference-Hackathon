@@ -18,7 +18,9 @@ import config
 
 engine = create_engine(
     config.DATABASE_URL,
-    connect_args={"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {},
+    # Postgres: keep every connection on UTC, because our columns store times without a timezone.
+    connect_args={"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {"options": "-c timezone=utc"},
+    pool_pre_ping=True,  # a free database drops idle connections; check before using one
 )
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
 

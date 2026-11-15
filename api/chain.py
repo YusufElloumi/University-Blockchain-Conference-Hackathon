@@ -78,11 +78,20 @@ def token_account_for(owner: Pubkey, mint: Pubkey) -> Pubkey:
     return address
 
 
-def load_oracle() -> Keypair:
-    path = os.environ.get("ORACLE_KEYPAIR_PATH")
+def load_keypair(name: str) -> Keypair:
+    """Loads a server key. Locally: a file named by <NAME>_KEYPAIR_PATH. On a host with no files: the
+    file's contents (a JSON list of numbers) in the secret <NAME>_KEYPAIR."""
+    inline = os.environ.get(f"{name}_KEYPAIR")
+    path = os.environ.get(f"{name}_KEYPAIR_PATH")
+    if inline:
+        return Keypair.from_bytes(bytes(json.loads(inline)))
     if not path:
-        raise RuntimeError("Set ORACLE_KEYPAIR_PATH to the oracle keypair file (see .env.example)")
+        raise RuntimeError(f"Set {name}_KEYPAIR_PATH (a keypair file) or {name}_KEYPAIR (see .env.example)")
     return Keypair.from_bytes(bytes(json.loads(Path(path).expanduser().read_text())))
+
+
+def load_oracle() -> Keypair:
+    return load_keypair("ORACLE")
 
 
 def fetch_challenge(client: Client, address: Pubkey) -> Challenge:

@@ -273,6 +273,7 @@ Decision (Nov 14): the pick'em is available in every challenge rather than being
 **Satisfies:** every general submission requirement and each prize's README requirements.
 
 - [ ] Deploy `web/` (Vercel) and `api/` (Render free plan + Neon free Postgres). Point the Stream webhook at the deployed API and re-activate the Stream.
+  - Note (Nov 14): prepared, nothing deployed. `render.yaml` describes the API service; server keys can come from the secrets `ORACLE_KEYPAIR` and `TREASURY_KEYPAIR` (file contents) instead of file paths; a plain Postgres address is accepted and the `psycopg` driver is in `requirements.txt`; `.github/workflows/tick.yml` calls `/internal/tick` every 10 minutes once the secrets `API_URL` and `TICK_SECRET` exist (it also keeps the server awake). **None of this has run against Postgres or Render.** Expect small fixes on the first deploy. Needs the Vercel, Render, and Neon accounts.
 - [ ] Keep-alive ping so the free server does not sleep during judging; re-check the Stream is active before the demo.
 - [ ] Clean-machine test: follow the README setup steps from scratch.
 - [ ] README: what it is, architecture diagram, setup, program ID(s), how we use Solana, QuickNode section (network, dataset, filter logic, destination, why), security and trust notes, Strava note, devnet-only disclaimer.
