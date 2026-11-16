@@ -169,7 +169,11 @@ What we would add before real money: a dispute window before payout, more than o
 
 ## Run it locally
 
-You need Python 3.13, Node 22, and free accounts at [Privy](https://privy.io) and [QuickNode](https://quicknode.com). The program is already deployed on devnet, so you do not need Rust or Anchor to run the app.
+Works on macOS, Windows, and Linux. You need Git, Python 3.13, and Node 22. The program is already deployed on devnet, so you do not need Rust or Anchor to run the app.
+
+**Teammates:** follow [`docs/SETUP.md`](docs/SETUP.md) instead. It walks through installing the tools on macOS and Windows, uses the shared team `.env` (no accounts of your own needed), and has a troubleshooting table.
+
+Setting up your own separate copy needs free accounts at [Privy](https://privy.io) and [QuickNode](https://quicknode.com):
 
 **1. Settings.** Copy `.env.example` to `.env` at the repo root and fill in:
 
@@ -182,18 +186,29 @@ You need Python 3.13, Node 22, and free accounts at [Privy](https://privy.io) an
 | `ADMIN_EMAILS` | Emails allowed to use "End week now" |
 | `TICK_SECRET` | Any long random string |
 
-Keep keypair files outside the repo. Never commit `.env`.
+Keep keypair files outside the repo. Never commit `.env`. Leave `DATABASE_URL` empty to use a local SQLite file.
 
 **2. API.**
 
-```
+macOS / Linux:
+
+```bash
 cd api
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt     (macOS/Linux: .venv/bin/python)
+python3.13 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m uvicorn main:app --reload
+```
+
+Windows (PowerShell):
+
+```powershell
+cd api
+py -3.13 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 .venv\Scripts\python.exe -m uvicorn main:app --reload
 ```
 
-**3. Web app.**
+**3. Web app** (same on every system, in a second terminal). The first `npm install` can take around 20 minutes.
 
 ```
 cd web
@@ -201,11 +216,11 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173.
+Open http://localhost:5173. Use `localhost`: the embedded wallet only works there or over HTTPS.
 
 **4. Stream.** Expose the API with a tunnel (`cloudflared tunnel --url http://localhost:8000`). In QuickNode, create a Stream: network Solana Devnet, dataset Programs + Logs, paste `streams/filter.js` as the filter, destination webhook `https://<tunnel address>/webhooks/quicknode`. Copy its security token into `.env` and restart the API.
 
-**5. Try it alone.** Create a challenge in the app and join it. To add a second player without a second login, a test wallet can join from the command line (needs the Anchor toolchain in WSL or Linux):
+**5. Try it alone.** Create a challenge in the app and join it. For a second player, sign in with a different email in a private/incognito window. On Windows with the WSL toolchain set up ([`docs/SETUP.md`](docs/SETUP.md), Part 2), a test wallet can also join from the command line:
 
 ```
 wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh join <challenge address>
@@ -215,13 +230,13 @@ wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh join <challenge address>
 
 | What | Command | Where |
 |---|---|---|
-| API (87 tests: login, webhook, scoring, anti-cheat, settlement, pick'em) | `.venv\Scripts\python.exe -m pytest` | `api/` |
+| API (87 tests: login, webhook, scoring, anti-cheat, settlement, pick'em) | Windows: `.venv\Scripts\python.exe -m pytest`<br/>macOS / Linux: `.venv/bin/python -m pytest` | `api/` |
 | Program (11 tests on a local validator) | `anchor test --validator legacy` | `onchain/` |
 | Program from Windows | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh test --validator legacy` | repo root |
 | Stream filter | `node streams/test_filter.js` | repo root |
 | Web type-check and build | `npm run build` | `web/` |
 
-The program tests need Rust, the Solana CLI, Anchor 1.2.2, Node 22, and Yarn, on Linux, macOS, or WSL2.
+The program tests need Rust, the Solana CLI, Anchor 1.2.2, Node 22, and Yarn, on Linux, macOS, or WSL2. Install steps are in [`docs/SETUP.md`](docs/SETUP.md), Part 2.
 
 ## Repo layout
 
@@ -237,7 +252,7 @@ api/                FastAPI server
   chain.py          talks to the program as the oracle
 streams/filter.js   the QuickNode Stream filter
 scripts/            WSL helper for Anchor, plan PDF builder
-docs/               ARCHITECTURE.md, STRAVA_FLOW.md, HACKATHON_GUIDE.md
+docs/               SETUP.md (teammate setup, macOS and Windows), ARCHITECTURE.md, STRAVA_FLOW.md, HACKATHON_GUIDE.md
 ```
 
 ## Known limits
