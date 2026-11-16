@@ -67,18 +67,6 @@ Other rules from `docs/HACKATHON_GUIDE.md` (the source of truth; this table was 
 
 Decided Nov 14 (Stage 1): the Python server sends `end_early` and `settle` itself with `solders` + `solana-py` (`api/chain.py`), building instructions by hand from the IDL. No Node helper, no `anchorpy`.
 
-## Repo structure (planned; created in Stage 0)
-
-```
-onchain/            Anchor workspace: programs/loser_buys (Rust), tests (TypeScript)
-web/                React + Vite frontend
-api/                FastAPI backend
-  fitness/          FitnessProvider interface + mock, manual, strava providers
-streams/filter.js   QuickNode Stream filter source
-scripts/            devnet smoke test, build_plan_pdf.py
-docs/               ARCHITECTURE.md, HACKATHON_GUIDE.md, development_plan.pdf, STRAVA_FLOW.md
-```
-
 ## Commands
 
 Rows marked "verified" have been run successfully; the rest are planned.
