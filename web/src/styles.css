@@ -11,6 +11,10 @@
   --gold: #ffcf40;
   --ok: #5fe38a;
   --error: #ff7b7b;
+  /* One accent per play mode, so each arena feels distinct. */
+  --league: #ffcf40;
+  --public: #5ec8ff;
+  --private: #c6f432;
   --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--ink);
@@ -812,4 +816,239 @@ button.danger {
   .hero h1 {
     font-size: 38px;
   }
+}
+
+/* Play modes: each screen and card sets --mode to its own accent */
+.mode-league {
+  --mode: var(--league);
+}
+
+.mode-public {
+  --mode: var(--public);
+}
+
+.mode-private {
+  --mode: var(--private);
+}
+
+.mode-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.mode-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 112px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--mode);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--mode) 18%, transparent) 0%, transparent 60%),
+    var(--card);
+  text-align: left;
+}
+
+.mode-card:active {
+  transform: translateY(1px);
+}
+
+.mode-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--mode) 16%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--mode) 45%, transparent);
+  font-size: 28px;
+}
+
+.mode-card-title {
+  display: block;
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--mode);
+}
+
+.mode-card-line {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.mode-card-go {
+  margin-left: auto;
+  font-size: 30px;
+  color: var(--mode);
+}
+
+.mode-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.mode-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--mode);
+}
+
+.mode-head .fine {
+  margin-top: 4px;
+}
+
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mode) 55%, transparent);
+  background: color-mix(in srgb, var(--mode) 14%, transparent);
+  color: var(--mode);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scoreboard-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.create-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Inside a mode screen the main buttons and lists take that mode's accent. */
+:is(.mode-league, .mode-public, .mode-private) button.primary {
+  background: var(--mode, var(--accent));
+  box-shadow: 0 6px 24px -8px var(--mode, var(--accent));
+}
+
+:is(.mode-league, .mode-public, .mode-private) .fixture {
+  border-left-color: var(--mode, var(--accent));
+}
+
+:is(.mode-league, .mode-public, .mode-private) .fixture-stake {
+  color: var(--mode, var(--accent));
+}
+
+.invite-box {
+  border-color: color-mix(in srgb, var(--mode) 40%, var(--line));
+}
+
+input.code-input {
+  min-height: 60px;
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.error-text {
+  color: var(--error);
+}
+
+.code {
+  font-family: var(--display);
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+}
+
+.event-card {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--mode);
+  border-radius: 14px;
+  background: var(--card);
+  text-align: left;
+}
+
+.event-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.event-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.event-stats b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.fixture-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.fixture-side .tag {
+  background: color-mix(in srgb, var(--mode, var(--accent)) 20%, transparent);
+  color: var(--mode, var(--accent));
+}
+
+.empty {
+  padding: 22px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 14px;
+}
+
+/* Creating is the secondary action: small, quiet, below the join content. */
+.create-link {
+  display: block;
+  margin: 28px auto 0;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
 }

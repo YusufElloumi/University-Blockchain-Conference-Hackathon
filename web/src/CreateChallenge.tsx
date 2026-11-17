@@ -3,6 +3,9 @@ import type { ChallengeView } from "./api";
 import type { Session } from "./App";
 import { buildCreateTransaction, friendlyError } from "./chain";
 import { usdc } from "./format";
+import { MODE_INFO, ModeBadge, type Mode } from "./modes";
+
+const MAX_PLAYERS = 8; // the program's limit per event
 
 const BUY_INS = [1, 2, 5];
 const JOIN_WINDOWS = [
@@ -35,9 +38,25 @@ function Chips<T>(props: { options: T[]; value: T; label: (o: T) => string; onPi
   );
 }
 
-export default function CreateChallenge({ session }: { session: Session; balance: number | null }) {
+const DEFAULT_NAME: Record<Mode, (player: string) => string> = {
+  league: () => "",
+  public: () => "Community step-up",
+  private: (player) => `${player}'s game`,
+};
+
+const FINE_PRINT: Record<Mode, string> = {
+  league:
+    "As the organizer you don't have to play. Share the invite code with your members; only people with it can see and join.",
+  public: `Anyone can find it in Public Events and join, up to ${MAX_PLAYERS} players.`,
+  private: "Only people with your invite code can see and join. You play too: join it like everyone else.",
+};
+
+/** Creating an event. The mode comes from the screen it was opened from, so it is never picked twice. */
+export default function CreateChallenge({ mode, session }: { mode: Mode; session: Session; balance: number | null }) {
   const { me, config, call, send, go } = session;
-  const [name, setName] = useState(`${me.name}'s league`);
+  const info = MODE_INFO[mode];
+  const [name, setName] = useState(DEFAULT_NAME[mode](me.name));
+  const [organizer, setOrganizer] = useState("");
   const [buyIn, setBuyIn] = useState(1);
   const [joinWindow, setJoinWindow] = useState(JOIN_WINDOWS[1]);
   const [length, setLength] = useState(LENGTHS[3]);
@@ -56,7 +75,12 @@ export default function CreateChallenge({ session }: { session: Session; balance
         mint: config.usdc_mint,
       });
       await send(transaction);
-      await call<ChallengeView>("POST", "/challenges", { address, name: name.trim() });
+      await call<ChallengeView>("POST", "/challenges", {
+        address,
+        name: name.trim(),
+        mode,
+        organizer_name: mode === "league" ? organizer.trim() : null,
+      });
       go({ view: "challenge", address });
     } catch (e) {
       console.error(e);
@@ -67,10 +91,32 @@ export default function CreateChallenge({ session }: { session: Session; balance
 
   return (
     <>
-      <h2 className="section-title">New challenge</h2>
+      <div className={`create-head mode-${mode}`}>
+        <h2 className="section-title">New {info.noun}</h2>
+        <ModeBadge mode={mode} />
+      </div>
       <section className="card">
-        <div className="label">League name</div>
-        <input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} aria-label="League name" />
+        <div className="label">Event name</div>
+        <input
+          value={name}
+          maxLength={60}
+          placeholder={mode === "league" ? "Winter Pickleball League" : ""}
+          onChange={(e) => setName(e.target.value)}
+          aria-label="Event name"
+        />
+        {mode === "league" && (
+          <>
+            <div className="label gap">Organizer</div>
+            <input
+              value={organizer}
+              maxLength={60}
+              placeholder="Your gym, club or tournament"
+              onChange={(e) => setOrganizer(e.target.value)}
+              aria-label="Organizer name"
+            />
+            <p className="fine">Shown on the event as "Hosted by ...".</p>
+          </>
+        )}
 
         <div className="label gap">Rules</div>
         <div className="rules">
@@ -91,26 +137,30 @@ export default function CreateChallenge({ session }: { session: Session; balance
         <div className="label gap">Buy-in each</div>
         <Chips options={BUY_INS} value={buyIn} label={usdc} onPick={setBuyIn} />
 
-        <div className="label gap">Friends can join for</div>
+        <div className="label gap">{mode === "private" ? "Friends can join for" : "Joining stays open for"}</div>
         <Chips options={JOIN_WINDOWS} value={joinWindow} label={(o) => o.label} onPick={setJoinWindow} />
 
         <div className="label gap">Then it runs for</div>
         <Chips options={LENGTHS} value={length} label={(o) => o.label} onPick={setLength} />
       </section>
 
-      <button className="primary" onClick={onCreate} disabled={busy || !name.trim()}>
-        {busy ? "Creating..." : "Create challenge"}
+      <button
+        className="primary"
+        onClick={onCreate}
+        disabled={busy || !name.trim() || (mode === "league" && !organizer.trim())}
+      >
+        {busy ? "Creating..." : info.create}
       </button>
       <p className="fine center">
-        Creating is free. You pay the {usdc(buyIn)} buy-in when you join, like everyone else. Top scorer takes the
-        pool; ties split it.
+        Creating is free. Each player pays the {usdc(buyIn)} buy-in when they join. Top scorer takes the pool; ties
+        split it. {FINE_PRINT[mode]}
       </p>
       {error && (
         <div className="message error" role="alert">
           {error}
         </div>
       )}
-      <button className="link center-link" onClick={() => go({ view: "home" })} disabled={busy}>
+      <button className="link center-link" onClick={() => go({ view: "mode", mode })} disabled={busy}>
         Cancel
       </button>
     </>

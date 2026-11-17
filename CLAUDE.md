@@ -60,7 +60,7 @@ Other rules from `docs/HACKATHON_GUIDE.md` (the source of truth; this table was 
 | Auth + wallet | Privy: email login, embedded Solana wallet, wallet popups off | Invisible crypto for the Consumer track; free at our size |
 | Fees | "Gas drip": server sends new wallets a little devnet SOL | Simplest way to hide gas; Privy sponsorship is an optional upgrade |
 | Backend | Python + FastAPI | Team's strongest language; holds scoring, Strava, webhooks, oracle key |
-| Database | SQLAlchemy; SQLite locally, Neon free Postgres when deployed | Simplest option; free hosts wipe local files, so deployed needs Postgres. Eight tables only |
+| Database | SQLAlchemy; SQLite locally, Neon free Postgres when deployed | Simplest option; free hosts wipe local files, so deployed needs Postgres. Nine tables only |
 | Onchain events | QuickNode Stream (Solana Devnet) -> webhook | Bounty; replaces RPC polling |
 | Fitness data | `FitnessProvider` interface with Mock, Manual, Strava | Strava may be blocked (subscription, limits, terms); must be swappable |
 | Hosting | Render for both: a web service (API) and a static site (web app) | Free tiers, one account, one `render.yaml` |
@@ -82,7 +82,7 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Oracle from Python | `python chain.py show\|end-early\|settle <challenge> [winners]` with `ORACLE_KEYPAIR_PATH` set | `api/`, venv (verified Nov 14) |
 | Devnet SOL | https://faucet.solana.com (`solana airdrop 2` is rate-limited) | browser |
 | Run API | `.venv\Scripts\python.exe -m uvicorn main:app --reload` | `api/` (verified Nov 14) |
-| Test API | `.venv\Scripts\python.exe -m pytest` | `api/` (verified Nov 14, 87 passing) |
+| Test API | `.venv\Scripts\python.exe -m pytest` (macOS: `.venv/bin/python -m pytest`) | `api/` (verified Nov 16 on macOS, 103 passing) |
 | Run web | `npm run dev` (http://localhost:5173) | `web/` (verified Nov 14) |
 | Build web | `npm run build` | `web/` (verified Nov 14) |
 | Create a demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` then put the printed address in `VITE_DEMO_CHALLENGE` | repo root (verified Nov 14) |
@@ -164,3 +164,6 @@ Fill in as they are created. Public addresses only - never keys.
 - 2026-11-14 (Stage 7): Pick'em tiebreaker built on Gemini's public market data (`api/pickem.py`, table `picks`). Available in every challenge, one free pick per player, hidden and changeable until kick-off. It only matters in a tie. Look up one event by its `ticker` (`GET /v1/prediction-markets/events/<ticker>`; the numeric ID and the slug return 404). The winning side is the contract with `resolutionSide: "yes"`. No user or fitness data is sent to Gemini.
 - 2026-11-15: The web app is hosted as a Render static site (second service in `render.yaml`), not Vercel. **Never publish anything under `yusufelloumi.github.io`**: that is the owner's portfolio. No GitHub Pages for this project; a Pages workflow was added and removed the same day, before it published anything. Vite keeps `base: "./"`, which is harmless.
 - Tests read the real `.env`. A test that depends on a setting must set it itself (see `TICK_SECRET` in `test_stage6.py`).
+- 2026-11-16 (Stage 5b): Three play modes, stored off-chain in `challenges.mode`: `league` (organizer hosts, does not have to play, invite only, `organizer_name` shown), `public` (listed at `GET /events/public`, anyone joins), `private` (invite only, creator plays). Rows with no mode are private. The program was not changed.
+- 2026-11-16 (Stage 5b): The server is the gate. League and private events answer 404 to anyone who is not the creator, a player, or in the `invites` table (filled by `POST /invites/redeem`). Invite links are `?invite=CODE`; codes are 6 characters with no look-alikes and not case sensitive. Limit: anyone can still call `join_challenge` onchain directly; we never record them, so they score zero.
+- 2026-11-16 (Stage 5b): An event first recorded on join (made by our scripts) is public, so `scripts/wsl_anchor.sh join` keeps working without a code. The player cap stays 8 for every mode.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ApiError,
   retryWhileNotReady,
   type ActivityResult,
   type ActivityView,
@@ -9,6 +10,8 @@ import {
 import type { Session } from "./App";
 import { buildJoinTransaction, explorerTx, fetchChallenge, friendlyError, type ChallengeInfo } from "./chain";
 import { ago, countdown, money, usdc, when } from "./format";
+import { InviteCodeBox } from "./ModeScreen";
+import { MODE_INFO, ModeBadge } from "./modes";
 
 type Tab = "table" | "feed" | "me";
 type Phase = "joining" | "live" | "ended" | "settled" | "refunded";
@@ -44,6 +47,7 @@ export default function ChallengePage(props: { address: string; session: Session
   const [copied, setCopied] = useState(false);
   const [lastTx, setLastTx] = useState("");
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [locked, setLocked] = useState(false); // invite-only event and you have no invite (the server said 404)
   const seenEvents = useRef(-1);
 
   const loadChain = useCallback(async () => {
@@ -58,6 +62,7 @@ export default function ChallengePage(props: { address: string; session: Session
   const loadState = useCallback(async () => {
     try {
       const next = await call<ChallengeState>("GET", `/challenges/${address}/state`);
+      setLocked(false);
       setState(next);
       // A new event arrived from the Stream: something changed onchain, so re-read the pool and balance.
       if (next.feed.length !== seenEvents.current) {
@@ -69,7 +74,8 @@ export default function ChallengePage(props: { address: string; session: Session
         }
       }
     } catch (e) {
-      console.error(e);
+      if (e instanceof ApiError && e.status === 404) setLocked(true);
+      else console.error(e);
     }
   }, [address, call, loadChain, refreshBalance]);
 
@@ -160,8 +166,13 @@ export default function ChallengePage(props: { address: string; session: Session
     };
   }, [isOver, mayAsk, finish]);
 
+  const mode = state?.challenge?.mode;
+  const inviteCode = mode && MODE_INFO[mode].inviteOnly ? state?.challenge?.invite_code : undefined;
+
   async function onInvite() {
-    const link = `${window.location.origin}${window.location.pathname}?challenge=${address}`;
+    // Invite-only events share the code, so the link works for people who have not been let in yet.
+    const query = inviteCode ? `invite=${inviteCode}` : `challenge=${address}`;
+    const link = `${window.location.origin}${window.location.pathname}?${query}`;
     try {
       if (navigator.share) await navigator.share({ title: "Loser Buys", text: "Join my fitness challenge", url: link });
       else {
@@ -172,6 +183,21 @@ export default function ChallengePage(props: { address: string; session: Session
     } catch {
       /* the person closed the share sheet */
     }
+  }
+
+  if (locked) {
+    return (
+      <>
+        <button className="link back" onClick={() => go({ view: "home" })}>
+          ‹ Home
+        </button>
+        <section className="card">
+          <b>This event is invite only.</b>
+          <p className="muted">Ask the organizer or a friend in it for the invite code.</p>
+        </section>
+        <InviteCodeBox session={session} onJoined={() => loadState()} />
+      </>
+    );
   }
 
   if (!info) {
@@ -203,8 +229,8 @@ export default function ChallengePage(props: { address: string; session: Session
 
   return (
     <>
-      <button className="link back" onClick={() => go({ view: "home" })}>
-        ‹ All challenges
+      <button className="link back" onClick={() => go(mode ? { view: "mode", mode } : { view: "home" })}>
+        ‹ {mode ? MODE_INFO[mode].title : "Home"}
       </button>
 
       <section className={`scoreboard ${phase}`}>
@@ -215,6 +241,12 @@ export default function ChallengePage(props: { address: string; session: Session
             {PHASE_LABEL[phase]}
           </div>
         </div>
+        {mode && (
+          <div className="scoreboard-meta">
+            <ModeBadge mode={mode} />
+            {state?.challenge?.organizer_name && <span>Hosted by {state.challenge.organizer_name}</span>}
+          </div>
+        )}
         <div className="pool-label">{phase === "settled" ? "Paid out" : phase === "refunded" ? "Returned" : "Prize pool"}</div>
         <div className="pool-amount">{money(phase === "settled" || phase === "refunded" ? info.buyIn * info.players.length : pool)}</div>
         <div className="scoreboard-stats">
@@ -261,7 +293,7 @@ export default function ChallengePage(props: { address: string; session: Session
       )}
 
       {/* Joining */}
-      {phase === "joining" && !inOnchain && (
+      {phase === "joining" && !inOnchain && state && (
         <section className="card">
           {full ? (
             <p className="muted">This challenge is full.</p>
@@ -311,9 +343,16 @@ export default function ChallengePage(props: { address: string; session: Session
         <Pickem session={session} address={address} pickem={state.pickem} onPicked={loadState} />
       )}
       {phase === "joining" && !full && (
-        <button className="secondary" onClick={onInvite}>
-          {copied ? "Link copied!" : "Invite friends"}
-        </button>
+        <>
+          <button className="secondary" onClick={onInvite}>
+            {copied ? "Link copied!" : mode === "league" ? "Invite members" : "Invite friends"}
+          </button>
+          {inviteCode && (
+            <p className="fine center">
+              Invite code <b className="code">{inviteCode}</b>
+            </p>
+          )}
+        </>
       )}
       {error && (
         <div className="message error" role="alert">

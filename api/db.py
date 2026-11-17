@@ -1,8 +1,8 @@
 """Database setup and tables. SQLite locally, Postgres when deployed (same code through SQLAlchemy).
 
-Eight tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
-the mock and manual sources; Strava activities are never stored there) and `picks` (the pick'em
-tiebreaker).
+Nine tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
+the mock and manual sources; Strava activities are never stored there), `picks` (the pick'em
+tiebreaker), and `invites` (who has redeemed the invite code of a league or private event).
 
 Times are stored in UTC. SQLite hands them back without a timezone, so read them through `utc()`.
 """
@@ -99,6 +99,9 @@ class Challenge(Base):
     end_time: Mapped[datetime]
     status: Mapped[str] = mapped_column(default="open")  # open, settled, refunded (mirrors the program)
     invite_code: Mapped[str] = mapped_column(unique=True, index=True)
+    # Play mode, off-chain only: "league", "public" or "private". Older rows have none and count as private.
+    mode: Mapped[str | None] = mapped_column(default="private")
+    organizer_name: Mapped[str | None]  # league events: the gym, club or tournament hosting it
     creator_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(default=_now)
     settle_tx: Mapped[str | None]  # the transaction that paid out or refunded
@@ -115,6 +118,18 @@ class Participant(Base):
     deposit_tx: Mapped[str | None]
     consent_at: Mapped[datetime]  # when they agreed to share their points with this group
     joined_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class Invite(Base):
+    """Someone who entered the invite code of a league or private event, so they may see and join it."""
+
+    __tablename__ = "invites"
+    __table_args__ = (UniqueConstraint("challenge_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
 class ScoreEntry(Base):
@@ -170,6 +185,8 @@ class LoggedActivity(Base):
 def init_db() -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns()
+    with engine.begin() as connection:  # events from before play modes existed are private
+        connection.execute(update(Challenge).where(Challenge.mode.is_(None)).values(mode="private"))
 
 
 def _add_missing_columns() -> None:

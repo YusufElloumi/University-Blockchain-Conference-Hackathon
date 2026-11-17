@@ -31,6 +31,10 @@ Stage 6 endpoints:
 Stage 7 endpoints (pick'em tiebreaker, data from Gemini Prediction Markets):
     GET  /pickem/games                  upcoming games with live odds
     POST /challenges/{address}/pick     the caller's one pick, changeable until kick-off
+Play modes (league, public, private; off-chain only):
+    GET  /events/public                 open public events anyone can join
+    POST /invites/redeem                enter a league or private event's invite code to see and join it
+    GET  /me/challenges?mode=           also lists events the caller was invited to
 """
 
 from __future__ import annotations
@@ -216,9 +220,21 @@ def challenge_events(address: str, session: Session = Depends(db.get_session)) -
 # ---------- Stage 4: challenges, activities, points ----------
 
 
+MODES = ("league", "public", "private")
+MAX_PLAYERS = 8  # the program's limit per event (onchain/programs/loser_buys/src/constants.rs)
+# Invite codes avoid look-alike characters (0/O, 1/I/L) so they are easy to read out and type.
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
 class NewChallenge(BaseModel):
     address: str
     name: str = Field(min_length=1, max_length=60)
+    mode: Literal[MODES] = "private"  # type: ignore[valid-type]
+    organizer_name: str | None = Field(default=None, max_length=60)  # required for league events
+
+
+class InviteCode(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
 
 
 class JoinRecord(BaseModel):
@@ -263,10 +279,47 @@ def _is_player(session: Session, challenge: db.Challenge, user: db.User) -> bool
     ) is not None
 
 
+def _mode(challenge: db.Challenge) -> str:
+    return challenge.mode or "private"
+
+
+def _is_invited(session: Session, challenge: db.Challenge, user: db.User) -> bool:
+    return session.scalar(
+        select(db.Invite.id).where(db.Invite.challenge_id == challenge.id, db.Invite.user_id == user.id)
+    ) is not None
+
+
+def _can_see(session: Session, challenge: db.Challenge, user: db.User) -> bool:
+    """Public events are open to everyone. League and private events need an invite (or being in them)."""
+    return (
+        _mode(challenge) == "public"
+        or challenge.creator_id == user.id
+        or _is_player(session, challenge, user)
+        or _is_invited(session, challenge, user)
+    )
+
+
+def _visible_challenge(session: Session, address: str, user: db.User) -> db.Challenge:
+    """The stored challenge, or 404 if the caller may not see it (so an invite-only event is not even confirmed)."""
+    challenge = _stored_challenge(session, address)
+    if not _can_see(session, challenge, user):
+        raise HTTPException(404, "We do not know that challenge.")
+    return challenge
+
+
+def _new_invite_code(session: Session) -> str:
+    while True:
+        code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
+        if session.scalar(select(db.Challenge.id).where(db.Challenge.invite_code == code)) is None:
+            return code
+
+
 def _challenge_view(challenge: db.Challenge) -> dict:
     return {
         "address": challenge.address,
         "name": challenge.name,
+        "mode": _mode(challenge),
+        "organizer_name": challenge.organizer_name,
         "template": challenge.template,
         "buy_in": challenge.buy_in_units / 10**config.USDC_DECIMALS,
         "start": db.utc(challenge.start_time).isoformat(),
@@ -305,13 +358,23 @@ def record_challenge(
     existing = session.scalar(select(db.Challenge).where(db.Challenge.address == body.address))
     if existing is not None:
         return _challenge_view(existing)
+    organizer = " ".join((body.organizer_name or "").split()) or None
+    if body.mode == "league" and not organizer:
+        raise HTTPException(400, "Enter the organizer's name for a league.")
     state = onchain_challenge(body.address)
     if str(state.creator) != user.wallet_address:
         raise HTTPException(403, "Only the person who created this challenge can set it up.")
-    return _challenge_view(_register(session, body.address, state, body.name.strip(), user.id))
+    challenge = _register(
+        session, body.address, state, body.name.strip(), user.id,
+        mode=body.mode, organizer_name=organizer if body.mode == "league" else None,
+    )
+    return _challenge_view(challenge)
 
 
-def _register(session: Session, address: str, state: chain.Challenge, name: str, creator_id: int | None) -> db.Challenge:
+def _register(
+    session: Session, address: str, state: chain.Challenge, name: str, creator_id: int | None,
+    mode: str = "private", organizer_name: str | None = None,
+) -> db.Challenge:
     """Stores our record of an onchain challenge, after checking it is one this app can settle."""
     if str(state.oracle) != config.ORACLE_PUBLIC_KEY or str(state.mint) != config.USDC_MINT:
         raise HTTPException(400, "That challenge was not set up for this app.")
@@ -322,8 +385,10 @@ def _register(session: Session, address: str, state: chain.Challenge, name: str,
         start_time=datetime.fromtimestamp(state.start_time, timezone.utc),
         end_time=datetime.fromtimestamp(state.end_time, timezone.utc),
         status=state.status,
-        invite_code=secrets.token_urlsafe(6),
+        invite_code=_new_invite_code(session),
         creator_id=creator_id,
+        mode=mode,
+        organizer_name=organizer_name,
     )
     session.add(challenge)
     try:
@@ -345,8 +410,11 @@ def record_join(
     state = None
     if challenge is None:
         # Created outside the web app (for example by our demo script): record it on first join.
+        # Nobody could have shared an invite code for it yet, so it is listed as a public event.
         state = onchain_challenge(address)
-        challenge = _register(session, address, state, "Weekly challenge", None)
+        challenge = _register(session, address, state, "Weekly challenge", None, mode="public")
+    elif not _can_see(session, challenge, user):
+        raise HTTPException(404, "We do not know that challenge.")
     if not _is_player(session, challenge, user):
         state = state or onchain_challenge(address)
         if user.wallet_address not in {str(p) for p in state.players}:
@@ -370,7 +438,7 @@ def challenge_leaderboard(
     address: str, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
 ) -> dict:
     """Points and daily ticks only. Players agreed to share these with their group, so only the group sees them."""
-    challenge = _stored_challenge(session, address)
+    challenge = _visible_challenge(session, address, user)
     if not _is_player(session, challenge, user):
         raise HTTPException(403, "Join this challenge to see its leaderboard.")
     return {
@@ -459,13 +527,76 @@ def set_name(body: NewName, user: db.User = Depends(current_user), session: Sess
 
 
 @app.get("/me/challenges")
-def my_challenges(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> list[dict]:
-    """Challenges the caller joined or created, newest first."""
-    found = {c.id: c for c in scores.challenges_of(session, user.id)}
+def my_challenges(
+    mode: Literal[MODES] | None = None,  # type: ignore[valid-type]
+    user: db.User = Depends(current_user), session: Session = Depends(db.get_session),
+) -> list[dict]:
+    """Challenges the caller joined, created, or was invited to (optionally one mode only), newest first."""
+    joined = {c.id: c for c in scores.challenges_of(session, user.id)}
+    found = dict(joined)
     for c in session.scalars(select(db.Challenge).where(db.Challenge.creator_id == user.id)):
         found[c.id] = c
+    invited = select(db.Invite.challenge_id).where(db.Invite.user_id == user.id)
+    for c in session.scalars(select(db.Challenge).where(db.Challenge.id.in_(invited))):
+        found[c.id] = c
     ordered = sorted(found.values(), key=lambda c: c.start_time, reverse=True)
-    return [_challenge_view(c) for c in ordered]
+    return [
+        {**_challenge_view(c), "joined": c.id in joined, "is_creator": c.creator_id == user.id}
+        for c in ordered if mode is None or _mode(c) == mode
+    ]
+
+
+def _player_counts(session: Session, challenges: list[db.Challenge]) -> dict[str, int]:
+    """Players per challenge, from the latest PlayerJoined event the Stream delivered."""
+    counts: dict[str, int] = {}
+    rows = session.scalars(
+        select(db.ChainEvent).where(
+            db.ChainEvent.name == "PlayerJoined", db.ChainEvent.challenge.in_([c.address for c in challenges])
+        )
+    )
+    for row in rows:
+        counts[row.challenge] = max(counts.get(row.challenge, 0), json.loads(row.data)["player_count"])
+    return counts
+
+
+@app.get("/events/public")
+def public_events(_user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> list[dict]:
+    """Public events that are still open for joining, soonest kick-off first. League and private events never appear."""
+    now = datetime.now(timezone.utc)
+    open_events = [
+        c for c in session.scalars(
+            select(db.Challenge)
+            .where(db.Challenge.mode == "public", db.Challenge.status == "open")
+            .order_by(db.Challenge.start_time)
+        )
+        if db.utc(c.start_time) > now
+    ]
+    counts = _player_counts(session, open_events)
+    return [
+        {**_challenge_view(c), "player_count": counts.get(c.address, 0), "max_players": MAX_PLAYERS,
+         "pot": c.buy_in_units * counts.get(c.address, 0) / 10**config.USDC_DECIMALS}
+        for c in open_events
+    ]
+
+
+@app.post("/invites/redeem")
+def redeem_invite(
+    body: InviteCode, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    """Checks an invite code. A right code lets the caller see and join that event from now on."""
+    typed = "".join(body.code.split())
+    # New codes are upper case without dashes; older ones are mixed case and may contain "-".
+    tidy = typed.replace("-", "").upper()
+    challenge = session.scalar(select(db.Challenge).where(db.Challenge.invite_code.in_({typed, tidy})))
+    if challenge is None:
+        raise HTTPException(404, "That code doesn't match any event. Check it and try again.")
+    if _mode(challenge) != "public" and not _can_see(session, challenge, user):
+        session.add(db.Invite(challenge_id=challenge.id, user_id=user.id))
+        try:
+            session.commit()
+        except IntegrityError:  # a double click stored it a moment ago
+            session.rollback()
+    return _challenge_view(challenge)
 
 
 @app.get("/challenges/{address}/state")
@@ -478,6 +609,8 @@ def challenge_state(
     The leaderboard is included only for players of the challenge.
     """
     challenge = session.scalar(select(db.Challenge).where(db.Challenge.address == address))
+    if challenge is not None and not _can_see(session, challenge, user):
+        raise HTTPException(404, "We do not know that challenge.")
     rows = events.challenge_events(session, address)
     wallets = set()
     pool_units = player_count = None
@@ -551,7 +684,7 @@ def finish_challenge(
 
     Any player may ask; the server decides what is due and works out the result itself.
     """
-    challenge = _stored_challenge(session, address)
+    challenge = _visible_challenge(session, address, user)
     if not (_is_player(session, challenge, user) or challenge.creator_id == user.id or _is_admin(user)):
         raise HTTPException(403, "Only players of this challenge can do that.")
     return _finish(session, challenge)
@@ -578,7 +711,7 @@ def tick(request: Request, session: Session = Depends(db.get_session)) -> dict:
 @app.get("/challenges/{address}/score-sheet")
 def score_sheet(address: str, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
     """The final points behind a settlement, with the hash that was stored onchain, so players can check it."""
-    challenge = _stored_challenge(session, address)
+    challenge = _visible_challenge(session, address, user)
     if not _is_player(session, challenge, user):
         raise HTTPException(403, "Only players of this challenge can see its score sheet.")
     if not challenge.score_sheet:
@@ -610,7 +743,7 @@ def make_pick(
     address: str, body: NewPick, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
 ) -> dict:
     """Saves the caller's one tiebreaker pick. It can be changed until the challenge starts."""
-    challenge = _stored_challenge(session, address)
+    challenge = _visible_challenge(session, address, user)
     if not _is_player(session, challenge, user):
         raise HTTPException(403, "Join this challenge to make a pick.")
     if challenge.status != "open" or datetime.now(timezone.utc) >= db.utc(challenge.start_time):

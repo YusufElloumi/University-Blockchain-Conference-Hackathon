@@ -167,7 +167,7 @@ def client():
 @pytest.fixture
 def challenge(client):
     """A recorded challenge that Maya and Sam have joined."""
-    assert client.post("/challenges", json={"address": CHALLENGE, "name": "Office week"},
+    assert client.post("/challenges", json={"address": CHALLENGE, "name": "Office week", "mode": "public"},
                        headers=make_token("maya")).status_code == 200
     for who in ("maya", "sam"):
         assert client.post(f"/challenges/{CHALLENGE}/join", json={"consent": True},
@@ -184,7 +184,7 @@ def board(client, who="maya"):
 def test_all_tables_exist():
     assert set(db.Base.metadata.tables) == {
         "users", "fitness_connections", "challenges", "participants", "score_entries", "chain_events",
-        "logged_activities", "picks",
+        "logged_activities", "picks", "invites",
     }
 
 
@@ -213,7 +213,7 @@ def test_only_the_creator_can_record_a_challenge(client):
 
 
 def test_joining_needs_consent_and_an_onchain_deposit(client):
-    client.post("/challenges", json={"address": CHALLENGE, "name": "Office week"}, headers=make_token("maya"))
+    client.post("/challenges", json={"address": CHALLENGE, "name": "Office week", "mode": "public"}, headers=make_token("maya"))
     url = f"/challenges/{CHALLENGE}/join"
     assert client.post(url, json={"consent": False}, headers=make_token("sam")).status_code == 400
     assert client.post(url, json={"consent": True}, headers=make_token("zoe")).status_code == 409  # no deposit

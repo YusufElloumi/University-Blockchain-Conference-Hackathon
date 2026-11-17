@@ -14,15 +14,41 @@ import {
 import { sendAndConfirm, tokenBalance } from "./chain";
 import ChallengePage from "./ChallengePage";
 import CreateChallenge from "./CreateChallenge";
-import { money, usdc, when } from "./format";
+import { money, usdc } from "./format";
+import ModeScreen from "./ModeScreen";
+import { isMode, MODE_INFO, MODES, type Mode } from "./modes";
 
-type Route = { view: "home" } | { view: "create" } | { view: "challenge"; address: string };
+export type Route =
+  | { view: "home" }
+  | { view: "mode"; mode: Mode }
+  | { view: "create"; mode: Mode }
+  | { view: "challenge"; address: string }
+  | { view: "invite"; code: string };
 
 function readRoute(): Route {
   const params = new URLSearchParams(window.location.search);
   const address = params.get("challenge");
   if (address) return { view: "challenge", address };
-  return params.has("new") ? { view: "create" } : { view: "home" };
+  const code = params.get("invite");
+  if (code) return { view: "invite", code };
+  const mode = params.get("mode");
+  if (params.has("new")) return { view: "create", mode: isMode(params.get("new")) ? (params.get("new") as Mode) : "private" };
+  return isMode(mode) ? { view: "mode", mode } : { view: "home" };
+}
+
+function routeQuery(route: Route): string {
+  switch (route.view) {
+    case "challenge":
+      return `?challenge=${route.address}`;
+    case "invite":
+      return `?invite=${encodeURIComponent(route.code)}`;
+    case "mode":
+      return `?mode=${route.mode}`;
+    case "create":
+      return `?new=${route.mode}`;
+    default:
+      return "";
+  }
 }
 
 /** What every signed-in screen gets: who you are, how to call the server, and how to send a transaction. */
@@ -32,7 +58,7 @@ export type Session = {
   call: Call;
   send: (transaction: Uint8Array) => Promise<string>;
   refreshBalance: () => Promise<void>;
-  go: (route: Route) => void;
+  go: (route: Route, replace?: boolean) => void;
 };
 
 export default function App() {
@@ -57,9 +83,10 @@ export default function App() {
     return request(method, path, token, body);
   }, []);
 
-  const go = useCallback((next: Route) => {
-    const query = next.view === "challenge" ? `?challenge=${next.address}` : next.view === "create" ? "?new" : "";
-    window.history.pushState(null, "", window.location.pathname + query);
+  const go = useCallback((next: Route, replace = false) => {
+    const url = window.location.pathname + routeQuery(next);
+    if (replace) window.history.replaceState(null, "", url);
+    else window.history.pushState(null, "", url);
     setRoute(next);
     window.scrollTo(0, 0);
   }, []);
@@ -178,7 +205,11 @@ export default function App() {
       ) : route.view === "challenge" ? (
         <ChallengePage key={route.address} address={route.address} session={session} balance={balance} />
       ) : route.view === "create" ? (
-        <CreateChallenge session={session} balance={balance} />
+        <CreateChallenge key={route.mode} mode={route.mode} session={session} balance={balance} />
+      ) : route.view === "mode" ? (
+        <ModeScreen key={route.mode} mode={route.mode} session={session} />
+      ) : route.view === "invite" ? (
+        <RedeemInvite code={route.code} session={session} />
       ) : (
         <Home
           session={session}
@@ -200,6 +231,27 @@ export default function App() {
   );
 }
 
+/** Opening an invite link: the server checks the code, then the event opens. */
+function RedeemInvite({ code, session }: { code: string; session: Session }) {
+  const { call, go } = session;
+  const [error, setError] = useState("");
+  useEffect(() => {
+    call<ChallengeView>("POST", "/invites/redeem", { code })
+      .then((c) => go({ view: "challenge", address: c.address }, true))
+      .catch((e) => setError(e.message));
+  }, [call, go, code]);
+  return (
+    <>
+      <p className="muted center">{error || "Opening your invite..."}</p>
+      {error && (
+        <button className="link center-link" onClick={() => go({ view: "home" }, true)}>
+          Back to home
+        </button>
+      )}
+    </>
+  );
+}
+
 function Home(props: {
   session: Session;
   balance: number | null;
@@ -210,16 +262,8 @@ function Home(props: {
 }) {
   const { session, balance } = props;
   const { me, call, go } = session;
-  const [challenges, setChallenges] = useState<ChallengeView[] | null>(null);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(me.name);
-  const demo: string = import.meta.env.VITE_DEMO_CHALLENGE || "";
-
-  useEffect(() => {
-    call<ChallengeView[]>("GET", "/me/challenges")
-      .then(setChallenges)
-      .catch(() => setChallenges([]));
-  }, [call]);
 
   async function saveName() {
     try {
@@ -232,7 +276,23 @@ function Home(props: {
 
   return (
     <>
-      <section className="card wallet-card">
+      <h2 className="section-title">Pick your arena</h2>
+      <div className="mode-cards">
+        {MODES.map((mode) => (
+          <button key={mode} className={`mode-card mode-${mode}`} onClick={() => go({ view: "mode", mode })}>
+            <span className="mode-icon">{MODE_INFO[mode].icon}</span>
+            <span>
+              <span className="mode-card-title">{MODE_INFO[mode].title}</span>
+              <span className="mode-card-line">{MODE_INFO[mode].line}</span>
+            </span>
+            <span className="mode-card-go" aria-hidden>
+              ›
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <section className="card wallet-card gap">
         <div className="label">Your balance</div>
         <div className="big-number">{balance === null ? "..." : money(balance)}</div>
         <div className="fine">{balance === null ? "" : `${usdc(balance)} (test money)`}</div>
@@ -263,40 +323,8 @@ function Home(props: {
             </button>
           </div>
         )}
-        <p className="fine">This is what friends see on the table.</p>
+        <p className="fine">This is what other players see on the table.</p>
       </section>
-
-      <button className="primary" onClick={() => go({ view: "create" })}>
-        + Start a challenge
-      </button>
-
-      <h2 className="section-title">Your challenges</h2>
-      {challenges === null ? (
-        <p className="muted">Loading...</p>
-      ) : challenges.length === 0 ? (
-        <p className="muted">None yet. Start one, or open a friend's invite link.</p>
-      ) : (
-        challenges.map((c) => (
-          <button key={c.address} className="fixture" onClick={() => go({ view: "challenge", address: c.address })}>
-            <div>
-              <div className="fixture-name">{c.name}</div>
-              <div className="fine">
-                {c.status === "open" ? `Ends ${when(new Date(c.end))}` : c.status === "settled" ? "Final" : "Refunded"}
-              </div>
-            </div>
-            <div className="fixture-stake">{money(c.buy_in)}</div>
-          </button>
-        ))
-      )}
-      {demo && !challenges?.some((c) => c.address === demo) && (
-        <button className="fixture" onClick={() => go({ view: "challenge", address: demo })}>
-          <div>
-            <div className="fixture-name">Demo challenge</div>
-            <div className="fine">Open to everyone</div>
-          </div>
-          <div className="fixture-stake">View</div>
-        </button>
-      )}
 
       <button className="link center-link" onClick={props.onSignOut}>
         Sign out

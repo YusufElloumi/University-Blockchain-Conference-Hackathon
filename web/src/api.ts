@@ -1,5 +1,7 @@
 // Calls to our own API server. Calls about a person carry their Privy login token.
 
+import type { Mode } from "./modes";
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export type Me = {
@@ -22,6 +24,8 @@ export type AppConfig = {
 export type ChallengeView = {
   address: string;
   name: string;
+  mode: Mode;
+  organizer_name: string | null; // league events only
   template: string;
   buy_in: number;
   start: string;
@@ -29,6 +33,12 @@ export type ChallengeView = {
   status: "open" | "settled" | "refunded";
   invite_code: string;
 };
+
+/** One of "my" events in a mode: joined, created, or invited to. */
+export type MyEvent = ChallengeView & { joined: boolean; is_creator: boolean };
+
+/** An open public event in the browsable list. */
+export type PublicEvent = ChallengeView & { player_count: number; max_players: number; pot: number };
 
 export type PlayerRow = {
   rank: number;

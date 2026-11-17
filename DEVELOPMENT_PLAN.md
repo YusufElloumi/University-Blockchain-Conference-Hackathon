@@ -216,6 +216,19 @@ Added beyond the plan: a catch-up (`events.catch_up`) that fetches a challenge's
 
 Still to verify for the "working result": the payout event arriving through the live Stream (it was paused), and the feed updating on a second person's screen.
 
+## Stage 5b - Play modes: League, Public, Private (Mon Nov 16, 3-4 h)
+
+Every event belongs to one mode. Mode is off-chain metadata on our server; the program is unchanged.
+
+- [x] `challenges.mode` (`league`, `public`, `private`) and `organizer_name`; new `invites` table; events from before modes are private.
+- [x] Server-side access rules: league and private events cannot be read (state, leaderboard, score sheet, finish, pick) or joined without being the creator, a player, or having redeemed the invite code. Outsiders get 404.
+- [x] `GET /events/public`, `POST /invites/redeem`, `GET /me/challenges?mode=`. Six-character invite codes without look-alike characters.
+- [x] Tests for the access rules (`api/tests/test_modes.py`); all 103 API tests pass.
+- [x] Screens: home with three mode cards, a mode screen (public list, or invite-code box plus my events), create flow that takes the mode from its screen, mode badge and "Hosted by" on the event page, invite links by code. Type-check and build pass.
+- [ ] Click through on devnet with two real accounts: create one event per mode, join a public one from the list, join a private and a league one by code, and check that a wrong code is refused.
+- Known limit: the program's `join_challenge` is open to anyone who knows the address, so an uninvited wallet could still deposit directly onchain. Our server never records them, so they score zero. Closing that onchain would need a program change (server co-signs joins); not done.
+- Player cap is still 8 per event (`MAX_PLAYERS`, account sized at creation), public events included.
+
 ## CUT LINE REVIEW - Wednesday, November 18, 8:00 PM
 
 Ask one question: **is Stage 6 verified on devnet?**
@@ -412,3 +425,4 @@ Answered by the guide (Nov 14): prizes stack (track + one chain award + bounties
 | 2026-11-14 | **README written. Stage 7 (Gemini pick'em) built except a real-game resolution.** `api/pickem.py` reads live games and odds from Gemini's public Prediction Markets API; players make one free pick before kick-off; a correct pick breaks a tie at settlement and is recorded in the score sheet. Real games showed in the browser and a real pick was saved. 87 API tests pass. Built before the cut line because Stages 1-6 were already verified and the API needed no account. | Same list that needs a person as above. For Gemini: run one tied challenge whose picked game finishes before it ends, to see a real resolution. Stage 8 (Grok) needs X Premium, so it waits for a person. |
 | 2026-11-15 | Neon database created and linked with Neon's command-line tool (`neon`, installed globally). The API's database code works against it unchanged: 8 tables created, a row written to five of them and read back, times in UTC. Connection strings are in `.env.local` (ignored by git); the repo's `.env` was left alone so local runs stay on SQLite. Neon's agent plugin and `neon.ts` file were not installed, since the app only needs the address. | Render: New > Blueprint, with `DATABASE_URL` set to the pooled address from `.env.local`. Then Vercel, the Stream's destination URL, and the two GitHub secrets. |
 | 2026-11-15 | Added `docs/SETUP.md`: step-by-step teammate setup for macOS and Windows (tools, the shared team `.env` with keys inline, running the API and web app, troubleshooting, optional program toolchain). README "Run it locally" now shows macOS and Windows commands and links to it. Not ticked: the macOS steps and a fresh-WSL install have not been tried on a clean computer. | A teammate follows `docs/SETUP.md` on a Mac and reports what breaks (counts toward the Stage 9 clean-machine test). Yusuf prepares the team `.env`. |
+| 2026-11-16 | **Play modes built (Stage 5b), not yet clicked through on devnet.** League, Public and Private modes as off-chain metadata: new `mode` and `organizer_name` columns, a ninth table `invites`, access rules enforced by the server, public event list, invite-code redeem, mode screens and badges. Program, deposit, scoring and settlement unchanged. 103 API tests pass (16 new); two existing test fixtures now create a public event, because an event with no mode is private and their second player has no invite. Events first recorded on join (made by the scripts) are public. The home screen no longer shows the demo-challenge shortcut or the flat "Your challenges" list; events live in their mode screens. | Click through all three modes on devnet with two accounts. Decide whether the existing demo challenge should be set to public in the deployed database. |
