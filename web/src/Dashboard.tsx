@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, ArrowUpRight, ChevronRight, CircleHelp, LogOut, Pencil, Plus } from "lucide-react";
 import type { ChallengeState, ChallengeView, Me, MyEvent } from "./api";
 import type { Session } from "./App";
-import runnerCity from "./assets/media/runner-city.jpg";
 import { EventRow, eventStatus, InviteCodeBox } from "./events";
 import { money } from "./format";
+import { PHOTOS } from "./media";
 import { MODE_INFO, ModeBadge, MODES } from "./modes";
 import { Avatar, Eyebrow, Skeleton } from "./ui";
 
@@ -130,7 +130,7 @@ export default function Dashboard(props: {
               <Skeleton rows={1} height={210} />
             ) : active.length === 0 ? (
               <div className="starter">
-                <img src={runnerCity} alt="" />
+                <img src={PHOTOS.tennisFeet.src} alt="" />
                 <div className="starter-copy">
                   <h3 className="headline">
                     Your first rival is <em className="serif">waiting.</em>

@@ -1,14 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ArrowRight, ArrowUpRight, Menu, X } from "lucide-react";
-import duoBack from "./assets/media/duo-back.jpg";
-import duoFront from "./assets/media/duo-front.jpg";
-import runnerCity from "./assets/media/runner-city.jpg";
-import silhouette from "./assets/media/silhouette.jpg";
-import sprintTall from "./assets/media/sprint-tall.jpg";
-import trackDuel from "./assets/media/track-duel.jpg";
-import trackLanes from "./assets/media/track-lanes.jpg";
-import trackStride from "./assets/media/track-stride.jpg";
 import { FORMAT_INFO, FORMATS } from "./formats";
+import { PHOTOS, type Picture } from "./media";
 import { HeroVideo, Lane, Photo, ProductPreview, StepList } from "./sitekit";
 import { DemoBanner, Reveal, Wordmark } from "./ui";
 
@@ -219,7 +212,7 @@ function HomePage({ go, onLogin }: Nav) {
 
       <section className="wrap how">
         <Reveal className="how-photo">
-          <Photo src={sprintTall} alt="A runner mid-stride on a track, seen from the ground">
+          <Photo photo={PHOTOS.stretch} sizes="(min-width: 960px) 40vw, 100vw">
             <figcaption>
               <b>04</b> Every day counts
             </figcaption>
@@ -242,7 +235,7 @@ function HomePage({ go, onLogin }: Nav) {
       </section>
 
       <section className="bleed">
-        <Photo src={trackDuel} alt="Two runners racing side by side on a track" />
+        <Photo photo={PHOTOS.duoStreet} />
         <Reveal className="bleed-copy">
           <Lane n="03" label="The Rival way" />
           <blockquote className="display">
@@ -288,7 +281,7 @@ function HomePage({ go, onLogin }: Nav) {
 function Finale({ onLogin, children }: { onLogin: () => void; children?: ReactNode }) {
   return (
     <section className="bleed finale">
-      <Photo src={silhouette} alt="The silhouette of a runner at sunrise" />
+      <Photo photo={PHOTOS.silhouette} />
       <Reveal className="bleed-copy">
         <h2 className="mega">
           {children ?? (
@@ -307,7 +300,7 @@ function Finale({ onLogin, children }: { onLogin: () => void; children?: ReactNo
 }
 
 /** The top of an inner page: a large headline beside a photograph. */
-function PageHero(props: { lane: string; label: string; title: ReactNode; lede: string; photo: string; alt: string }) {
+function PageHero(props: { lane: string; label: string; title: ReactNode; lede: string; photo: Picture }) {
   return (
     <section className="wrap page-hero">
       <div className="page-hero-copy">
@@ -322,7 +315,7 @@ function PageHero(props: { lane: string; label: string; title: ReactNode; lede: 
         </p>
       </div>
       <div className="rise" style={{ "--i": 2 } as React.CSSProperties}>
-        <Photo src={props.photo} alt={props.alt} eager />
+        <Photo photo={props.photo} eager sizes="(min-width: 960px) 50vw, 100vw" />
       </div>
     </section>
   );
@@ -342,8 +335,7 @@ function HowPage({ go, onLogin }: Nav) {
           </>
         }
         lede="A Rival challenge takes a minute to set up and runs itself from there. Here is the whole thing, start to finish."
-        photo={trackStride}
-        alt="A runner's stride and long shadow on a track"
+        photo={PHOTOS.tennisFeet}
       />
 
       <section className="wrap chapters-long">
@@ -480,7 +472,7 @@ function WayPage({ go, onLogin }: Nav) {
       </section>
 
       <section className="bleed bleed-short rise" style={{ "--i": 2 } as React.CSSProperties}>
-        <Photo src={duoFront} alt="Two friends running towards the camera on a city path" eager />
+        <Photo photo={PHOTOS.wraps} eager />
       </section>
 
       <section className="wrap essay">
@@ -521,10 +513,10 @@ function WayPage({ go, onLogin }: Nav) {
 
       <section className="wrap duo">
         <Reveal>
-          <Photo src={duoBack} alt="Two runners side by side, seen from behind in morning light" />
+          <Photo photo={PHOTOS.duoBack} sizes="(min-width: 960px) 50vw, 100vw" />
         </Reveal>
         <Reveal delay={120} className="duo-offset">
-          <Photo src={runnerCity} alt="A runner in the city, seen from a low angle" />
+          <Photo photo={PHOTOS.barbell} />
         </Reveal>
       </section>
 
@@ -560,8 +552,7 @@ function PlayPage({ onLogin }: Nav) {
       title: "Private",
       text: "The classic. Start a game, send the code to the group chat, and settle who's actually been training. Invite only and never listed anywhere.",
       points: ["Invite by code or link", "Up to eight players", "You set the fee and the length"],
-      photo: duoBack,
-      alt: "Two friends running together",
+      photo: PHOTOS.duoBack,
     },
     {
       name: "Public events",
@@ -569,8 +560,7 @@ function PlayPage({ onLogin }: Nav) {
       title: "Public",
       text: "Open to anyone on Rival. Join a community challenge that's about to start, or create one and let the field come to you.",
       points: ["Listed for everyone", "Join in one tap", "Bigger fields, bigger prize pools"],
-      photo: trackLanes,
-      alt: "A runner alone on numbered track lanes",
+      photo: PHOTOS.trackLanes,
     },
     {
       name: "Leagues",
@@ -578,8 +568,7 @@ function PlayPage({ onLogin }: Nav) {
       title: "League",
       text: "For gyms, clubs and tournaments. An organizer hosts and invites members, and can score by fitness or by the league's own stat sheet.",
       points: ["Hosted by an organizer", "Members join with a code", "Fitness or league-stat scoring"],
-      photo: trackDuel,
-      alt: "Two athletes racing on a track",
+      photo: PHOTOS.dribble,
     },
   ];
   return (
@@ -612,7 +601,7 @@ function PlayPage({ onLogin }: Nav) {
               </ul>
             </div>
             <div className="chapter-visual">
-              <Photo src={mode.photo} alt={mode.alt} />
+              <Photo photo={mode.photo} sizes="(min-width: 960px) 50vw, 100vw" />
             </div>
           </Reveal>
         ))}

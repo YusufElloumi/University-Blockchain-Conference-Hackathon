@@ -5,21 +5,20 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Footprints } from "lucide-react";
 import type { PlayerRow } from "./api";
-import heroPoster from "./assets/media/hero-poster.jpg";
-import heroSmall from "./assets/media/hero-small.mp4";
-import heroVideo from "./assets/media/hero.mp4";
 import Leaderboard from "./Leaderboard";
+import { hero1080, hero2160, hero480, hero720, heroPoster, type Picture } from "./media";
 import { prefersReducedMotion, Reveal } from "./ui";
 
-/** The three shots of the hero loop and when each one ends (seconds). */
+/** The three chapters of the hero loop and when each one ends (seconds). Six shots: hand wraps and
+ *  shoes; a runner, a barbell and a basketball; then two people running side by side. */
 const CHAPTERS = [
-  { label: "Lace up", end: 3.6 },
-  { label: "Head out", end: 8.6 },
-  { label: "Find your rival", end: 13 },
+  { label: "Lace up", end: 4.4 },
+  { label: "Show up", end: 11.6 },
+  { label: "Find your rival", end: 14.6 },
 ];
 
 /**
- * The hero film: a short, silent, looping morning run. Shown in black and white under a dark shade
+ * The hero film: a short, silent loop of people getting ready and getting after it. Shown in black and white under a dark shade
  * so the headline stays readable. People who prefer reduced motion get the still poster instead.
  */
 export function HeroVideo() {
@@ -48,8 +47,11 @@ export function HeroVideo() {
           <img src={heroPoster} alt="" />
         ) : (
           <video ref={ref} poster={heroPoster} autoPlay muted loop playsInline preload="auto" aria-hidden tabIndex={-1}>
-            <source src={heroSmall} type="video/mp4" media="(max-width: 720px)" />
-            <source src={heroVideo} type="video/mp4" />
+            {/* The browser takes the first file whose rule matches, so small screens never download the big ones. */}
+            <source src={hero480} type="video/mp4" media="(max-width: 720px)" />
+            <source src={hero720} type="video/mp4" media="(max-width: 1280px)" />
+            <source src={hero1080} type="video/mp4" media="(max-width: 2400px)" />
+            <source src={hero2160} type="video/mp4" />
           </video>
         )}
       </div>
@@ -76,10 +78,18 @@ export function HeroVideo() {
 }
 
 /** A photograph in the site's treatment: black and white, deep contrast, a little grain. */
-export function Photo(props: { src: string; alt: string; className?: string; eager?: boolean; children?: ReactNode }) {
+export function Photo(props: { photo: Picture; className?: string; eager?: boolean; sizes?: string; children?: ReactNode }) {
+  const { photo } = props;
   return (
     <figure className={`photo ${props.className ?? ""}`}>
-      <img src={props.src} alt={props.alt} loading={props.eager ? "eager" : "lazy"} decoding="async" />
+      <img
+        src={photo.src}
+        srcSet={photo.src4k ? `${photo.src} 1920w, ${photo.src4k} 3840w` : undefined}
+        sizes={photo.src4k ? (props.sizes ?? "100vw") : undefined}
+        alt={photo.alt}
+        loading={props.eager ? "eager" : "lazy"}
+        decoding="async"
+      />
       {props.children}
     </figure>
   );
