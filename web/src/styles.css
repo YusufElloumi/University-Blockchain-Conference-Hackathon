@@ -5519,3 +5519,35 @@ input[type="checkbox"] {
 .starter > img {
   object-position: 30% 50%;
 }
+
+/* The wordmark is set in the editorial italic serif, like the headline highlights. */
+.wordmark > span,
+.intro-word > span {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.24em;
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+
+.wordmark > span {
+  /* Optical alignment with the mark: the serif sits a touch high otherwise. */
+  transform: translateY(-0.03em);
+  padding-right: 0.06em;
+}
+
+.intro-word > span {
+  padding: 0.1em 0.14em 0.1em 0.16em;
+}
+
+@keyframes word-open {
+  from {
+    max-width: 0;
+    opacity: 0;
+  }
+  to {
+    max-width: 3.4em;
+    opacity: 1;
+  }
+}
