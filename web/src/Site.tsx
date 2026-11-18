@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ArrowRight, ArrowUpRight, Menu, X } from "lucide-react";
+import { ArrowRight, Menu, X } from "lucide-react";
 import { FORMAT_INFO, FORMATS } from "./formats";
-import { CapGraphic, HeroRules, LaneBoard, Matchup, ModeGraphic, RuleStrip } from "./graphics";
+import { CapGraphic, HeroRules, Matchup, ModeGraphic, RuleStrip } from "./graphics";
+import { RaceStory, Ticker, WaysSelector, WorkoutDemo } from "./interactive";
 import { PHOTOS, type Picture } from "./media";
 import { HeroVideo, Lane, Photo, ProductPreview, StepList } from "./sitekit";
-import { DemoBanner, Reveal, Wordmark } from "./ui";
+import { flushSync } from "react-dom";
+import { DemoBanner, prefersReducedMotion, Reveal, Wordmark } from "./ui";
 
 /** The public website's pages. Each has its own address (?page=...), so links and the back button work. */
 export type SitePage = "home" | "how" | "way" | "play";
@@ -34,18 +36,32 @@ export default function Site({ onLogin }: { onLogin: () => void }) {
   const [page, setPage] = useState<SitePage>(readPage);
   const [menu, setMenu] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [tucked, setTucked] = useState(false);
 
   const go = useCallback((next: SitePage) => {
     const url = window.location.pathname + (next === "home" ? "" : `?page=${next}`);
     window.history.pushState(null, "", url);
-    setPage(next);
-    setMenu(false);
-    window.scrollTo(0, 0);
+    const apply = () => {
+      setPage(next);
+      setMenu(false);
+      window.scrollTo(0, 0);
+    };
+    // Where the browser supports it, cross-fade between pages instead of cutting.
+    const doc = document as Document & { startViewTransition?: (run: () => void) => unknown };
+    if (doc.startViewTransition && !prefersReducedMotion()) doc.startViewTransition(() => flushSync(apply));
+    else apply();
   }, []);
 
   useEffect(() => {
     const onBack = () => setPage(readPage());
-    const onScroll = () => setScrolled(window.scrollY > 24);
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 24);
+      // The header steps aside while reading down the page and returns on the way back up.
+      if (Math.abs(y - lastY) > 6) setTucked(y > lastY && y > 480);
+      lastY = y;
+    };
     onScroll();
     window.addEventListener("popstate", onBack);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -87,7 +103,8 @@ export default function Site({ onLogin }: { onLogin: () => void }) {
   return (
     <div className={`site${page === "home" ? " site-home" : ""}`}>
       <DemoBanner />
-      <header className={`site-nav${scrolled || menu ? " solid" : ""}`}>
+      <header className={`site-nav${scrolled || menu ? " solid" : ""}${tucked && !menu ? " tucked" : ""}`}>
+        <i className="scroll-progress" aria-hidden />
         <div className="site-nav-inner">
           <a {...link("home")} className="site-brand" aria-label="Rival home">
             <Wordmark />
@@ -186,60 +203,52 @@ function HomePage({ go, onLogin }: Nav) {
 
       <RuleStrip />
 
-      <section className="wrap split">
-        <Reveal className="split-copy">
-          <Lane n="01" label="The competition" />
-          <h2 className="headline">
-            Better because we're <em className="serif">competing.</em>
-          </h2>
-          <p className="lede">
-            Every workout moves a leaderboard your friends are watching. That's the whole trick: it's easier to show up
-            when someone is one point behind you.
-          </p>
-          <dl className="facts-list">
-            <div>
-              <dt>Live standings</dt>
-              <dd>Ranks shift the moment anyone logs a workout.</dd>
-            </div>
-            <div>
-              <dt>Points, not private data</dt>
-              <dd>Friends see your score. Never your routes, times or activities.</dd>
-            </div>
-            <div>
-              <dt>Something on the line</dt>
-              <dd>A small entry fee builds a shared prize pool. It's the nudge, not the point.</dd>
-            </div>
-          </dl>
-        </Reveal>
-        <Reveal className="split-visual" delay={120}>
-          <ProductPreview />
-        </Reveal>
+      {/* Blue-tinted dark: the product, playable */}
+      <section className="env env-blue">
+        <div className="wrap play-demo">
+          <Reveal className="play-demo-copy">
+            <Lane n="01" label="The competition" />
+            <h2 className="display">
+              Better because we're <em className="serif">competing.</em>
+            </h2>
+            <p className="lede">
+              Every workout moves a leaderboard your friends are watching. Log one below and see what a couple of
+              points does to the order.
+            </p>
+          </Reveal>
+          <Reveal delay={100}>
+            <WorkoutDemo />
+          </Reveal>
+        </div>
       </section>
 
-      <section className="wrap how">
-        <div className="how-visual">
-          <LaneBoard />
-        </div>
-        <div className="how-copy">
-          <Reveal>
-            <Lane n="02" label="How it works" />
-            <h2 className="headline">
+      <Ticker />
+
+      {/* Near-black: a week of racing, driven by the scroll */}
+      <RaceStory>
+        <Lane n="02" label="A week on Rival" />
+      </RaceStory>
+
+      {/* Charcoal: the four steps across the full width */}
+      <section className="env env-charcoal">
+        <div className="wrap steps-wide">
+          <Reveal className="steps-wide-head">
+            <Lane n="03" label="How it works" />
+            <h2 className="display">
               Make progress. <em className="serif">Make it count.</em>
             </h2>
-          </Reveal>
-          <StepList />
-          <Reveal>
             <button className="text-link" onClick={() => go("how")}>
               The full rundown <ArrowRight size={16} aria-hidden />
             </button>
           </Reveal>
+          <StepList />
         </div>
       </section>
 
       <section className="versus">
         <div className="wrap versus-inner">
           <Reveal className="versus-copy">
-            <Lane n="03" label="The Rival way" />
+            <Lane n="04" label="The Rival way" />
             <blockquote className="display">
               Nobody trains harder than someone <em className="serif">one point behind.</em>
             </blockquote>
@@ -251,29 +260,18 @@ function HomePage({ go, onLogin }: Nav) {
         </div>
       </section>
 
-      <section className="wrap ways">
-        <Reveal>
-          <Lane n="04" label="Ways to play" />
-          <h2 className="headline">
-            Find your <em className="serif">rival.</em>
-          </h2>
-        </Reveal>
-        <div className="ways-list">
-          {[
-            { name: "Private play", text: "Your friends, team or office. Invite only, never listed." },
-            { name: "Public events", text: "Open to anyone. Community and city-wide, with bigger prize pools." },
-            { name: "Leagues", text: "Hosted by a gym, club or tournament, scored by fitness or the league's own stats." },
-            { name: "Prediction rounds", text: "An optional side game: call real sports results for bonus points." },
-          ].map((way, i) => (
-            <Reveal key={way.name} delay={i * 60}>
-              <button className="way-row" onClick={() => go("play")}>
-                <b>0{i + 1}</b>
-                <span className="way-name">{way.name}</span>
-                <span className="way-text">{way.text}</span>
-                <ArrowUpRight size={22} aria-hidden />
-              </button>
-            </Reveal>
-          ))}
+      {/* Green-tinted dark: choose a way to play */}
+      <section className="env env-green">
+        <div className="wrap ways">
+          <Reveal>
+            <Lane n="05" label="Ways to play" />
+            <h2 className="display">
+              Find your <em className="serif">rival.</em>
+            </h2>
+          </Reveal>
+          <Reveal delay={100}>
+            <WaysSelector onMore={() => go("play")} />
+          </Reveal>
         </div>
       </section>
 

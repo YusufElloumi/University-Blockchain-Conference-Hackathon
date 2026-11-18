@@ -6521,3 +6521,875 @@ input[type="checkbox"] {
     display: none;
   }
 }
+
+/* ---------- 18. Immersive layout: full width, section environments, interactive pieces ---------- */
+
+/* The public site spans the whole browser. Only the gutter grows; text keeps its own reading width. */
+:root {
+  --gutter: clamp(20px, 5vw, 112px);
+}
+
+.wrap,
+.site-nav-inner,
+.hero-inner,
+.bleed-copy,
+.site-foot,
+.rule-strip {
+  max-width: none;
+  padding-inline: var(--gutter);
+}
+
+.chapters {
+  inset-inline: var(--gutter);
+  max-width: none;
+}
+
+.mega {
+  font-size: clamp(44px, 8.6vw, 190px);
+}
+
+.display {
+  font-size: clamp(42px, 6vw, 128px);
+}
+
+.hero .mega {
+  max-width: 14ch;
+}
+
+.hero {
+  min-height: clamp(620px, calc(100svh - var(--banner-h)), 1400px);
+}
+
+.lede {
+  font-size: clamp(15px, 1.15vw, 22px);
+}
+
+/* Section environments: every band is dark, but no two neighbours are the same dark. */
+.env {
+  position: relative;
+  isolation: isolate;
+}
+
+.env-blue {
+  background:
+    radial-gradient(70% 90% at 78% 40%, rgba(120, 175, 255, 0.13), transparent 70%),
+    linear-gradient(180deg, var(--bg), #0a0e15 30%, #0a0e15 70%, var(--bg));
+}
+
+.env-charcoal {
+  background: #111214;
+  border-block: 1px solid var(--line);
+}
+
+.env-charcoal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--grain);
+  opacity: 0.05;
+}
+
+.env-green {
+  background:
+    radial-gradient(60% 80% at 18% 30%, rgba(188, 235, 156, 0.085), transparent 70%),
+    linear-gradient(180deg, var(--bg), #0a0f0b 35%, #0a0f0b 75%, var(--bg));
+}
+
+/* ----- Adaptive header ----- */
+.site-nav {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.45s var(--ease);
+}
+
+.site-nav.tucked {
+  transform: translateY(calc(-100% - var(--banner-h)));
+}
+
+.scroll-progress {
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+@supports (animation-timeline: scroll()) {
+  .scroll-progress {
+    animation: progress-grow linear both;
+    animation-timeline: scroll(root);
+  }
+}
+
+@keyframes progress-grow {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Page-to-page cross-fade (browsers with view transitions) */
+::view-transition-old(root) {
+  animation: vt-out 0.28s ease both;
+}
+
+::view-transition-new(root) {
+  animation: vt-in 0.5s var(--ease) both;
+}
+
+@keyframes vt-out {
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+/* ----- Playable demo ----- */
+.play-demo {
+  display: grid;
+  gap: 48px;
+  padding-block: clamp(88px, 10vw, 180px);
+}
+
+.play-demo-copy .lede {
+  margin-top: 24px;
+  max-width: 40ch;
+}
+
+.demo {
+  display: grid;
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
+  background: rgba(13, 15, 19, 0.82);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    var(--shadow),
+    0 80px 160px -80px rgba(120, 175, 255, 0.35);
+  overflow: hidden;
+}
+
+.demo-controls {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  padding: 26px 24px;
+}
+
+.demo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--green);
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.demo-tag i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse-green 2s ease-out infinite;
+}
+
+.demo-field {
+  display: grid;
+  gap: 9px;
+}
+
+.demo-field > span,
+.demo-cap span,
+.demo-board-rank small {
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.demo-worth {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-block: 1px solid var(--line);
+}
+
+.demo-worth b {
+  min-width: 44px;
+  color: var(--green);
+  font-family: var(--caps);
+  font-size: 64px;
+  font-weight: 600;
+  line-height: 0.9;
+}
+
+.demo-worth span {
+  display: grid;
+  gap: 3px;
+  font-size: 15px;
+}
+
+.demo-worth small {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.demo-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.demo-note {
+  min-height: 2.8em;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.demo-board {
+  padding: 22px 14px 14px;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.demo-board-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 10px 14px;
+}
+
+.demo-board-title {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.demo-board-rank {
+  display: grid;
+  justify-items: end;
+}
+
+.demo-board-rank b {
+  color: var(--accent-bright);
+  font-family: var(--caps);
+  font-size: 54px;
+  font-weight: 600;
+  line-height: 0.9;
+  animation: rank-pop 0.5s var(--ease) both;
+}
+
+@keyframes rank-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+  }
+}
+
+.demo-cap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 10px 4px;
+}
+
+.demo-cap span:last-child {
+  margin-left: auto;
+}
+
+.demo-cap i {
+  width: 34px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line-strong);
+  transition: background-color 0.4s ease;
+}
+
+.demo-cap i.on {
+  background: var(--green);
+}
+
+/* ----- Ticker: the page's one light band ----- */
+.ticker {
+  overflow: hidden;
+  background: #eceee9;
+  color: #0b0d0f;
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker 46s linear infinite;
+}
+
+.ticker-track > span {
+  display: flex;
+  flex: none;
+}
+
+.ticker-track > span > span {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(20px, 2.4vw, 44px);
+  padding: 15px 0 15px clamp(20px, 2.4vw, 44px);
+  font-family: var(--caps);
+  font-size: clamp(17px, 1.5vw, 26px);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ticker i {
+  width: 22px;
+  height: 2px;
+  background: #0b0d0f;
+}
+
+@keyframes ticker {
+  to {
+    transform: translateX(-25%);
+  }
+}
+
+/* ----- Scroll-driven race ----- */
+.race {
+  position: relative;
+  /* Tall on purpose: the extra height is the scroll distance that plays the week. */
+  height: calc(100svh + 7 * 46svh);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px clamp(80px, 9vw, 180px)),
+    var(--bg);
+}
+
+.race-pin {
+  position: sticky;
+  top: 0;
+  display: grid;
+  align-content: center;
+  gap: 28px;
+  height: 100svh;
+  padding: calc(var(--banner-h) + 24px) var(--gutter) 24px;
+}
+
+.race-still {
+  height: auto;
+}
+
+.race-still .race-pin {
+  position: static;
+  height: auto;
+  padding-block: 96px;
+}
+
+.race-copy .lane {
+  margin-bottom: 20px;
+}
+
+.race-day {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.race-day b {
+  color: var(--text);
+  font-family: var(--caps);
+  font-size: clamp(72px, 11vw, 220px);
+  font-weight: 600;
+  line-height: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.race-day span {
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: clamp(14px, 1.2vw, 20px);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.race-scene {
+  min-height: 3.6em;
+  margin-top: 18px;
+  max-width: 22em;
+  font-size: clamp(20px, 2.1vw, 40px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.18;
+  text-wrap: balance;
+  animation: scene-in 0.5s var(--ease) both;
+}
+
+.race-scene .serif {
+  font-size: 1.12em;
+}
+
+@keyframes scene-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.race-rail {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  max-width: 420px;
+  margin-top: 22px;
+}
+
+.race-rail i {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--line-strong);
+  transition: background-color 0.35s ease;
+}
+
+.race-rail i.on {
+  background: var(--green);
+}
+
+.race-hint {
+  margin-top: 14px;
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.race-board {
+  min-width: 0;
+  background: rgba(16, 17, 19, 0.9);
+}
+
+.race-board .lane-day i {
+  transition:
+    background-color 0.35s ease,
+    transform 0.4s var(--ease);
+}
+
+.race-board .lane-day.today i.on {
+  transform: scaleY(1.25);
+}
+
+.lane-axis .today {
+  color: var(--green);
+}
+
+.race-board .lane-total {
+  transition: color 0.3s ease;
+}
+
+/* ----- Steps across the full width ----- */
+.steps-wide {
+  display: grid;
+  gap: 40px;
+  padding-block: clamp(88px, 9vw, 168px);
+}
+
+.steps-wide-head {
+  display: grid;
+  justify-items: start;
+  gap: 24px;
+}
+
+.steps-wide .lane {
+  margin-bottom: 4px;
+}
+
+/* ----- Ways to play selector ----- */
+.env-green .ways {
+  padding-block: clamp(88px, 9vw, 168px);
+}
+
+.ways-select {
+  display: grid;
+  gap: 32px;
+  margin-top: 44px;
+}
+
+.ways-tabs {
+  display: grid;
+  justify-items: start;
+  border-top: 1px solid var(--line);
+}
+
+.ways-tab {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0 8px;
+  width: 100%;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+  transition:
+    border-color 0.3s ease,
+    padding 0.4s var(--ease);
+}
+
+.ways-tab b {
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  transition: color 0.25s ease;
+}
+
+.ways-tab-name {
+  color: var(--text-3);
+  font-size: clamp(26px, 3.2vw, 60px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+  transition: color 0.25s ease;
+}
+
+.ways-tab-text {
+  grid-column: 2;
+  display: grid;
+  grid-template-rows: 0fr;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: 46ch;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    grid-template-rows 0.45s var(--ease),
+    opacity 0.35s ease,
+    margin 0.45s var(--ease);
+}
+
+.ways-tab-text::before {
+  content: "";
+  min-height: 0;
+}
+
+.ways-tab-text {
+  /* Collapsed rows clip the text; the open tab lets it take its natural height. */
+  max-height: 0;
+}
+
+.ways-tab.on {
+  border-color: var(--green);
+}
+
+.ways-tab.on b {
+  color: var(--green);
+}
+
+.ways-tab.on .ways-tab-name {
+  color: var(--text);
+}
+
+.ways-tab.on .ways-tab-text {
+  max-height: 8em;
+  margin-top: 10px;
+  opacity: 1;
+}
+
+.ways-tabs .text-link {
+  margin-top: 28px;
+}
+
+.ways-stage {
+  display: grid;
+  align-content: center;
+  min-height: 300px;
+  animation: stage-in 0.5s var(--ease) both;
+}
+
+.ways-stage .graphic {
+  width: 100%;
+  max-width: 640px;
+}
+
+@keyframes stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+
+.pick-card-title {
+  padding: 22px 20px 14px;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.pick-card .demo-pick {
+  padding: 0 20px 22px;
+}
+
+.versus {
+  background:
+    radial-gradient(50% 80% at 85% 50%, rgba(120, 175, 255, 0.08), transparent 70%),
+    var(--bg);
+  border: 0;
+}
+
+.versus-copy blockquote {
+  font-size: clamp(38px, 5vw, 104px);
+}
+
+.finale {
+  min-height: min(100svh, 1200px);
+}
+
+.site-foot .wordmark {
+  font-size: clamp(56px, 12vw, 220px);
+}
+
+@media (min-width: 720px) {
+  .rule-strip {
+    padding-inline: var(--gutter);
+  }
+
+  .demo {
+    grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.2fr);
+  }
+
+  .demo-controls {
+    padding: 32px;
+  }
+
+  .demo-board {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+    padding: 28px 18px 18px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .play-demo {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    align-items: center;
+    gap: clamp(48px, 6vw, 140px);
+  }
+
+  .race-pin {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    align-items: center;
+    gap: clamp(48px, 6vw, 140px);
+  }
+
+  .race-board .lane-row {
+    height: clamp(58px, 7.4svh, 92px);
+  }
+
+  .race-board .lane-name {
+    font-size: clamp(15px, 1.15vw, 21px);
+  }
+
+  .race-board .lane-total {
+    font-size: clamp(26px, 2.4vw, 46px);
+  }
+
+  .race-board .lane-day i {
+    height: clamp(7px, 0.9svh, 12px);
+  }
+
+  .steps-wide {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: clamp(48px, 6vw, 140px);
+    align-items: start;
+  }
+
+  .steps-wide-head {
+    position: sticky;
+    top: 130px;
+  }
+
+  .steps-wide .step-list {
+    margin: 0;
+  }
+
+  .ways-select {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(48px, 6vw, 140px);
+    align-items: center;
+  }
+
+  .ways-stage {
+    justify-items: center;
+    min-height: 420px;
+  }
+}
+
+/* Very wide screens: the step list becomes four columns, using the room instead of stretching lines. */
+@media (min-width: 1800px) {
+  .steps-wide {
+    grid-template-columns: 1fr;
+  }
+
+  .steps-wide-head {
+    position: static;
+  }
+
+  .steps-wide .step-list {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0 48px;
+  }
+
+  .steps-wide .step-list li {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    border-bottom: 0;
+    padding-top: 28px;
+  }
+
+  .steps-wide .step-list-n {
+    font-size: 44px;
+  }
+}
+
+@media (max-width: 1099px) {
+  /* On phones and tablets the pinned view stacks: the story on top, the board underneath. */
+  .race-pin {
+    align-content: start;
+    gap: 18px;
+    padding-top: calc(var(--banner-h) + 76px);
+  }
+
+  .race-day b {
+    font-size: clamp(56px, 16vw, 110px);
+  }
+
+  .race-scene {
+    min-height: 4.2em;
+    margin-top: 10px;
+    font-size: clamp(18px, 4.6vw, 28px);
+  }
+
+  .race-rail {
+    margin-top: 12px;
+  }
+
+  .race-hint {
+    display: none;
+  }
+
+  .race-board .lane-row {
+    height: 50px;
+  }
+}
+
+/* ----- Signed-in app: use more of a wide screen without stretching rows of text ----- */
+.main-inner {
+  max-width: 1560px;
+}
+
+@media (min-width: 1180px) {
+  .dash-grid {
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 400px);
+    gap: clamp(32px, 3vw, 56px);
+  }
+
+  .comp-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+
+  .ch-grid {
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 26vw, 440px);
+  }
+}
+
+@media (min-width: 1500px) {
+  .main {
+    padding-inline: clamp(48px, 4vw, 96px);
+  }
+
+  .mode-rows {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0 32px;
+  }
+
+  .mode-row {
+    grid-template-columns: 36px minmax(0, 1fr) 20px;
+  }
+
+  .mode-row-line {
+    grid-column: 2 / -1;
+  }
+
+  .mode-row svg {
+    grid-column: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+
+  .site-nav.tucked {
+    transform: none;
+  }
+}
+
+.play-demo-copy .display {
+  font-size: clamp(42px, 4.8vw, 104px);
+}
+
+.steps-wide .step-list li {
+  align-content: start;
+}
+
+/* Inner pages on wide screens: let the product graphics grow with the layout. */
+@media (min-width: 1400px) {
+  .chapter-visual .demo-panel,
+  .chapter-visual .demo-rules,
+  .chapter-visual .ticket,
+  .chapter-visual .open-list,
+  .chapter-visual .stat-sheet,
+  .split-visual .demo-panel {
+    max-width: min(100%, 680px);
+  }
+
+  .chapter-visual .preview {
+    max-width: 600px;
+  }
+
+  .chapter-copy .headline,
+  .split-copy .headline,
+  .principles .headline {
+    font-size: clamp(40px, 3.6vw, 76px);
+  }
+
+  .chapters-long {
+    gap: clamp(96px, 9vw, 200px);
+  }
+
+  .demo-rules li {
+    font-size: 19px;
+  }
+
+  .demo-rules b {
+    font-size: 48px;
+  }
+}
