@@ -19,7 +19,11 @@ export type AppConfig = {
   oracle: string;
   usdc_mint: string;
   fitness: { source: string; label: string; can_add: boolean; types: string[] };
+  pick_themes: { id: string; label: string }[];
+  max_pick_points: number;
 };
+
+export type StatWeights = { goals: number; assists: number; points: number };
 
 export type ChallengeView = {
   address: string;
@@ -32,6 +36,11 @@ export type ChallengeView = {
   end: string;
   status: "open" | "settled" | "refunded";
   invite_code: string;
+  scoring_source: "fitness" | "league_stats";
+  stat_weights: StatWeights | null;
+  pick_themes: string[];
+  round_hours: number | null; // a prediction round every this many hours; null = no rounds
+  round_count: number;
 };
 
 /** One of "my" events in a mode: joined, created, or invited to. */
@@ -44,20 +53,45 @@ export type PlayerRow = {
   rank: number;
   name: string;
   points: number;
+  base_points: number; // fitness or league-stat points
+  pick_points: number; // prediction pick points
   ticks: boolean[];
   is_you: boolean;
-  pick: string | null; // their tiebreaker pick, hidden until kick-off
 };
 
-/** A game from Gemini Prediction Markets, with the market's current chance for each side. */
-export type Game = {
-  ticker: string;
+/** One prediction round: a Gemini market, its sides, and (after kick-off) everyone's picks. */
+export type PickRound = {
+  number: number;
   title: string;
+  theme: string;
+  theme_label: string;
   league: string;
-  starts: string;
-  options: { id: string; label: string; chance: number | null }[];
+  market_url: string;
+  locks_at: string;
+  locked: boolean;
+  status: "open" | "resolved" | "void";
+  winner: string | null;
+  options: { id: string; label: string; chance: number; pays: number }[];
+  picks_made: number;
+  yours: { option_id: string; pick: string; chance: number; pays: number; points: number | null } | null;
+  everyone: { name: string; pick: string; points: number | null }[] | null;
 };
-export type MyPick = { ticker: string; game: string; option_id: string; pick: string; chance: number | null };
+
+/** What the organizer sees about the uploaded stat sheet. */
+export type StatsSummary = {
+  dates: string[];
+  rows: number;
+  sheet_names: string[];
+  weights: StatWeights;
+  players: { user_id: number; name: string; stat_name: string | null }[];
+  unmatched: string[];
+  grok_url: string;
+  grok_prompt: string;
+  first_date: string;
+  last_date: string;
+  skipped_outside_dates?: number;
+};
+
 export type FeedItem = { kind: string; text: string; signature: string; time: string };
 
 export type ChallengeState = {
@@ -67,7 +101,7 @@ export type ChallengeState = {
   pool: number | null;
   player_count: number | null;
   players: PlayerRow[] | null; // null unless you are a player
-  pickem: { open: boolean; made: number; yours: MyPick | null } | null;
+  rounds: { total: number; max_points: number; list: PickRound[] } | null;
   feed: FeedItem[];
 };
 
@@ -134,5 +168,7 @@ export async function retryWhileNotReady<T>(action: () => Promise<T>, attempts =
     }
   }
 }
+
+export const API_BASE = API_URL;
 
 export const getAppConfig = () => request<AppConfig>("GET", "/app-config", null);

@@ -663,7 +663,7 @@ button.danger {
   color: var(--muted);
 }
 
-/* Pick'em tiebreaker */
+/* Prediction pick card */
 .row.tight {
   margin-top: 0;
 }
@@ -671,13 +671,6 @@ button.danger {
 .powered {
   font-size: 11px;
   color: var(--muted);
-}
-
-.pick-made {
-  font-family: var(--display);
-  font-size: 26px;
-  font-weight: 700;
-  text-transform: uppercase;
 }
 
 .game {
@@ -1051,4 +1044,853 @@ input.code-input {
   color: var(--muted);
   font-size: 14px;
   font-weight: 600;
+}
+
+/* Prediction rounds */
+.round-title {
+  margin: 2px 0 8px;
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.sides.three {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.side.stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-height: 72px;
+  padding: 8px 12px;
+}
+
+.side.stacked small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.side.won {
+  border-color: var(--ok);
+}
+
+.side:disabled {
+  cursor: default;
+}
+
+.round-history {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.round-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.round-line span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.round-line span:last-child {
+  flex: none;
+  color: var(--muted);
+}
+
+.round-line .good {
+  color: var(--ok);
+}
+
+.market-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+/* Setup: scoring source, stat weights, picks switch */
+.choice-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  text-align: left;
+}
+
+.choice span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.choice.on {
+  border-color: var(--accent);
+  background: rgba(198, 244, 50, 0.12);
+}
+
+.weights {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.weights label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.toggle {
+  min-width: 56px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.toggle.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.muted.small {
+  font-size: 13px;
+}
+
+/* Organizer stat sheet */
+.stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stats-status {
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tool:hover {
+  border-color: var(--accent);
+}
+
+.tool.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tool input[type="file"] {
+  display: none;
+}
+
+textarea,
+select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px; /* keeps phones from zooming in */
+}
+
+textarea {
+  resize: vertical;
+}
+
+select {
+  min-height: 44px;
+  margin-top: 0;
+}
+
+button.small.wide {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.stats-message {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.stats-message.ok {
+  color: var(--ok);
+}
+
+.stats-message.error {
+  color: var(--error);
+}
+
+.match-list {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.match-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Join intro: "how it works" pop-up */
+.intro-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(4, 9, 7, 0.78);
+  animation: intro-fade 0.2s ease-out;
+}
+
+.intro {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  padding: 20px 20px 18px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  text-align: center;
+  animation: intro-rise 0.25s ease-out;
+}
+
+.intro-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: var(--card-2);
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.intro-art {
+  margin: 8px -4px 4px;
+  border-radius: 14px;
+  background: var(--bg);
+  animation: intro-fade 0.3s ease-out;
+}
+
+.intro-art {
+  aspect-ratio: 240 / 140; /* same frame on every screen, so the button never jumps */
+}
+
+.art {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.intro-title {
+  margin: 14px 0 6px;
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.intro-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 124px; /* the longest screen's text, so the button stays put */
+}
+
+.intro-body p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.intro-body b {
+  color: var(--accent);
+}
+
+.intro-rules {
+  display: inline-block;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+  font-weight: 600;
+  line-height: 1.9;
+}
+
+.intro-rules span {
+  display: inline-block;
+  width: 26px;
+}
+
+.intro-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.intro-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: width 0.2s, background 0.2s;
+}
+
+.intro-dots i.on {
+  width: 20px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.intro-fine {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@keyframes intro-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes intro-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+/* drawing parts */
+.art-ground {
+  stroke: var(--line);
+  stroke-width: 3;
+}
+
+.art-head {
+  fill: var(--ink);
+}
+
+.art-limb {
+  stroke: var(--ink);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.art-goalie .art-head {
+  fill: var(--muted);
+}
+
+.art-goalie .art-limb {
+  stroke: var(--muted);
+}
+
+.art-goal {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 4;
+}
+
+.art-mesh {
+  stroke: var(--muted);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.art-ball {
+  fill: var(--accent);
+  animation: art-shot 2.4s ease-in infinite;
+}
+
+.art-net {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: art-ripple 2.4s ease-out infinite;
+}
+
+.art-pole {
+  stroke: var(--muted);
+  stroke-width: 3;
+}
+
+.art-flag {
+  fill: var(--accent);
+}
+
+.art-speed {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+
+.art-runner {
+  animation: art-bob 0.5s ease-in-out infinite alternate;
+}
+
+.art-row rect:first-child {
+  fill: var(--card-2);
+}
+
+.art-row .art-dot,
+.art-row .art-bar {
+  fill: var(--muted);
+  opacity: 0.6;
+}
+
+.art-row.you rect:first-child {
+  fill: var(--accent);
+}
+
+.art-row.you .art-dot,
+.art-row.you .art-bar {
+  fill: var(--accent-ink);
+  opacity: 0.8;
+}
+
+.art-row.you {
+  animation: art-you 3.6s ease-in-out infinite both;
+}
+
+.art-row.r1 {
+  animation: art-r1 3.6s ease-in-out infinite both;
+}
+
+.art-row.r2 {
+  animation: art-r2 3.6s ease-in-out infinite both;
+}
+
+.art-crown path {
+  fill: var(--gold);
+}
+
+.art-crown {
+  animation: art-crown 3.6s ease-out infinite both;
+}
+
+.art-trophy {
+  fill: var(--gold);
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: art-lift 1.2s ease-in-out infinite alternate;
+}
+
+.art-handle {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 3;
+}
+
+.art-bill {
+  fill: var(--ok);
+}
+
+.art-coin {
+  fill: var(--gold);
+}
+
+.art-fall {
+  animation: art-fall 2.6s linear infinite both;
+}
+
+@keyframes art-shot {
+  0%,
+  15% {
+    transform: translate(0, 0);
+  }
+  55% {
+    transform: translate(118px, -36px);
+  }
+  100% {
+    transform: translate(118px, -36px);
+    opacity: 0;
+  }
+}
+
+@keyframes art-ripple {
+  0%,
+  50% {
+    transform: scaleX(1);
+  }
+  58% {
+    transform: scaleX(1.08);
+  }
+  70% {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes art-bob {
+  to {
+    transform: translateY(-5px);
+  }
+}
+
+/* rows: 1st at y=28, 2nd 62, 3rd 96. "You" climbs from 3rd to 1st; the crown drops on */
+@keyframes art-you {
+  0%,
+  20% {
+    transform: translateY(96px);
+  }
+  55%,
+  90% {
+    transform: translateY(28px);
+  }
+  100% {
+    transform: translateY(96px);
+  }
+}
+
+@keyframes art-r1 {
+  0%,
+  20% {
+    transform: translateY(28px);
+  }
+  55%,
+  90% {
+    transform: translateY(62px);
+  }
+  100% {
+    transform: translateY(28px);
+  }
+}
+
+@keyframes art-r2 {
+  0%,
+  20% {
+    transform: translateY(62px);
+  }
+  55%,
+  90% {
+    transform: translateY(96px);
+  }
+  100% {
+    transform: translateY(62px);
+  }
+}
+
+@keyframes art-crown {
+  0%,
+  55% {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  68%,
+  88% {
+    transform: translateY(26px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(26px);
+    opacity: 0;
+  }
+}
+
+@keyframes art-lift {
+  to {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+}
+
+@keyframes art-fall {
+  from {
+    transform: translateY(0) rotate(0deg);
+  }
+  to {
+    transform: translateY(170px) rotate(160deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro,
+  .intro-backdrop,
+  .intro-art,
+  .art * {
+    animation: none !important;
+  }
+  .art-row.you {
+    transform: translateY(28px) !important;
+  }
+  .art-row.r1 {
+    transform: translateY(62px) !important;
+  }
+  .art-row.r2 {
+    transform: translateY(96px) !important;
+  }
+  .art-crown {
+    transform: translateY(26px);
+  }
+  .art-fall {
+    transform: translateY(60px);
+  }
+}
+
+/* UI pass, Nov 17: compact pick card, segmented control, single-level cards */
+a.powered {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.side.stacked {
+  position: relative;
+}
+
+.side-tag {
+  position: absolute;
+  top: -9px;
+  right: 8px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.picks-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.picks-row .good {
+  color: var(--ok);
+}
+
+.round-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.round-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: none;
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mark.hit {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.mark.miss {
+  border-color: var(--error);
+  background: var(--error);
+}
+
+.mark.now {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 4px var(--card), inset 0 0 0 11px var(--accent);
+}
+
+.mark.wait,
+.mark.void {
+  border-style: dashed;
+  border-color: var(--muted);
+}
+
+.mark.sel {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.mark:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.round-total {
+  flex: none;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.round-peek {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.standings.no-form .standings-head,
+.standings.no-form .standing {
+  grid-template-columns: 28px 1fr 44px;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.segmented button {
+  min-height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.segmented button.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.rule-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.rule-list b {
+  display: inline-block;
+  min-width: 26px;
+  color: var(--accent);
+}
+
+.card + .card {
+  margin-top: 12px;
+}
+
+/* Withdraw button and its note */
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.withdraw-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.withdraw-btn:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.withdraw-pic {
+  display: block;
+  width: 100%;
+  max-width: 229px;
+  margin: 8px auto 0;
+  border-radius: 14px;
+}
+
+.withdraw-text {
+  margin: 0 0 18px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.intro.withdraw .intro-title {
+  text-align: center;
 }

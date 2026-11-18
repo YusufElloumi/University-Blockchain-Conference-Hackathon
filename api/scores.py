@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 
 import db
 import fitness
+import leaguestats
+import pickrounds
 import scoring
 
 FINAL_STATUSES = ("settled", "refunded")
@@ -22,6 +24,8 @@ FINAL_STATUSES = ("settled", "refunded")
 
 def recompute(session: Session, challenge: db.Challenge, user_id: int) -> scoring.ScoreSheet:
     """Fetches the player's activities for the challenge and replaces their stored points."""
+    if uses_league_stats(challenge):
+        return scoring.ScoreSheet()  # points come from the uploaded stat sheet, not workouts
     provider = fitness.get_provider()
     start, end = db.utc(challenge.start_time), db.utc(challenge.end_time)
     sheet = scoring.score_daily_mover(
@@ -47,6 +51,10 @@ def recompute(session: Session, challenge: db.Challenge, user_id: int) -> scorin
     return sheet
 
 
+def uses_league_stats(challenge: db.Challenge) -> bool:
+    return challenge.scoring_source == "league_stats"
+
+
 def challenges_of(session: Session, user_id: int) -> list[db.Challenge]:
     return list(
         session.scalars(
@@ -68,13 +76,18 @@ def display_name(user: db.User) -> str:
 
 
 def leaderboard(session: Session, challenge: db.Challenge, now: datetime | None = None) -> list[dict]:
-    """Every player with their total points and daily ticks, best first. Tied players share a rank."""
+    """Every player with their total points and daily ticks, best first. Tied players share a rank.
+
+    Total = main points (fitness, or league stats) + prediction pick points, to one decimal place.
+    """
     start, end = db.utc(challenge.start_time), db.utc(challenge.end_time)
     now = min(now or datetime.now(timezone.utc), end)
     days_so_far = max(0, math.ceil((now - start) / scoring.DAY))
     entries: dict[int, dict[int, db.ScoreEntry]] = {}
     for entry in session.scalars(select(db.ScoreEntry).where(db.ScoreEntry.challenge_id == challenge.id)):
         entries.setdefault(entry.user_id, {})[entry.day] = entry
+    stats = leaguestats.points_by_user(session, challenge) if uses_league_stats(challenge) else None
+    picks = pickrounds.points_by_user(session, challenge)
     rows = []
     players = session.execute(
         select(db.User, db.Participant)
@@ -83,13 +96,19 @@ def leaderboard(session: Session, challenge: db.Challenge, now: datetime | None 
     )
     for user, _participant in players:
         days = entries.get(user.id, {})
+        base = stats.get(user.id, 0) if stats is not None else sum(e.points for e in days.values())
+        pick_points = picks.get(user.id, 0.0)
         rows.append(
             {
                 "user_id": user.id,
                 "name": display_name(user),
                 "wallet": user.wallet_address,
-                "points": sum(e.points for e in days.values()),
-                "ticks": [bool(days[d].active) if d in days else False for d in range(days_so_far)],
+                "points": _tidy(base + pick_points),
+                "base_points": _tidy(base),
+                "pick_points": _tidy(pick_points),
+                # League stats have no daily ticks.
+                "ticks": [] if stats is not None else
+                [bool(days[d].active) if d in days else False for d in range(days_so_far)],
             }
         )
     rows.sort(key=lambda r: (-r["points"], r["name"].lower()))
@@ -97,6 +116,12 @@ def leaderboard(session: Session, challenge: db.Challenge, now: datetime | None 
         tied_with_previous = i > 0 and rows[i - 1]["points"] == row["points"]
         row["rank"] = rows[i - 1]["rank"] if tied_with_previous else i + 1
     return rows
+
+
+def _tidy(points: float) -> float | int:
+    """One decimal place; whole numbers stay whole (3, not 3.0)."""
+    points = round(points, 1)
+    return int(points) if points == int(points) else points
 
 
 def forget_user(session: Session, user_id: int) -> None:

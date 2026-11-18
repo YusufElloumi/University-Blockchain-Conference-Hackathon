@@ -27,7 +27,8 @@ import chain
 import config
 import db
 import events
-import pickem
+import leaguestats
+import pickrounds
 import scores
 
 log = logging.getLogger("loser_buys")
@@ -50,13 +51,25 @@ def build_sheet(session: Session, challenge: db.Challenge, players: list[str]) -
     for user_id in participants:
         scores.recompute(session, challenge, user_id)
     points = {row["wallet"]: row["points"] for row in scores.leaderboard(session, challenge)}
-    return {
+    sheet = {
         "challenge": challenge.address,
         "rules": challenge.template,
         # A player who deposited but never agreed to share points has no score with us: zero.
         "scores": [{"wallet": wallet, "points": points.get(wallet, 0)} for wallet in players],
         "salt": secrets.token_hex(16),  # stops anyone guessing the sheet from the hash alone
     }
+    if scores.uses_league_stats(challenge):
+        sheet["rules"] = "league_stats"
+        sheet["league_stats"] = {"weights": leaguestats.weights(challenge),
+                                 "sha256": leaguestats.stats_hash(session, challenge)}
+    rounds = pickrounds.rounds_of(session, challenge)
+    if rounds:
+        sheet["prediction_rounds"] = {
+            "source": "Gemini Prediction Markets",
+            "max_points": pickrounds.MAX_PICK_POINTS,
+            "rounds": [{"market": r.event_ticker, "status": r.status, "winner": r.winning_option_id} for r in rounds],
+        }
+    return sheet
 
 
 def winners_of(sheet: dict) -> list[str]:
@@ -114,11 +127,13 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
         grace = 0 if end_now else config.SETTLE_GRACE_SECONDS
         if now < state.end_time + grace:
             raise NotYet("The challenge has not finished yet.")
+        # Prediction rounds: wait for Gemini's results, up to RESULT_WAIT after the end. Then (or at once,
+        # for an admin's early end) any round still without a result is void and scores nothing.
+        waited = now - state.end_time >= pickrounds.RESULT_WAIT.total_seconds()
+        if not pickrounds.resolve(session, challenge, give_up=end_now or waited):
+            raise NotYet("Waiting for game results from Gemini.")
         sheet = build_sheet(session, challenge, [str(p) for p in state.players])
-        # A tie is broken by the pick'em: a tied player whose pick was right wins outright.
-        winners, tiebreak = pickem.break_tie(session, challenge, winners_of(sheet))
-        if tiebreak:
-            sheet["tiebreak"] = tiebreak
+        winners = winners_of(sheet)  # a tie at the top splits the pool
         signature = chain.settle(client, oracle, address, [Pubkey.from_string(w) for w in winners], sheet_hash(sheet))
         challenge.status, challenge.settle_tx, challenge.score_sheet = "settled", signature, json.dumps(sheet)
         result.update(action="settled", status="settled", signature=signature, winners=winners)
@@ -136,6 +151,12 @@ def finish_all_due(session: Session) -> list[dict]:
     for challenge in session.scalars(select(db.Challenge).where(db.Challenge.status == "open")).all():
         if db.utc(challenge.start_time) > datetime.now(timezone.utc):
             continue
+        try:  # prediction rounds move on even when nobody has the challenge screen open
+            pickrounds.open_due_round(session, challenge)
+            pickrounds.resolve(session, challenge)
+        except Exception:
+            session.rollback()
+            log.exception("Could not update prediction rounds for %s", challenge.address)
         try:
             done.append({"address": challenge.address, **finish(session, challenge)})
         except NotYet:

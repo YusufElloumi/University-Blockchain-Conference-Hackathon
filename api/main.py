@@ -28,9 +28,13 @@ Stage 6 endpoints:
     POST /internal/tick                        finish everything that is due (scheduler, X-Tick-Secret header)
     GET  /challenges/{address}/score-sheet     final points and the hash stored onchain (players)
 
-Stage 7 endpoints (pick'em tiebreaker, data from Gemini Prediction Markets):
-    GET  /pickem/games                  upcoming games with live odds
-    POST /challenges/{address}/pick     the caller's one pick, changeable until kick-off
+Prediction rounds (one Gemini market per round; a right pick earns 1 / probability points, max 5):
+    POST /challenges/{address}/rounds/{number}/pick   the caller's pick in a round, changeable until kick-off
+League stats (league events scored from the league's stat sheet, uploaded as CSV by the organizer):
+    GET  /stats/template.csv                 the CSV template
+    GET  /challenges/{address}/stats         uploaded dates, sheet names and matching (organizer)
+    POST /challenges/{address}/stats         upload CSV text (organizer)
+    POST /challenges/{address}/stats/match   link players to sheet names (organizer)
 Play modes (league, public, private; off-chain only):
     GET  /events/public                 open public events anyone can join
     POST /invites/redeem                enter a league or private event's invite code to see and join it
@@ -49,6 +53,7 @@ import json
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from solana.rpc.api import Client
 from solders.pubkey import Pubkey
@@ -62,7 +67,8 @@ import chain
 import db
 import events
 import fitness
-import pickem
+import leaguestats
+import pickrounds
 import scores
 import settlement
 import treasury
@@ -153,7 +159,7 @@ def setup(user: db.User = Depends(current_user), session: Session = Depends(db.g
 def fund(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
     """ "Add test funds": sends devnet USDC from the treasury. Once per user."""
     if not db.claim_test_funds(session, user.id):
-        raise HTTPException(409, "Test funds were already added to this account.")
+        raise HTTPException(409, "Devnet USDC was already added to this account.")
     wallet = Pubkey.from_string(user.wallet_address)
     try:
         signature = treasury.send_usdc(wallet)
@@ -164,7 +170,7 @@ def fund(user: db.User = Depends(current_user), session: Session = Depends(db.ge
     except Exception as e:
         log.exception("Test funds transfer failed")
         db.release_test_funds(session, user.id)
-        raise HTTPException(503, "Could not add test funds right now. Try again in a moment.") from e
+        raise HTTPException(503, "Could not add devnet USDC right now. Try again in a moment.") from e
     session.refresh(user)
     user.funded_tx = signature
     session.commit()
@@ -231,6 +237,10 @@ class NewChallenge(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     mode: Literal[MODES] = "private"  # type: ignore[valid-type]
     organizer_name: str | None = Field(default=None, max_length=60)  # required for league events
+    scoring_source: Literal["fitness", "league_stats"] = "fitness"  # league_stats: league events only
+    stat_weights: dict[Literal["goals", "assists", "points"], float] | None = None
+    pick_themes: list[Literal[tuple(pickrounds.THEMES)]] = Field(default_factory=list)  # type: ignore[valid-type]
+    round_hours: Literal[pickrounds.ROUND_CHOICES] | None = None  # type: ignore[valid-type]
 
 
 class InviteCode(BaseModel):
@@ -326,6 +336,11 @@ def _challenge_view(challenge: db.Challenge) -> dict:
         "end": db.utc(challenge.end_time).isoformat(),
         "status": challenge.status,
         "invite_code": challenge.invite_code,
+        "scoring_source": challenge.scoring_source or "fitness",
+        "stat_weights": leaguestats.weights(challenge) if scores.uses_league_stats(challenge) else None,
+        "pick_themes": pickrounds.settings(challenge)[0],
+        "round_hours": pickrounds.settings(challenge)[1],
+        "round_count": pickrounds.round_count(challenge),
     }
 
 
@@ -364,10 +379,24 @@ def record_challenge(
     state = onchain_challenge(body.address)
     if str(state.creator) != user.wallet_address:
         raise HTTPException(403, "Only the person who created this challenge can set it up.")
+    if body.scoring_source == "league_stats" and body.mode != "league":
+        raise HTTPException(400, "League stats scoring is for league events only.")
+    if body.stat_weights and not all(0 <= v <= 10 for v in body.stat_weights.values()):
+        raise HTTPException(400, "Stat weights must be between 0 and 10.")
+    themes = list(dict.fromkeys(body.pick_themes))
+    if bool(themes) != bool(body.round_hours):
+        raise HTTPException(400, "Choose at least one theme and how often a round opens, or turn picks off.")
     challenge = _register(
         session, body.address, state, body.name.strip(), user.id,
         mode=body.mode, organizer_name=organizer if body.mode == "league" else None,
     )
+    if challenge.creator_id == user.id and challenge.scoring_source is None and challenge.pick_themes is None:
+        challenge.scoring_source = body.scoring_source
+        if body.scoring_source == "league_stats":
+            challenge.stat_weights = json.dumps({**leaguestats.DEFAULT_WEIGHTS, **(body.stat_weights or {})})
+        challenge.pick_themes = json.dumps(themes)
+        challenge.round_hours = body.round_hours
+        session.commit()
     return _challenge_view(challenge)
 
 
@@ -469,6 +498,10 @@ def add_activity(
     results = []
     for challenge in scores.challenges_of(session, user.id):
         sheet = scores.recompute(session, challenge, user.id)
+        if scores.uses_league_stats(challenge):
+            results.append({"address": challenge.address, "name": challenge.name, "points": 0, "counted": False,
+                            "reason": "this event is scored from the league's stat sheet"})
+            continue
         counted = any(activity.id in day.activity_ids for day in sheet.days.values())
         results.append(
             {
@@ -512,6 +545,8 @@ def app_config() -> dict:
             "can_add": isinstance(provider, fitness.LoggedProvider),
             "types": list(fitness.ACTIVITY_TYPES),
         },
+        "pick_themes": [{"id": k, "label": v["label"]} for k, v in pickrounds.THEMES.items()],
+        "max_pick_points": pickrounds.MAX_PICK_POINTS,
     }
 
 
@@ -629,19 +664,28 @@ def challenge_state(
     } if wallets else {}
     is_player = challenge is not None and _is_player(session, challenge, user)
     players = None
-    pick_info = None
+    rounds = None
+    has_rounds = challenge is not None and bool(pickrounds.settings(challenge)[1])
     if is_player:
-        picks = pickem.picks_of(session, challenge)
-        started = datetime.now(timezone.utc) >= db.utc(challenge.start_time)
+        if has_rounds:
+            _update_rounds(session, challenge)
+        board = scores.leaderboard(session, challenge)
         players = [
             {"rank": r["rank"], "name": r["name"], "points": r["points"], "ticks": r["ticks"],
-             "is_you": r["user_id"] == user.id,
-             # Picks stay secret until kick-off, so nobody can copy one.
-             "pick": picks[r["user_id"]].option_label if started and r["user_id"] in picks else None}
-            for r in scores.leaderboard(session, challenge)
+             "base_points": r["base_points"], "pick_points": r["pick_points"],
+             "is_you": r["user_id"] == user.id}
+            for r in board
         ]
-        pick_info = {"open": not started and challenge.status == "open", "made": len(picks),
-                     "yours": pickem.pick_view(picks.get(user.id))}
+        if has_rounds:
+            names = {r["user_id"]: r["name"] for r in board}
+            all_rounds = pickrounds.rounds_of(session, challenge)
+            rounds = {
+                "total": pickrounds.round_count(challenge),
+                "max_points": pickrounds.MAX_PICK_POINTS,
+                # Live odds only for the newest round; older ones show the odds when they opened.
+                "list": [pickrounds.round_view(session, r, user.id, names, live=(r is all_rounds[-1]))
+                         for r in all_rounds],
+            }
     return {
         "challenge": _challenge_view(challenge) if challenge else None,
         "you": {
@@ -654,10 +698,20 @@ def challenge_state(
         "pool": None if pool_units is None else pool_units / 10**config.USDC_DECIMALS,
         "player_count": player_count,
         "players": players,
-        "pickem": pick_info,
+        "rounds": rounds,
         # A wallet with no account here (or one that never shared a name) is shown by its last 4 characters.
         "feed": events.feed(rows, lambda wallet: names.get(wallet, f"Player {wallet[-4:]}")),
     }
+
+
+def _update_rounds(session: Session, challenge: db.Challenge) -> None:
+    """Opens the round that is due and reads finished games' results. Never breaks the screen."""
+    try:
+        pickrounds.open_due_round(session, challenge)
+        pickrounds.resolve(session, challenge)
+    except Exception:
+        session.rollback()
+        log.exception("Could not update prediction rounds for %s", challenge.address)
 
 
 # ---------- Stage 6: settlement and payout ----------
@@ -720,42 +774,100 @@ def score_sheet(address: str, user: db.User = Depends(current_user), session: Se
     return {"sheet": sheet, "sha256": settlement.sheet_hash(sheet).hex(), "transaction": challenge.settle_tx}
 
 
-# ---------- Stage 7: pick'em tiebreaker (Gemini Prediction Markets) ----------
+# ---------- Prediction rounds (Gemini Prediction Markets) ----------
 
 
-class NewPick(BaseModel):
-    ticker: str = Field(min_length=1, max_length=80)
-    option_id: str = Field(min_length=1, max_length=40)
+class RoundPickBody(BaseModel):
+    option_id: str = Field(min_length=1, max_length=60)
 
 
-@app.get("/pickem/games")
-def pickem_games(_user: db.User = Depends(current_user)) -> list[dict]:
-    """Upcoming games with live odds from Gemini Prediction Markets, for the tiebreaker pick."""
-    try:
-        return pickem.list_games()
-    except Exception as e:
-        log.exception("Could not load games from Gemini")
-        raise HTTPException(503, "Couldn't load the games right now. Try again in a moment.") from e
-
-
-@app.post("/challenges/{address}/pick")
-def make_pick(
-    address: str, body: NewPick, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+@app.post("/challenges/{address}/rounds/{number}/pick")
+def make_round_pick(
+    address: str, number: int, body: RoundPickBody,
+    user: db.User = Depends(current_user), session: Session = Depends(db.get_session),
 ) -> dict:
-    """Saves the caller's one tiebreaker pick. It can be changed until the challenge starts."""
+    """Saves the caller's pick in a round, at the market's current probability. Changeable until kick-off."""
     challenge = _visible_challenge(session, address, user)
     if not _is_player(session, challenge, user):
         raise HTTPException(403, "Join this challenge to make a pick.")
-    if challenge.status != "open" or datetime.now(timezone.utc) >= db.utc(challenge.start_time):
-        raise HTTPException(409, "Picks closed when the challenge started.")
+    round_ = session.scalar(
+        select(db.PickRound).where(db.PickRound.challenge_id == challenge.id, db.PickRound.number == number - 1)
+    )
+    if round_ is None:
+        raise HTTPException(404, "That round hasn't opened.")
+    if challenge.status != "open":
+        raise HTTPException(409, "This challenge is over.")
     try:
-        pick = pickem.save_pick(session, challenge, user.id, body.ticker, body.option_id)
+        pickrounds.save_pick(session, round_, user.id, body.option_id)
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
     except Exception as e:
         log.exception("Could not check the pick with Gemini")
         raise HTTPException(503, "Couldn't save your pick right now. Try again in a moment.") from e
-    return pickem.pick_view(pick)
+    return pickrounds.round_view(session, round_, user.id, {user.id: scores.display_name(user)})
+
+
+# ---------- League stats (CSV from the organizer) ----------
+
+
+class StatsUpload(BaseModel):
+    csv: str = Field(min_length=1, max_length=500_000)
+
+
+class StatsMatch(BaseModel):
+    matches: dict[int, str | None]  # user ID -> name on the sheet (None to unlink)
+
+
+@app.get("/stats/template.csv", response_class=PlainTextResponse)
+def stats_template() -> PlainTextResponse:
+    return PlainTextResponse(
+        leaguestats.TEMPLATE, media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=league_stats_template.csv"},
+    )
+
+
+def _stats_challenge(session: Session, address: str, user: db.User) -> db.Challenge:
+    """A league-stats event the caller organizes. Only the organizer uploads and matches stats."""
+    challenge = _visible_challenge(session, address, user)
+    if challenge.creator_id != user.id:
+        raise HTTPException(403, "Only the organizer can manage the stat sheet.")
+    if not scores.uses_league_stats(challenge):
+        raise HTTPException(409, "This event is scored from workouts, not a stat sheet.")
+    return challenge
+
+
+@app.get("/challenges/{address}/stats")
+def stats_summary(address: str, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    challenge = _stats_challenge(session, address, user)
+    return leaguestats.summary(session, challenge, scores.display_name)
+
+
+@app.post("/challenges/{address}/stats")
+def upload_stats(
+    address: str, body: StatsUpload, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    challenge = _stats_challenge(session, address, user)
+    if challenge.status != "open":
+        raise HTTPException(409, "This event is over; its stats can't change.")
+    try:
+        result = leaguestats.upload(session, challenge, body.csv, scores.display_name)
+    except leaguestats.BadSheet as e:
+        raise HTTPException(400, str(e)) from e
+    return {**result, **leaguestats.summary(session, challenge, scores.display_name)}
+
+
+@app.post("/challenges/{address}/stats/match")
+def match_stats(
+    address: str, body: StatsMatch, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> dict:
+    challenge = _stats_challenge(session, address, user)
+    if challenge.status != "open":
+        raise HTTPException(409, "This event is over; its stats can't change.")
+    try:
+        leaguestats.match(session, challenge, body.matches)
+    except leaguestats.BadSheet as e:
+        raise HTTPException(400, str(e)) from e
+    return leaguestats.summary(session, challenge, scores.display_name)
 
 
 @app.delete("/me/fitness")

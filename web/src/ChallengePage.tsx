@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  API_BASE,
   ApiError,
   retryWhileNotReady,
   type ActivityResult,
   type ActivityView,
   type ChallengeState,
-  type Game,
+  type PickRound,
+  type StatsSummary,
 } from "./api";
 import type { Session } from "./App";
 import { buildJoinTransaction, explorerTx, fetchChallenge, friendlyError, type ChallengeInfo } from "./chain";
 import { ago, countdown, money, usdc, when } from "./format";
+import JoinIntro from "./JoinIntro";
 import { InviteCodeBox } from "./ModeScreen";
 import { MODE_INFO, ModeBadge } from "./modes";
 
@@ -47,6 +50,7 @@ export default function ChallengePage(props: { address: string; session: Session
   const [copied, setCopied] = useState(false);
   const [lastTx, setLastTx] = useState("");
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [intro, setIntro] = useState(false); // the "how it works" pop-up shown before every join
   const [locked, setLocked] = useState(false); // invite-only event and you have no invite (the server said 404)
   const seenEvents = useRef(-1);
 
@@ -109,9 +113,11 @@ export default function ChallengePage(props: { address: string; session: Session
       setLastTx(signature);
       await Promise.all([loadChain(), refreshBalance()]);
       await recordJoin(signature);
+      setIntro(false);
     } catch (e) {
       console.error(e);
       setError(friendlyError(e));
+      setIntro(false);
     } finally {
       setBusy(false);
     }
@@ -167,6 +173,8 @@ export default function ChallengePage(props: { address: string; session: Session
   }, [isOver, mayAsk, finish]);
 
   const mode = state?.challenge?.mode;
+  const statsScored = state?.challenge?.scoring_source === "league_stats"; // no workouts tab for these
+  const tabs: Tab[] = statsScored ? ["table", "feed"] : ["table", "feed", "me"];
   const inviteCode = mode && MODE_INFO[mode].inviteOnly ? state?.challenge?.invite_code : undefined;
 
   async function onInvite() {
@@ -299,21 +307,30 @@ export default function ChallengePage(props: { address: string; session: Session
             <p className="muted">This challenge is full.</p>
           ) : (
             <>
-              <label className="consent">
-                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-                <span>Share my challenge points with this group. They see points only, never my activities.</span>
-              </label>
-              <button className="primary" onClick={onJoin} disabled={busy || !consent || !canAfford}>
+              <button className="primary" onClick={() => setIntro(true)} disabled={busy || !canAfford}>
                 {busy ? "Joining..." : `Join for ${usdc(info.buyIn)}`}
               </button>
               <p className="fine">
                 {canAfford
                   ? `${usdc(info.buyIn)} moves from your balance into the pool. Top scorer takes the pool.`
-                  : "You need more in your balance. Add test funds from the home screen first."}
+                  : "You need more in your balance. Add devnet USDC from the home screen first."}
               </p>
             </>
           )}
         </section>
+      )}
+      {intro && (
+        <JoinIntro
+          scoring={state?.challenge?.scoring_source ?? "fitness"}
+          weights={state?.challenge?.stat_weights ?? null}
+          hasPicks={!!state?.challenge?.round_hours}
+          lengthMs={info.endTime.getTime() - info.startTime.getTime()}
+          buyIn={info.buyIn}
+          playersAfterJoin={info.players.length + 1}
+          busy={busy}
+          onReady={onJoin}
+          onClose={() => setIntro(false)}
+        />
       )}
       {inOnchain && info.status === "open" && (
         <div className={`deposit ${state?.you.deposit_confirmed ? "confirmed" : ""}`}>
@@ -339,8 +356,15 @@ export default function ChallengePage(props: { address: string; session: Session
           </button>
         </section>
       )}
-      {state?.pickem && (state.pickem.open || state.pickem.yours) && (
-        <Pickem session={session} address={address} pickem={state.pickem} onPicked={loadState} />
+      {state?.rounds && (
+        <PickRounds
+          session={session}
+          address={address}
+          rounds={state.rounds}
+          phase={phase}
+          now={now}
+          onPicked={loadState}
+        />
       )}
       {phase === "joining" && !full && (
         <>
@@ -360,8 +384,8 @@ export default function ChallengePage(props: { address: string; session: Session
         </div>
       )}
 
-      <nav className="tabs" role="tablist">
-        {(["table", "feed", "me"] as Tab[]).map((t) => (
+      <nav className="tabs" role="tablist" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+        {tabs.map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
             {t === "table" ? "Table" : t === "feed" ? `Feed${state?.feed.length ? ` (${state.feed.length})` : ""}` : "My workouts"}
           </button>
@@ -393,41 +417,40 @@ export default function ChallengePage(props: { address: string; session: Session
 
       {tab === "table" && <Table state={state} phase={phase} />}
       {tab === "feed" && <Feed state={state} now={now} />}
-      {tab === "me" && (
+      {tab === "me" && !statsScored && (
         <MyWorkouts session={session} canAdd={onTable && config.fitness.can_add && phase !== "settled" && phase !== "refunded"} address={address} onScored={loadState} />
+      )}
+      {statsScored && state?.you.is_creator && info.status === "open" && (
+        <LeagueStats session={session} address={address} onChanged={loadState} />
       )}
     </>
   );
 }
 
-/** The tiebreaker: one free pick on a real game, with live odds from Gemini Prediction Markets. */
-function Pickem(props: {
+/** Prediction rounds: one Gemini market per round. A right pick earns 1 / chance points, capped. */
+function PickRounds(props: {
   session: Session;
   address: string;
-  pickem: NonNullable<ChallengeState["pickem"]>;
+  rounds: NonNullable<ChallengeState["rounds"]>;
+  phase: Phase;
+  now: number;
   onPicked: () => void;
 }) {
   const { call } = props.session;
-  const { open, yours } = props.pickem;
-  const [games, setGames] = useState<Game[] | null>(null);
-  const [choosing, setChoosing] = useState(false);
+  const { list, total } = props.rounds;
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
+  const [peek, setPeek] = useState<number | null>(null); // a past round tapped in the strip
+  const current: PickRound | undefined = list[list.length - 1];
+  const myPoints = Math.round(list.reduce((sum, r) => sum + (r.yours?.points ?? 0), 0) * 10) / 10;
+  const peeked = list.find((r) => r.number === peek);
 
-  useEffect(() => {
-    if (!open || !choosing) return;
-    call<Game[]>("GET", "/pickem/games")
-      .then(setGames)
-      .catch((e) => setError((e as Error).message));
-  }, [open, choosing, call]);
-
-  async function choose(game: Game, optionId: string) {
+  async function choose(round: PickRound, optionId: string) {
     setSaving(optionId);
     setError("");
     try {
-      await call("POST", `/challenges/${props.address}/pick`, { ticker: game.ticker, option_id: optionId });
+      await call("POST", `/challenges/${props.address}/rounds/${round.number}/pick`, { option_id: optionId });
       props.onPicked();
-      setChoosing(false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -438,64 +461,259 @@ function Pickem(props: {
   return (
     <section className="card pickem">
       <div className="row tight">
-        <div className="label">Tiebreaker pick</div>
-        <div className="powered">Odds from Gemini Prediction Markets</div>
+        <div className="label">Pick{current ? ` · Round ${current.number}/${total}` : ""}</div>
+        <a
+          className="powered"
+          href={current?.market_url ?? "https://www.gemini.com/predictions"}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Gemini ↗
+        </a>
       </div>
-      {yours && !choosing ? (
-        <div className="row">
-          <div>
-            <div className="pick-made">{yours.pick}</div>
-            <div className="fine">
-              {yours.game}
-              {yours.chance ? ` · ${yours.chance}% when you picked` : ""}
-            </div>
-          </div>
-          {open && (
-            <button className="link" onClick={() => setChoosing(true)}>
-              Change
-            </button>
-          )}
-        </div>
-      ) : !choosing ? (
-        <>
-          <p className="muted">Tied at the top? A correct pick wins the pool instead of splitting it. Free, one pick each.</p>
-          <button className="secondary" onClick={() => setChoosing(true)}>
-            Make my pick
-          </button>
-        </>
-      ) : games === null ? (
-        <p className="muted">{error || "Loading games..."}</p>
-      ) : games.length === 0 ? (
-        <p className="muted">No games are open right now.</p>
+
+      {current ? (
+        <RoundCard round={current} now={props.now} saving={saving} onChoose={(id) => choose(current, id)} />
       ) : (
-        <>
-          <p className="fine">Who wins? Picks stay hidden until kick-off, and lock then.</p>
-          {games.map((game) => (
-            <div key={game.ticker} className="game">
-              <div className="fine">
-                {game.league} · {when(new Date(game.starts))}
-              </div>
-              <div className="sides">
-                {game.options.map((o) => (
-                  <button
-                    key={o.id}
-                    className={yours?.option_id === o.id ? "side on" : "side"}
-                    onClick={() => choose(game, o.id)}
-                    disabled={saving !== ""}
-                  >
-                    <span>{o.label}</span>
-                    <b>{saving === o.id ? "..." : o.chance ? `${o.chance}%` : "-"}</b>
-                  </button>
-                ))}
-              </div>
-            </div>
+        <p className="muted">
+          {props.phase === "joining" ? "Round 1 opens at kick-off." : props.phase === "live" ? "Finding a game..." : "No rounds played."}
+        </p>
+      )}
+      {error && <div className="message error">{error}</div>}
+
+      {list.length > 0 && (
+        <div className="round-strip">
+          <div className="round-marks" aria-label="Your rounds">
+            {Array.from({ length: total }, (_, i) => {
+              const r = list.find((x) => x.number === i + 1);
+              const mark = !r
+                ? "future"
+                : r.status === "void"
+                  ? "void"
+                  : r.status === "open"
+                    ? r === current ? "now" : "wait"
+                    : r.yours?.points
+                      ? "hit"
+                      : "miss";
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className={`mark ${mark}${peek === i + 1 ? " sel" : ""}`}
+                  disabled={!r || r === current}
+                  onClick={() => setPeek(peek === i + 1 ? null : i + 1)}
+                  aria-label={r ? `Round ${i + 1}: ${r.title}` : `Round ${i + 1}`}
+                >
+                  {mark === "hit" ? "✓" : mark === "miss" ? "✗" : ""}
+                </button>
+              );
+            })}
+          </div>
+          <span className="round-total">🎯 {myPoints} pts</span>
+        </div>
+      )}
+      {peeked && (
+        <div className="round-peek">
+          R{peeked.number} · {peeked.title} ·{" "}
+          {peeked.status === "void"
+            ? "void"
+            : !peeked.yours
+              ? "no pick"
+              : `${peeked.yours.pick}${peeked.yours.points !== null ? ` · ${peeked.yours.points ? `+${peeked.yours.points}` : "0"} pts` : ""}`}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RoundCard(props: { round: PickRound; now: number; saving: string; onChoose: (optionId: string) => void }) {
+  const { round, saving } = props;
+  const open = !round.locked;
+  return (
+    <div className="round">
+      <div className="fine">
+        {round.league} ·{" "}
+        {open
+          ? `locks in ${countdown(new Date(round.locks_at), props.now)}`
+          : round.status === "open"
+            ? "in play"
+            : round.status === "void"
+              ? "void"
+              : "final"}
+      </div>
+      <div className="round-title">{round.title}</div>
+      <div className={round.options.length === 3 ? "sides three" : "sides"}>
+        {round.options.map((o) => {
+          const mine = round.yours?.option_id === o.id;
+          const won = round.winner === o.label;
+          const result = mine && round.yours?.points !== null && round.yours?.points !== undefined;
+          return (
+            <button
+              key={o.id}
+              className={`side stacked${mine ? " on" : ""}${won ? " won" : ""}`}
+              onClick={() => props.onChoose(o.id)}
+              disabled={!open || saving !== ""}
+            >
+              {mine && (
+                <em className="side-tag">{result ? (round.yours!.points ? `+${round.yours!.points}` : "0 pts") : "Your pick"}</em>
+              )}
+              <span>{o.label}</span>
+              <small>{o.chance}%</small>
+              <b>{saving === o.id ? "..." : `${mine ? round.yours!.pays : o.pays} pts`}</b>
+            </button>
+          );
+        })}
+      </div>
+      {round.everyone && round.everyone.length > 0 ? (
+        <div className="picks-row">
+          {round.everyone.map((p, i) => (
+            <span key={i} className={p.points ? "good" : ""}>
+              {p.name}: {p.pick}
+            </span>
           ))}
-          <button className="link center-link" onClick={() => setChoosing(false)}>
-            Close
-          </button>
+        </div>
+      ) : (
+        <p className="fine">🔒 {round.picks_made} picked · hidden until kick-off</p>
+      )}
+    </div>
+  );
+}
+
+/** Organizer only: the league's stat sheet. Collapsed to one line until "Manage" is tapped. */
+function LeagueStats(props: { session: Session; address: string; onChanged: () => void }) {
+  const { call } = props.session;
+  const [summary, setSummary] = useState<StatsSummary | null>(null);
+  const [open, setOpen] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ good: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    call<StatsSummary>("GET", `/challenges/${props.address}/stats`)
+      .then(setSummary)
+      .catch((e) => setMessage({ good: false, text: (e as Error).message }));
+  }, [call, props.address]);
+
+  async function upload(csv: string) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await call<StatsSummary>("POST", `/challenges/${props.address}/stats`, { csv });
+      setSummary(result);
+      setText("");
+      setPasting(false);
+      const skipped = result.skipped_outside_dates ? ` · ${result.skipped_outside_dates} outside the dates` : "";
+      setMessage({ good: true, text: `Uploaded${skipped}` });
+      props.onChanged();
+    } catch (e) {
+      setMessage({ good: false, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onMatch(userId: number, statName: string) {
+    setMessage(null);
+    try {
+      setSummary(
+        await call<StatsSummary>("POST", `/challenges/${props.address}/stats/match`, {
+          matches: { [userId]: statName || null },
+        }),
+      );
+      props.onChanged();
+    } catch (e) {
+      setMessage({ good: false, text: (e as Error).message });
+    }
+  }
+
+  function fromPdf() {
+    if (!summary) return;
+    navigator.clipboard.writeText(summary.grok_prompt).catch(() => undefined);
+    window.open(summary.grok_url, "_blank", "noopener");
+    setPasting(true);
+    setMessage({ good: true, text: "Prompt copied. Paste Grok's CSV below." });
+  }
+
+  const games = summary?.dates.length ?? 0;
+  const status = !summary
+    ? ""
+    : games === 0
+      ? "No stats yet"
+      : `${games} game${games === 1 ? "" : "s"}${summary.unmatched.length ? ` · ${summary.unmatched.length} unmatched` : ""}`;
+
+  return (
+    <section className="card stats-card">
+      <div className="stats-head">
+        <div>
+          <div className="label">Stat sheet</div>
+          <div className="stats-status">{status}</div>
+        </div>
+        <button type="button" className="chip" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "Done" : "Manage"}
+        </button>
+      </div>
+
+      {open && (
+        <>
+          <div className="tools">
+            <a className="tool" href={`${API_BASE}/stats/template.csv`} download>
+              Template
+            </a>
+            <label className={busy ? "tool disabled" : "tool"}>
+              {busy ? "Uploading..." : "Upload CSV"}
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                disabled={busy}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) upload(await file.text());
+                }}
+              />
+            </label>
+            <button type="button" className="tool" onClick={fromPdf} disabled={!summary || busy}>
+              From PDF
+            </button>
+          </div>
+
+          {pasting && (
+            <>
+              <textarea
+                rows={3}
+                value={text}
+                placeholder="Paste CSV"
+                onChange={(e) => setText(e.target.value)}
+                aria-label="CSV from Grok"
+              />
+              <button className="small wide" onClick={() => upload(text)} disabled={busy || !text.trim()}>
+                {busy ? "Uploading..." : "Upload"}
+              </button>
+            </>
+          )}
+
+          {message && <div className={`stats-message ${message.good ? "ok" : "error"}`}>{message.text}</div>}
+
+          {summary && summary.rows > 0 && summary.players.length > 0 && (
+            <div className="match-list">
+              {summary.players.map((p) => (
+                <label key={p.user_id} className="match-row">
+                  <span>{p.name}</span>
+                  <select value={p.stat_name ?? ""} onChange={(e) => onMatch(p.user_id, e.target.value)}>
+                    <option value="">Not on sheet</option>
+                    {summary.sheet_names.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          )}
         </>
       )}
-      {error && games !== null && <div className="message error">{error}</div>}
     </section>
   );
 }
@@ -504,12 +722,13 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
   if (!state) return <p className="muted center">Loading...</p>;
   if (!state.players) return <p className="muted center">Join this challenge to see the table.</p>;
   const days = Math.max(0, ...state.players.map((p) => p.ticks.length));
+  const form = state.challenge?.scoring_source !== "league_stats"; // stat sheets have no daily form
   return (
-    <section className="standings">
+    <section className={form ? "standings" : "standings no-form"}>
       <div className="standings-head">
         <span>#</span>
         <span>Player</span>
-        <span>Form</span>
+        {form && <span>Form</span>}
         <span>Pts</span>
       </div>
       {state.players.map((p, i) => (
@@ -521,22 +740,24 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
               <span className="who-name">
                 {p.name} {p.is_you && <span className="tag">You</span>}
               </span>
-              {p.pick && <span className="who-pick">Pick: {p.pick}</span>}
+              {state.rounds && p.pick_points > 0 && <span className="who-pick">🎯 {p.pick_points}</span>}
             </span>
           </span>
-          <span className="form" aria-label={`${p.ticks.filter(Boolean).length} active days of ${p.ticks.length}`}>
-            {p.ticks.slice(-7).map((hit, d) => (
-              <i key={d} className={hit ? "hit" : "miss"} />
-            ))}
-          </span>
+          {form && (
+            <span className="form" aria-label={`${p.ticks.filter(Boolean).length} active days of ${p.ticks.length}`}>
+              {p.ticks.slice(-7).map((hit, d) => (
+                <i key={d} className={hit ? "hit" : "miss"} />
+              ))}
+            </span>
+          )}
           <span className="pts">{p.points}</span>
         </div>
       ))}
-      <p className="fine">
-        {phase === "joining"
-          ? "Scoring starts at kick-off."
-          : `Form shows active days (20+ minutes)${days > 7 ? ", last 7" : ""}. Points only: nobody sees your activities.`}
-      </p>
+      {(phase === "joining" || form) && (
+        <p className="fine">
+          {phase === "joining" ? "Scoring starts at kick-off." : `Form: active days${days > 7 ? ", last 7" : ""}.`}
+        </p>
+      )}
     </section>
   );
 }

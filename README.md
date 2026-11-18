@@ -124,19 +124,29 @@ Our server does not poll the blockchain to find out what happened. A QuickNode S
 
 ## How we use Gemini Prediction Markets
 
-**The pick'em tiebreaker.** Fitness contests among friends tie often, and splitting the pool is a flat ending. So before kick-off each player may make one free pick: who wins a real upcoming game. If the challenge ends in a tie at the top, a tied player whose pick was right takes the pool instead of splitting it.
+**Prediction rounds.** Each challenge can run free prediction picks next to the main contest. When creating it, the organizer picks one or more themes (Basketball, Soccer, Hockey, Football, General) and how often a round opens (every day, or every week for longer events). Every round, the server chooses one real Gemini market automatically and every player picks a side. A right pick earns **1 ÷ the chance of the side picked**: a 50% side pays 2 points, a 25% side 4, capped at 5 so a single long shot can't decide a week. A wrong pick earns 0. Pick points add to the fitness or league-stat points on the table.
 
-Gemini's public Prediction Markets API (`GET /v1/prediction-markets/events`, market data, no key) does three jobs (`api/pickem.py`):
+Why 1 ÷ chance: if the market's odds are fair, every pick is worth 1 point on average whichever side you take, so picking the underdog is not a free win, only a riskier one.
+
+Gemini's public Prediction Markets API (market data, no key) does all of it (`api/pickrounds.py`):
 
 | Job | What we read |
 |---|---|
-| Find games | Active Sports events with exactly two sides and a start time in the next 7 days |
-| Show live odds | Each side's market price, shown as a chance (a price of 0.62 is shown as 62%) |
-| Decide who was right | After the game, the contract Gemini settled with `resolutionSide: "yes"` is the winner |
+| Find games per theme | `GET /v1/prediction-markets/events?sport=<basketball, soccer, hockey, american_football>&sports_market_type=moneyline`, keeping full-game markets (not quarters or halves). Soccer has three sides: home, draw, away |
+| "General": the hottest market | Everything above plus the daily Crypto and Commodities price markets, ranked by 24-hour volume. A price ladder becomes one yes/no question at the level closest to 50% |
+| Choose the round's market | Must kick off inside the round, at least 10 minutes away, and finish before the challenge ends (on Sundays, before midnight Eastern). Ranked: same-day games first; then the Champions League, Premier League and La Liga, then NFL and NBA; then trading volume (the "big games"); then the closest odds. Themes take turns between rounds and stand in for each other when one has no game |
+| Price each side | The middle of the best bid and ask for each side, scaled so the sides add to 100%. Markets with a gap over 10 cents are skipped as too thin. The price is saved when a pick is made, because the API has no price history |
+| Decide who was right | After the game, the contract settled with `resolutionSide: "yes"` |
 
-Rules that keep it fair: one pick each, changeable until kick-off, hidden from other players until kick-off, and locked after. Points always come first; the pick only matters in a tie. If the game has not settled when the challenge ends, or the picks cannot separate the tied players, they split the pool as usual. The picks and their outcome are written into the score sheet whose hash goes onchain.
+Rules that keep it fair: picks are hidden from other players until kick-off and lock then. At the end, the server waits up to 6 hours for results (games usually settle 2-3 hours after kick-off); a round with no result by then is void and scores nothing for anyone. Each round, its market and its result are written into the score sheet whose hash goes onchain. Each round links to its market page on Gemini (`https://www.gemini.com/predictions/<ticker>`).
 
-Picks are free and no trading happens: we read market data only. Nothing about our users, and no fitness data, is sent to Gemini. The server caches the game list for a minute, well inside Gemini's public rate limit.
+Picks are free and for points only: no money is staked on a pick and no trading happens. Nothing about our users, and no fitness or league data, is sent to Gemini. Listings are cached for a minute, well inside Gemini's public limit of 120 requests a minute.
+
+There is no tiebreaker: a tie at the top splits the pool. Gemini is used only through prediction rounds, the same way in League, Public and Private events.
+
+## League stats scoring
+
+A League event can be scored from the league's own stat sheet instead of workouts. The organizer sets points per goal, assist and the sheet's "points" column, then uploads a CSV (`game_date,player_name,jersey_number,team,goals,assists,points`). The upload card offers a CSV template and, for a PDF stat sheet, a link to Grok with a copy-paste prompt that turns the PDF into the same CSV. The app never reads PDFs and never calls Grok. Sheet names are matched to players automatically when they equal a player's display name, and by the organizer otherwise. Players see points only. Stats never go onchain; the score sheet records a hash of the rows used, so players can check the stats were not changed after the fact (`api/leaguestats.py`).
 
 ## Trust and security
 
@@ -230,7 +240,7 @@ wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh join <challenge address>
 
 | What | Command | Where |
 |---|---|---|
-| API (87 tests: login, webhook, scoring, anti-cheat, settlement, pick'em) | Windows: `.venv\Scripts\python.exe -m pytest`<br/>macOS / Linux: `.venv/bin/python -m pytest` | `api/` |
+| API (113 tests: login, webhook, scoring, anti-cheat, settlement, prediction rounds, league stats) | Windows: `.venv\Scripts\python.exe -m pytest`<br/>macOS / Linux: `.venv/bin/python -m pytest` | `api/` |
 | Program (11 tests on a local validator) | `anchor test --validator legacy` | `onchain/` |
 | Program from Windows | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh test --validator legacy` | repo root |
 | Stream filter | `node streams/test_filter.js` | repo root |
@@ -248,7 +258,8 @@ api/                FastAPI server
   scoring.py        Daily Mover rules and anti-cheat (pure functions)
   settlement.py     final scores, winners, score-sheet hash, settle and refund
   events.py         QuickNode webhook: signature check, event decoding, feed
-  pickem.py         pick'em tiebreaker on Gemini Prediction Markets data
+  pickrounds.py     prediction rounds on Gemini Prediction Markets data
+  leaguestats.py    league stats scoring from an uploaded CSV
   chain.py          talks to the program as the oracle
 streams/filter.js   the QuickNode Stream filter
 scripts/            WSL helper for Anchor, plan PDF builder

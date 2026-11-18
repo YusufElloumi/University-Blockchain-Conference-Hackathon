@@ -1,8 +1,13 @@
 """Database setup and tables. SQLite locally, Postgres when deployed (same code through SQLAlchemy).
 
-Nine tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
-the mock and manual sources; Strava activities are never stored there), `picks` (the pick'em
-tiebreaker), and `invites` (who has redeemed the invite code of a league or private event).
+Eleven tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
+the mock and manual sources; Strava activities are never stored there), `invites` (who has redeemed
+the invite code of a league or private event),
+`pick_rounds` and `round_picks` (prediction rounds on Gemini markets), and `league_stats` (rows of a
+league's stat sheet, uploaded by the organizer).
+
+A database made before Nov 17 may still hold an unused `picks` table from the old pick'em tiebreaker
+(removed: Gemini is only used through prediction rounds, and ties always split). It is left alone.
 
 Times are stored in UTC. SQLite hands them back without a timezone, so read them through `utc()`.
 """
@@ -106,6 +111,11 @@ class Challenge(Base):
     created_at: Mapped[datetime] = mapped_column(default=_now)
     settle_tx: Mapped[str | None]  # the transaction that paid out or refunded
     score_sheet: Mapped[str | None] = mapped_column(Text)  # final points as JSON; its hash is stored onchain
+    # Where the main points come from: None or "fitness" (players log workouts), or "league_stats" (league only).
+    scoring_source: Mapped[str | None]
+    stat_weights: Mapped[str | None] = mapped_column(Text)  # JSON {"goals": 2, "assists": 1, "points": 0}
+    pick_themes: Mapped[str | None] = mapped_column(Text)  # JSON list of prediction round themes; empty = off
+    round_hours: Mapped[int | None]  # a new prediction round every this many hours (24 or 168)
 
 
 class Participant(Base):
@@ -117,6 +127,7 @@ class Participant(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     deposit_tx: Mapped[str | None]
     consent_at: Mapped[datetime]  # when they agreed to share their points with this group
+    stat_name: Mapped[str | None]  # league stats: this player's name on the uploaded stat sheet
     joined_at: Mapped[datetime] = mapped_column(default=_now)
 
 
@@ -149,21 +160,60 @@ class ScoreEntry(Base):
     updated_at: Mapped[datetime] = mapped_column(default=_now)
 
 
-class Pick(Base):
-    """A player's one free tiebreaker pick for a challenge: which side wins a game listed on Gemini."""
+class PickRound(Base):
+    """One prediction round: the Gemini market chosen for it, and its result once known."""
 
-    __tablename__ = "picks"
-    __table_args__ = (UniqueConstraint("challenge_id", "user_id"),)
+    __tablename__ = "pick_rounds"
+    __table_args__ = (UniqueConstraint("challenge_id", "number"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id"), index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    event_ticker: Mapped[str]  # Gemini's ID for the game
+    number: Mapped[int]  # 0 = the first round
+    event_ticker: Mapped[str]  # Gemini's ID for the event
     event_title: Mapped[str]
-    option_id: Mapped[str]  # Gemini's ID for the side picked
-    option_label: Mapped[str]
-    chance: Mapped[int | None]  # the market's chance for that side when the pick was made, in percent
+    theme: Mapped[str]
+    league: Mapped[str]
+    options: Mapped[str] = mapped_column(Text)  # JSON [{id, label, chance}] when the round opened
+    locks_at: Mapped[datetime]  # kick-off: picks close
+    expected_end: Mapped[datetime]  # when the result should be in
+    status: Mapped[str] = mapped_column(default="open")  # open, resolved, void
+    winning_option_id: Mapped[str | None]
+    checked_at: Mapped[datetime | None]  # last time we asked Gemini for the result
+    resolved_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class RoundPick(Base):
+    """A player's pick in one prediction round, with the market's probability when they made it."""
+
+    __tablename__ = "round_picks"
+    __table_args__ = (UniqueConstraint("round_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    round_id: Mapped[int] = mapped_column(ForeignKey("pick_rounds.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    option_id: Mapped[str]
+    option_label: Mapped[str]
+    probability: Mapped[float]  # 0 to 1, locked when the pick was made
+    points: Mapped[float | None]  # None until the round is resolved
+    picked_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class LeagueStat(Base):
+    """One row of a league's stat sheet: one player in one game. Uploaded by the organizer as CSV."""
+
+    __tablename__ = "league_stats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id"), index=True)
+    game_date: Mapped[str]  # YYYY-MM-DD
+    player_name: Mapped[str]
+    jersey_number: Mapped[str | None]
+    team: Mapped[str | None]
+    goals: Mapped[int] = mapped_column(default=0)
+    assists: Mapped[int] = mapped_column(default=0)
+    points: Mapped[int | None]  # the sheet's own points column, if it has one
+    uploaded_at: Mapped[datetime] = mapped_column(default=_now)
 
 
 class LoggedActivity(Base):

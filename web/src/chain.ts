@@ -156,7 +156,7 @@ export function friendlyError(e: unknown): string {
   if (/ChallengeFull/.test(text)) return "This challenge is full.";
   if (/ChallengeNotOpen/.test(text)) return "This challenge is over.";
   if (/insufficient funds|AccountNotInitialized|InvalidTokenAccount/i.test(text))
-    return "You don't have enough in your balance yet. Add test funds first.";
+    return "You don't have enough in your balance yet. Add devnet USDC first.";
   if (/429|Too Many Requests/i.test(text)) return "The network is busy. Wait a few seconds and try again.";
   if (/InvalidTimes/.test(text)) return "Those dates don't work. Pick a start time a little further away.";
   if (/longer than usual|still loading|sign in again/.test(text)) return (e as Error).message;
