@@ -3,7 +3,9 @@ import type { ChallengeView, StatWeights } from "./api";
 import type { Session } from "./App";
 import { buildCreateTransaction, friendlyError } from "./chain";
 import { usdc } from "./format";
+import { Check, ChevronLeft } from "lucide-react";
 import { MODE_INFO, ModeBadge, type Mode } from "./modes";
+import { Eyebrow } from "./ui";
 
 
 const BUY_INS = [1, 2, 5];
@@ -62,7 +64,7 @@ function MultiChips(props: { options: { id: string; label: string }[]; value: st
             className={on ? "chip on" : "chip"}
             onClick={() => props.onChange(on ? props.value.filter((v) => v !== o.id) : [...props.value, o.id])}
           >
-            {on ? "✓ " : ""}
+            {on && <Check size={14} strokeWidth={2.5} aria-hidden />}
             {o.label}
           </button>
         );
@@ -132,134 +134,189 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
     }
   }
 
+  const ready =
+    !busy && !!name.trim() && (mode !== "league" || !!organizer.trim()) && !(picksOn && themes.length === 0);
+
   return (
-    <>
-      <div className={`create-head mode-${mode}`}>
-        <h2 className="section-title">New {info.noun}</h2>
-        <ModeBadge mode={mode} />
-      </div>
+    <div className="create">
+      <button className="back" onClick={() => go({ view: "mode", mode })} disabled={busy}>
+        <ChevronLeft size={16} aria-hidden /> {info.title}
+      </button>
+      <header className="page-head">
+        <div>
+          <ModeBadge mode={mode} />
+          <h1 className="headline">
+            New <em className="serif">{info.noun}.</em>
+          </h1>
+        </div>
+      </header>
 
-      <section className="card">
-        <div className="label">Event name</div>
-        <input
-          value={name}
-          maxLength={60}
-          placeholder={mode === "league" ? "Winter Pickleball League" : ""}
-          onChange={(e) => setName(e.target.value)}
-          aria-label="Event name"
-        />
-        {mode === "league" && (
-          <>
-            <div className="label gap">Hosted by</div>
-            <input
-              value={organizer}
-              maxLength={60}
-              placeholder="Your gym, club or tournament"
-              onChange={(e) => setOrganizer(e.target.value)}
-              aria-label="Organizer name"
-            />
-          </>
-        )}
-      </section>
-
-      <section className="card">
-        <div className="label">Buy-in each</div>
-        <Chips options={BUY_INS} value={buyIn} label={usdc} onPick={setBuyIn} />
-        <div className="label gap">{mode === "private" ? "Friends can join for" : "Joining stays open for"}</div>
-        <Chips options={JOIN_WINDOWS} value={joinWindow} label={(o) => o.label} onPick={setJoinWindow} />
-        <div className="label gap">Then it runs for</div>
-        <Chips options={LENGTHS} value={length} label={(o) => o.label} onPick={setLength} />
-      </section>
-
-      <section className="card">
-        <div className="label">Scoring</div>
-        {mode === "league" && (
-          <div className="segmented" role="radiogroup" aria-label="Scoring source">
-            {(["fitness", "league_stats"] as Source[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                role="radio"
-                aria-checked={source === s}
-                className={source === s ? "on" : ""}
-                onClick={() => chooseSource(s)}
-              >
-                {s === "fitness" ? "Fitness" : "League stats"}
-              </button>
-            ))}
-          </div>
-        )}
-        {usesStats ? (
-          <div className="weights">
-            {STAT_LABELS.map(({ key, label }) => (
-              <label key={key}>
-                <span>{key === "points" ? "Per sheet pt" : `Per ${label.toLowerCase().replace(/s$/, "")}`}</span>
+      <div className="create-grid">
+        <div className="create-form">
+          <section className="card">
+            <h2 className="card-title">The basics</h2>
+            <label className="field">
+              <span className="field-label">Event name</span>
+              <input
+                value={name}
+                maxLength={60}
+                placeholder={mode === "league" ? "Winter Pickleball League" : ""}
+                onChange={(e) => setName(e.target.value)}
+                aria-label="Event name"
+              />
+            </label>
+            {mode === "league" && (
+              <label className="field">
+                <span className="field-label">Hosted by</span>
                 <input
-                  inputMode="decimal"
-                  value={weights[key]}
-                  aria-label={`Points per ${label.toLowerCase()}`}
-                  onChange={(e) =>
-                    setWeights({ ...weights, [key]: Math.min(10, Number(e.target.value.replace(/[^0-9.]/g, "")) || 0) })
-                  }
+                  value={organizer}
+                  maxLength={60}
+                  placeholder="Your gym, club or tournament"
+                  onChange={(e) => setOrganizer(e.target.value)}
+                  aria-label="Organizer name"
                 />
               </label>
-            ))}
-          </div>
-        ) : (
-          <ul className="rule-list">
-            <li>
-              <b>+1</b> 20 active minutes in a day
-            </li>
-            <li>
-              <b>+1</b> every 5 km
-            </li>
-            <li>
-              <b>3</b> max a day
-            </li>
-          </ul>
-        )}
-      </section>
+            )}
+          </section>
 
-      <section className="card">
-        <div className="row tight">
-          <div className="label">Prediction picks</div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={picksOn}
-            className={picksOn ? "toggle on" : "toggle"}
-            onClick={() => setPicksOn(!picksOn)}
-          >
-            {picksOn ? "On" : "Off"}
-          </button>
-        </div>
-        {picksOn && (
-          <>
-            <MultiChips options={config.pick_themes} value={themes} onChange={setThemes} />
-            <div className="label gap">New pick</div>
-            <Chips options={ROUND_EVERY} value={roundEvery} label={(o) => o.label} onPick={setRoundEvery} />
-          </>
-        )}
-      </section>
+          <section className="card">
+            <h2 className="card-title">Entry and timing</h2>
+            <div className="field">
+              <span className="field-label">Entry fee, each</span>
+              <Chips options={BUY_INS} value={buyIn} label={usdc} onPick={setBuyIn} />
+            </div>
+            <div className="field">
+              <span className="field-label">{mode === "private" ? "Friends can join for" : "Joining stays open for"}</span>
+              <Chips options={JOIN_WINDOWS} value={joinWindow} label={(o) => o.label} onPick={setJoinWindow} />
+            </div>
+            <div className="field">
+              <span className="field-label">Then it runs for</span>
+              <Chips options={LENGTHS} value={length} label={(o) => o.label} onPick={setLength} />
+            </div>
+          </section>
 
-      <button
-        className="primary"
-        onClick={onCreate}
-        disabled={
-          busy || !name.trim() || (mode === "league" && !organizer.trim()) || (picksOn && themes.length === 0)
-        }
-      >
-        {busy ? "Creating..." : info.create}
-      </button>
-      <p className="fine center">Free to create. Top scorer takes the pool.</p>
-      {error && (
-        <div className="message error" role="alert">
-          {error}
+          <section className="card">
+            <h2 className="card-title">Scoring</h2>
+            {mode === "league" && (
+              <div className="segmented" role="radiogroup" aria-label="Scoring source">
+                {(["fitness", "league_stats"] as Source[]).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    role="radio"
+                    aria-checked={source === s}
+                    className={source === s ? "on" : ""}
+                    onClick={() => chooseSource(s)}
+                  >
+                    {s === "fitness" ? "Fitness" : "League stats"}
+                  </button>
+                ))}
+              </div>
+            )}
+            {usesStats ? (
+              <div className="weights">
+                {STAT_LABELS.map(({ key, label }) => (
+                  <label key={key}>
+                    <span>{key === "points" ? "Per sheet pt" : `Per ${label.toLowerCase().replace(/s$/, "")}`}</span>
+                    <input
+                      inputMode="decimal"
+                      value={weights[key]}
+                      aria-label={`Points per ${label.toLowerCase()}`}
+                      onChange={(e) =>
+                        setWeights({ ...weights, [key]: Math.min(10, Number(e.target.value.replace(/[^0-9.]/g, "")) || 0) })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <ul className="rule-list">
+                <li>
+                  <b>+1</b> 20 active minutes in a day
+                </li>
+                <li>
+                  <b>+1</b> every 5 km
+                </li>
+                <li>
+                  <b>3</b> max a day
+                </li>
+              </ul>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="card-title-row">
+              <div>
+                <h2 className="card-title">Prediction picks</h2>
+                <p className="fine">A side game: call real sports results for bonus points.</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={picksOn}
+                aria-label="Prediction picks"
+                className={picksOn ? "toggle on" : "toggle"}
+                onClick={() => setPicksOn(!picksOn)}
+              >
+                <i />
+              </button>
+            </div>
+            {picksOn && (
+              <>
+                <div className="field">
+                  <span className="field-label">Themes</span>
+                  <MultiChips options={config.pick_themes} value={themes} onChange={setThemes} />
+                </div>
+                <div className="field">
+                  <span className="field-label">New pick</span>
+                  <Chips options={ROUND_EVERY} value={roundEvery} label={(o) => o.label} onPick={setRoundEvery} />
+                </div>
+              </>
+            )}
+          </section>
         </div>
-      )}
-      <button className="link center-link" onClick={() => go({ view: "mode", mode })} disabled={busy}>
-        Cancel
-      </button>
-    </>
+
+        <aside className="create-summary">
+          <section className="card">
+            <Eyebrow>Summary</Eyebrow>
+            <div className="summary-name">{name.trim() || "Untitled event"}</div>
+            <dl className="summary-list">
+              <div>
+                <dt>Entry fee</dt>
+                <dd>{usdc(buyIn)} each</dd>
+              </div>
+              <div>
+                <dt>Joining open</dt>
+                <dd>{joinWindow.label}</dd>
+              </div>
+              <div>
+                <dt>Runs for</dt>
+                <dd>{length.label}</dd>
+              </div>
+              <div>
+                <dt>Scoring</dt>
+                <dd>{usesStats ? "League stats" : "Fitness"}</dd>
+              </div>
+              <div>
+                <dt>Picks</dt>
+                <dd>{rounds ? roundEvery.label : "Off"}</dd>
+              </div>
+            </dl>
+            <button className="btn btn-primary btn-block btn-lg" onClick={onCreate} disabled={!ready}>
+              {busy ? "Creating..." : info.create}
+            </button>
+            <p className="fine center">Free to create. Top scorer takes the pool.</p>
+            {error && (
+              <div className="message error" role="alert">
+                {error}
+              </div>
+            )}
+            <button className="btn btn-text btn-block" onClick={() => go({ view: "mode", mode })} disabled={busy}>
+              Cancel
+            </button>
+          </section>
+        </aside>
+      </div>
+    </div>
   );
 }

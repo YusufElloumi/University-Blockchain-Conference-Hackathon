@@ -16,7 +16,7 @@ createRoot(document.getElementById("root")!).render(
         config={{
           // Email code only: no wallet buttons, no seed phrases.
           loginMethods: ["email"],
-          appearance: { theme: "dark", accentColor: "#c6f432" },
+          appearance: { theme: "dark", accentColor: "#929BFF" },
           embeddedWallets: {
             // Privy creates a Solana wallet behind the scenes the first time someone logs in.
             solana: { createOnLogin: "users-without-wallets" },
@@ -36,7 +36,7 @@ createRoot(document.getElementById("root")!).render(
         <App />
       </PrivyProvider>
     ) : (
-      <p style={{ padding: 24 }}>Set VITE_PRIVY_APP_ID in the .env file at the repo root, then restart.</p>
+      <p style={{ padding: 24, color: "#f3f4f6" }}>Set VITE_PRIVY_APP_ID in the .env file at the repo root, then restart.</p>
     )}
   </StrictMode>,
 );

@@ -12,19 +12,25 @@ import {
   type Me,
 } from "./api";
 import { sendAndConfirm, tokenBalance } from "./chain";
+import { Check, X } from "lucide-react";
 import ChallengePage from "./ChallengePage";
 import CreateChallenge from "./CreateChallenge";
-import { money, usdc } from "./format";
+import Dashboard from "./Dashboard";
+import HowItWorks from "./HowItWorks";
+import Landing from "./Landing";
 import ModeScreen from "./ModeScreen";
 import WithdrawNote from "./WithdrawNote";
-import { isMode, MODE_INFO, MODES, type Mode } from "./modes";
+import { isMode, type Mode } from "./modes";
+import Shell, { type Section } from "./Shell";
+import { prefersReducedMotion, Wordmark } from "./ui";
 
 export type Route =
   | { view: "home" }
   | { view: "mode"; mode: Mode }
   | { view: "create"; mode: Mode }
   | { view: "challenge"; address: string }
-  | { view: "invite"; code: string };
+  | { view: "invite"; code: string }
+  | { view: "help" };
 
 function readRoute(): Route {
   const params = new URLSearchParams(window.location.search);
@@ -32,6 +38,7 @@ function readRoute(): Route {
   if (address) return { view: "challenge", address };
   const code = params.get("invite");
   if (code) return { view: "invite", code };
+  if (params.has("help")) return { view: "help" };
   const mode = params.get("mode");
   if (params.has("new")) return { view: "create", mode: isMode(params.get("new")) ? (params.get("new") as Mode) : "private" };
   return isMode(mode) ? { view: "mode", mode } : { view: "home" };
@@ -47,6 +54,8 @@ function routeQuery(route: Route): string {
       return `?mode=${route.mode}`;
     case "create":
       return `?new=${route.mode}`;
+    case "help":
+      return "?help";
     default:
       return "";
   }
@@ -60,6 +69,8 @@ export type Session = {
   send: (transaction: Uint8Array) => Promise<string>;
   refreshBalance: () => Promise<void>;
   go: (route: Route, replace?: boolean) => void;
+  /** An event page reports which mode it belongs to, so the navigation can highlight it. */
+  markMode: (mode: Mode | null) => void;
 };
 
 export default function App() {
@@ -75,6 +86,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [challengeMode, setChallengeMode] = useState<Mode | null>(null);
 
   const tokenGetter = useRef(getAccessToken);
   tokenGetter.current = getAccessToken;
@@ -160,83 +172,126 @@ export default function App() {
     }
   }
 
-  const session: Session | null = me && config ? { me, config, call, send, refreshBalance, go } : null;
+  const session: Session | null =
+    me && config ? { me, config, call, send, refreshBalance, go, markMode: setChallengeMode } : null;
+
+  // A notice ("Added 10 devnet USDC") clears itself; an error stays until dismissed.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 4500);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  // The opening animation: a short wordmark reveal, once per browser session.
+  const [introPlayed] = useState(shouldPlayIntro);
+  const [introHeld, setIntroHeld] = useState(introPlayed);
+  useEffect(() => {
+    if (!introPlayed) return;
+    const timer = setTimeout(() => setIntroHeld(false), 1250);
+    return () => clearTimeout(timer);
+  }, [introPlayed]);
+  const entered = !introHeld && ready;
+
+  // Which sidebar item is lit. An event page lights the mode it belongs to, once that is known.
+  const section: Section =
+    route.view === "home" || route.view === "invite"
+      ? "home"
+      : route.view === "help"
+        ? "help"
+        : route.view === "challenge"
+          ? challengeMode
+          : route.mode;
+  const routeKey = route.view === "challenge" ? route.address : route.view + ("mode" in route ? route.mode : "");
 
   return (
-    <div className="page">
-      <div className="demo-banner">Demo · Devnet USDC only, no real money</div>
-      <header>
-        <button className="brand" onClick={() => go({ view: "home" })} aria-label="Home">
-          LOSER<span>BUYS</span>
-        </button>
-        {session && (
-          <div className="head-right">
-            <button className="withdraw-btn" onClick={() => setWithdrawOpen(true)}>
-              Withdraw
-            </button>
-            <div className="wallet-chip" title="Your balance (devnet USDC)">
-              {balance === null ? "..." : money(balance)}
-            </div>
-          </div>
-        )}
-      </header>
-      {withdrawOpen && <WithdrawNote onClose={() => setWithdrawOpen(false)} />}
-
-      {!ready ? (
-        <p className="muted center">Loading...</p>
-      ) : !authenticated ? (
-        <section className="hero">
-          <div className="kicker">The weekly fitness league</div>
-          <h1>
-            Out-move your friends.
-            <br />
-            <em>Winner takes the pool.</em>
-          </h1>
-          <ol className="steps">
-            <li>
-              <b>1</b> Everyone chips in
-            </li>
-            <li>
-              <b>2</b> Workouts score points
-            </li>
-            <li>
-              <b>3</b> Top of the table gets paid
-            </li>
-          </ol>
-          <button className="primary" onClick={() => login()}>
-            Sign in with email
-          </button>
-          <p className="fine center">No app to install, no passwords. We email you a code.</p>
-        </section>
-      ) : !session ? (
-        <p className="muted center">{error ? "" : "Setting up your account..."}</p>
-      ) : route.view === "challenge" ? (
-        <ChallengePage key={route.address} address={route.address} session={session} balance={balance} />
-      ) : route.view === "create" ? (
-        <CreateChallenge key={route.mode} mode={route.mode} session={session} balance={balance} />
-      ) : route.view === "mode" ? (
-        <ModeScreen key={route.mode} mode={route.mode} session={session} />
-      ) : route.view === "invite" ? (
-        <RedeemInvite code={route.code} session={session} />
-      ) : (
-        <Home
-          session={session}
-          balance={balance}
-          busy={busy}
-          onAddFunds={onAddFunds}
-          onRenamed={setMe}
-          onSignOut={logout}
-        />
+    <div className={`root${entered ? " entered" : ""}`}>
+      {introPlayed && (
+        <div className={`intro-screen${entered ? " out" : ""}`} aria-hidden>
+          <Wordmark />
+        </div>
       )}
 
-      {notice && <div className="message ok">{notice}</div>}
-      {error && (
-        <div className="message error" role="alert">
-          {error}
+      {!ready ? (
+        <div className="splash">{!introPlayed && <Wordmark />}</div>
+      ) : !authenticated ? (
+        <Landing onLogin={login} />
+      ) : !session ? (
+        <div className="splash">
+          <Wordmark />
+          {error ? (
+            <button className="btn btn-quiet btn-sm" onClick={logout}>
+              Sign out
+            </button>
+          ) : (
+            <p>Setting up your account...</p>
+          )}
+        </div>
+      ) : (
+        <Shell
+          session={session}
+          balance={balance}
+          section={section}
+          routeKey={routeKey}
+          onWithdraw={() => setWithdrawOpen(true)}
+          onSignOut={logout}
+        >
+          {route.view === "challenge" ? (
+            <ChallengePage key={route.address} address={route.address} session={session} balance={balance} />
+          ) : route.view === "create" ? (
+            <CreateChallenge key={route.mode} mode={route.mode} session={session} balance={balance} />
+          ) : route.view === "mode" ? (
+            <ModeScreen key={route.mode} mode={route.mode} session={session} />
+          ) : route.view === "invite" ? (
+            <RedeemInvite code={route.code} session={session} />
+          ) : route.view === "help" ? (
+            <HowItWorks session={session} />
+          ) : (
+            <Dashboard
+              session={session}
+              balance={balance}
+              busy={busy}
+              onAddFunds={onAddFunds}
+              onWithdraw={() => setWithdrawOpen(true)}
+              onRenamed={setMe}
+              onSignOut={logout}
+            />
+          )}
+        </Shell>
+      )}
+
+      {withdrawOpen && <WithdrawNote onClose={() => setWithdrawOpen(false)} />}
+
+      {(notice || error) && (
+        <div className="toasts">
+          {notice && (
+            <div className="toast ok" role="status">
+              <Check size={16} aria-hidden /> {notice}
+            </div>
+          )}
+          {error && (
+            <div className="toast error" role="alert">
+              <span>{error}</span>
+              <button className="icon-btn" onClick={() => setError("")} aria-label="Dismiss">
+                <X size={15} aria-hidden />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+/** True the first time the app opens in this browser tab (and motion is welcome). */
+function shouldPlayIntro(): boolean {
+  if (prefersReducedMotion()) return false;
+  try {
+    if (sessionStorage.getItem("rival-intro")) return false;
+    sessionStorage.setItem("rival-intro", "1");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Opening an invite link: the server checks the code, then the event opens. */
@@ -249,94 +304,14 @@ function RedeemInvite({ code, session }: { code: string; session: Session }) {
       .catch((e) => setError(e.message));
   }, [call, go, code]);
   return (
-    <>
-      <p className="muted center">{error || "Opening your invite..."}</p>
+    <div className="center-state">
+      <p>{error || "Opening your invite..."}</p>
       {error && (
-        <button className="link center-link" onClick={() => go({ view: "home" }, true)}>
+        <button className="btn btn-quiet" onClick={() => go({ view: "home" }, true)}>
           Back to home
         </button>
       )}
-    </>
+    </div>
   );
 }
 
-function Home(props: {
-  session: Session;
-  balance: number | null;
-  busy: boolean;
-  onAddFunds: () => void;
-  onRenamed: (me: Me) => void;
-  onSignOut: () => void;
-}) {
-  const { session, balance } = props;
-  const { me, call, go } = session;
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(me.name);
-
-  async function saveName() {
-    try {
-      props.onRenamed(await call<Me>("POST", "/me/name", { name }));
-      setEditing(false);
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  return (
-    <>
-      <h2 className="section-title">Pick your arena</h2>
-      <div className="mode-cards">
-        {MODES.map((mode) => (
-          <button key={mode} className={`mode-card mode-${mode}`} onClick={() => go({ view: "mode", mode })}>
-            <span className="mode-icon">{MODE_INFO[mode].icon}</span>
-            <span>
-              <span className="mode-card-title">{MODE_INFO[mode].title}</span>
-              <span className="mode-card-line">{MODE_INFO[mode].line}</span>
-            </span>
-            <span className="mode-card-go" aria-hidden>
-              ›
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <section className="card wallet-card gap">
-        <div className="label">Your balance</div>
-        <div className="big-number">{balance === null ? "..." : money(balance)}</div>
-        <div className="fine">{balance === null ? "" : `${balance} devnet USDC`}</div>
-        {!me.test_funds_used && (
-          <button className="secondary" onClick={props.onAddFunds} disabled={props.busy}>
-            {props.busy ? "Adding..." : `Add ${me.test_funds_amount} devnet USDC`}
-          </button>
-        )}
-      </section>
-
-      <section className="card">
-        <div className="label">Player name</div>
-        {editing ? (
-          <div className="row">
-            <input value={name} maxLength={24} onChange={(e) => setName(e.target.value)} aria-label="Player name" />
-            <button className="small" onClick={saveName} disabled={!name.trim()}>
-              Save
-            </button>
-          </div>
-        ) : (
-          <div className="row">
-            <div className="player-name">
-              <span className="avatar">{me.name.slice(0, 1).toUpperCase()}</span>
-              {me.name}
-            </div>
-            <button className="link" onClick={() => setEditing(true)}>
-              Change
-            </button>
-          </div>
-        )}
-        <p className="fine">This is what other players see on the table.</p>
-      </section>
-
-      <button className="link center-link" onClick={props.onSignOut}>
-        Sign out
-      </button>
-    </>
-  );
-}
