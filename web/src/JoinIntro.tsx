@@ -94,7 +94,7 @@ export default function JoinIntro(props: JoinIntroProps) {
 
   const screens = [
     {
-      art: <RingArt Icon={stats ? Goal : Footprints} />,
+      art: stats ? <RingArt Icon={Goal} /> : <RunArt />,
       title: stats ? (
         <>
           Score to earn <em className="serif">points.</em>
@@ -213,6 +213,49 @@ function RingArt({ Icon }: { Icon: LucideIcon }) {
         <circle cx="60" cy="60" r="50" className="art-ring-fill" pathLength={100} />
       </svg>
       <Icon size={34} strokeWidth={1.5} />
+      <span className="art-plus">+1</span>
+    </div>
+  );
+}
+
+/** A runner in mid-stride on a moving track, with a "+1" popping up now and then. */
+function RunArt() {
+  // One limb: an upper part that swings from the hip or shoulder, and a lower part that bends at the joint.
+  const leg = (side: "near" | "far") => (
+    <g className={`run-thigh ${side}`}>
+      <line x1="58" y1="62" x2="58" y2="80" />
+      <g className="run-shin">
+        <line x1="58" y1="80" x2="58" y2="97" />
+        <line x1="58" y1="97" x2="64" y2="97" />
+      </g>
+    </g>
+  );
+  const arm = (side: "near" | "far") => (
+    <g className={`run-arm ${side}`}>
+      <line x1="62" y1="41" x2="62" y2="53" />
+      <g className="run-forearm">
+        <line x1="62" y1="53" x2="62" y2="64" />
+      </g>
+    </g>
+  );
+  return (
+    <div className="art art-run" aria-hidden>
+      <svg viewBox="0 0 120 120">
+        <g className="run-lines">
+          <line x1="14" y1="44" x2="30" y2="44" />
+          <line x1="8" y1="60" x2="28" y2="60" />
+          <line x1="16" y1="76" x2="30" y2="76" />
+        </g>
+        <line className="run-ground" x1="0" y1="104" x2="120" y2="104" />
+        <g className="run-body">
+          {arm("far")}
+          {leg("far")}
+          <line x1="58" y1="62" x2="63" y2="38" />
+          <circle cx="66" cy="27" r="7" />
+          {leg("near")}
+          {arm("near")}
+        </g>
+      </svg>
       <span className="art-plus">+1</span>
     </div>
   );
