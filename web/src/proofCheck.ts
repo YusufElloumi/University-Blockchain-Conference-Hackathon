@@ -1,4 +1,4 @@
-// Proof of Effort, checked in the browser. Nothing here trusts our server's word for the result:
+// Proof of Sweat ("Proof of Effort" in the code and API), checked in the browser. Nothing here trusts our server's word for the result:
 //   1. the signature is checked against the verifier key published below (and in the README);
 //   2. the proof must name this challenge, our program and devnet;
 //   3. the score sheet is hashed here and compared with the hash stored onchain by `settle`.

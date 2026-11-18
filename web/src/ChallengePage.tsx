@@ -368,7 +368,6 @@ export default function ChallengePage(props: { address: string; session: Session
               </div>
             </div>
           )}
-          {phase === "settled" && inOnchain && <ProofCard call={call} info={info} />}
           {phase === "ended" && info.players.length >= 2 && (
             <div className="notice-card">
               <span className="icon-tile">
@@ -442,6 +441,7 @@ export default function ChallengePage(props: { address: string; session: Session
 
         {/* ----- Side column: picks, invites, organizer tools ----- */}
         <div className="ch-rail">
+          {phase === "settled" && inOnchain && <ProofCard call={call} info={info} />}
           {state?.rounds && (
             <PickRounds
               session={session}

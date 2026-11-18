@@ -740,13 +740,14 @@ def challenge_state(
         ]
         format_state = {k: v for k, v in fmt.items() if k not in ("projected", "progress")}
         if has_rounds:
-            names = {r["user_id"]: r["name"] for r in board}
+            # Its own name: `names` (wallet -> name) is still needed for the feed below.
+            round_names = {r["user_id"]: r["name"] for r in board}
             all_rounds = pickrounds.rounds_of(session, challenge)
             rounds = {
                 "total": pickrounds.round_count(challenge),
                 "max_points": pickrounds.MAX_PICK_POINTS,
                 # Live odds only for the newest round; older ones show the odds when they opened.
-                "list": [pickrounds.round_view(session, r, user.id, names, live=(r is all_rounds[-1]))
+                "list": [pickrounds.round_view(session, r, user.id, round_names, live=(r is all_rounds[-1]))
                          for r in all_rounds],
             }
     return {

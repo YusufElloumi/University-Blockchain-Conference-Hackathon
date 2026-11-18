@@ -2481,8 +2481,9 @@ input[type="checkbox"] {
   font-weight: 500;
 }
 
-.notice-card span,
-.notice-card a {
+/* Only the text column: the icon tile is a span too and must keep its centred grid. */
+.notice-card > div span,
+.notice-card > div a {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -4045,7 +4046,7 @@ input[type="checkbox"] {
   color: var(--accent-bright);
 }
 
-/* ---------- Proof of Effort: result check, workout states, fitness sync note ---------- */
+/* ---------- Proof of Sweat: result check, workout states, fitness sync note ---------- */
 .proof-card .card-title-row {
   margin-bottom: 16px;
 }

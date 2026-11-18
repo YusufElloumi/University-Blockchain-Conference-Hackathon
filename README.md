@@ -159,7 +159,7 @@ Fitness data lives off the blockchain, so something has to report who won. That 
 | What can it not do? | Pay anyone outside the player list, take a cut, end a challenge without a visible `end_early` event, or trap the funds |
 | What if the oracle disappears? | 72 hours after the end, anyone can call `refund` and every buy-in is returned |
 | What makes cheating detectable? | `settle` stores the SHA-256 hash of the final score sheet. Players can fetch the sheet (`GET /challenges/{address}/score-sheet`) and check it against the chain, so published scores cannot be changed quietly afterwards |
-| How can a player check a result? | Every result comes with a signed **Proof of Effort** (below) that the app checks in the browser |
+| How can a player check a result? | Every result comes with a signed **Proof of Sweat** (below) that the app checks in the browser |
 
 Other measures:
 
@@ -169,7 +169,9 @@ Other measures:
 - Login tokens from Privy are verified on every request (signature, expiry, issuer, audience).
 - Anti-cheat in scoring: activities outside the challenge dates, duplicates, overlapping activities, and impossible speeds earn nothing, and points are capped per day.
 
-### Proof of Effort: results anyone in the group can check
+### Proof of Sweat: results anyone in the group can check
+
+(Called "Proof of Effort" in the code: `api/attest.py`, `challenges.attestation`.)
 
 When a challenge settles, a **verifier key** signs a short record of the result. A signature is a stamp only the holder of a private key can make, and anyone with the matching public key can check it. Rival uses Ed25519, the same kind of signature Solana wallets use.
 

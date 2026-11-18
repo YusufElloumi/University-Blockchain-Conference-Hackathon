@@ -40,7 +40,7 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
     <section className="card proof-card">
       <div className="card-title-row">
         <div>
-          <Eyebrow>Proof of Effort</Eyebrow>
+          <Eyebrow>Proof of Sweat</Eyebrow>
           <h2 className="card-title">Check this result</h2>
           <p className="fine">See for yourself that the result was signed and the scores weren't changed after payout.</p>
         </div>
