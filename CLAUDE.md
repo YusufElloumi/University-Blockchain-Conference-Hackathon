@@ -136,7 +136,7 @@ Fill in as they are created. Public addresses only - never keys.
 | Demo challenge (devnet, 1 USDC buy-in, joining closes Nov 16 about 4:30 PM CST) | `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` |
 | Neon database | Project `loser buys`, ID `noisy-truth-03069747`, branch `production`, AWS Oregon (created Nov 15, free plan). Addresses are in `.env.local`: `DATABASE_URL` (pooled, the one for Render) and `DATABASE_URL_UNPOOLED` |
 | Strava app (client ID) | TBD or not used |
-| Deployed web URL | TBD: Render static site `loser-buys-web` (not created yet) |
+| Deployed web URL | `https://rival-app.onrender.com` (planned): Render static site `rival-app` (renamed from `loser-buys-web` Nov 18 before it was created; not created yet). The API keeps `loser-buys-api` |
 | Deployed API URL | `https://loser-buys-api.onrender.com` (live Nov 15) |
 
 ## Decisions log

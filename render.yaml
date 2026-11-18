@@ -20,7 +20,7 @@ services:
         value: "0"
       - key: DATABASE_URL # the Neon Postgres address
         sync: false
-      - key: WEB_ORIGIN # the deployed web address, e.g. https://loser-buys-web.onrender.com
+      - key: WEB_ORIGIN # the deployed web address, e.g. https://rival-app.onrender.com
         sync: false
       - key: PRIVY_APP_ID
         sync: false
@@ -41,7 +41,7 @@ services:
 
   # The web app: a static build of web/, served by Render (free).
   - type: web
-    name: loser-buys-web
+    name: rival-app
     runtime: static
     rootDir: web
     buildCommand: npm ci && npm run build
