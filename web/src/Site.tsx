@@ -1,0 +1,676 @@
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ArrowRight, ArrowUpRight, Menu, X } from "lucide-react";
+import duoBack from "./assets/media/duo-back.jpg";
+import duoFront from "./assets/media/duo-front.jpg";
+import runnerCity from "./assets/media/runner-city.jpg";
+import silhouette from "./assets/media/silhouette.jpg";
+import sprintTall from "./assets/media/sprint-tall.jpg";
+import trackDuel from "./assets/media/track-duel.jpg";
+import trackLanes from "./assets/media/track-lanes.jpg";
+import trackStride from "./assets/media/track-stride.jpg";
+import { FORMAT_INFO, FORMATS } from "./formats";
+import { HeroVideo, Lane, Photo, ProductPreview, StepList } from "./sitekit";
+import { DemoBanner, Reveal, Wordmark } from "./ui";
+
+/** The public website's pages. Each has its own address (?page=...), so links and the back button work. */
+export type SitePage = "home" | "how" | "way" | "play";
+
+const PAGES: { id: SitePage; label: string }[] = [
+  { id: "how", label: "How it works" },
+  { id: "way", label: "The Rival way" },
+  { id: "play", label: "Ways to play" },
+];
+
+const TITLES: Record<SitePage, string> = {
+  home: "Rival · Compete with friends",
+  how: "How it works · Rival",
+  way: "The Rival way · Rival",
+  play: "Ways to play · Rival",
+};
+
+function readPage(): SitePage {
+  const page = new URLSearchParams(window.location.search).get("page");
+  return PAGES.some((p) => p.id === page) ? (page as SitePage) : "home";
+}
+
+type Nav = { go: (page: SitePage) => void; onLogin: () => void };
+
+/** Everything a signed-out visitor sees. */
+export default function Site({ onLogin }: { onLogin: () => void }) {
+  const [page, setPage] = useState<SitePage>(readPage);
+  const [menu, setMenu] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  const go = useCallback((next: SitePage) => {
+    const url = window.location.pathname + (next === "home" ? "" : `?page=${next}`);
+    window.history.pushState(null, "", url);
+    setPage(next);
+    setMenu(false);
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    const onBack = () => setPage(readPage());
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("popstate", onBack);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("popstate", onBack);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    document.title = TITLES[page];
+    return () => {
+      document.title = TITLES.home;
+    };
+  }, [page]);
+
+  // The mobile menu covers the page: lock scrolling behind it and close it on Escape.
+  useEffect(() => {
+    if (!menu) return;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  const nav: Nav = { go, onLogin };
+  const link = (target: SitePage) => ({
+    href: target === "home" ? "./" : `?page=${target}`,
+    onClick: (e: React.MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return; // let people open a new tab
+      e.preventDefault();
+      go(target);
+    },
+  });
+
+  return (
+    <div className={`site${page === "home" ? " site-home" : ""}`}>
+      <DemoBanner />
+      <header className={`site-nav${scrolled || menu ? " solid" : ""}`}>
+        <div className="site-nav-inner">
+          <a {...link("home")} className="site-brand" aria-label="Rival home">
+            <Wordmark />
+          </a>
+          <nav className="site-links" aria-label="Site">
+            {PAGES.map((p) => (
+              <a key={p.id} {...link(p.id)} className={page === p.id ? "on" : ""} aria-current={page === p.id ? "page" : undefined}>
+                {p.label}
+              </a>
+            ))}
+          </nav>
+          <div className="site-nav-right">
+            <button className="btn btn-primary btn-sm" onClick={onLogin}>
+              Launch app
+            </button>
+            <button className="icon-btn site-menu-btn" onClick={() => setMenu(!menu)} aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu}>
+              {menu ? <X size={20} aria-hidden /> : <Menu size={20} aria-hidden />}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {menu && (
+        <div className="site-menu" role="dialog" aria-label="Menu">
+          <nav>
+            {[{ id: "home" as SitePage, label: "Home" }, ...PAGES].map((p, i) => (
+              <a key={p.id} {...link(p.id)} className={page === p.id ? "on" : ""} style={{ "--i": i } as React.CSSProperties}>
+                <b>0{i + 1}</b> {p.label}
+              </a>
+            ))}
+          </nav>
+          <button className="btn btn-primary btn-lg btn-block" onClick={onLogin}>
+            Launch app <ArrowRight size={18} aria-hidden />
+          </button>
+        </div>
+      )}
+
+      <main key={page} className="site-main">
+        {page === "how" ? <HowPage {...nav} /> : page === "way" ? <WayPage {...nav} /> : page === "play" ? <PlayPage {...nav} /> : <HomePage {...nav} />}
+      </main>
+
+      <footer className="site-foot">
+        <div className="site-foot-top">
+          <Wordmark />
+          <nav aria-label="Footer">
+            {PAGES.map((p) => (
+              <a key={p.id} {...link(p.id)}>
+                {p.label}
+              </a>
+            ))}
+            <button onClick={onLogin}>Launch app</button>
+          </nav>
+        </div>
+        <div className="site-foot-fine">
+          <span>Demo version. Devnet USDC only, no real money.</span>
+          <span>Footage: Mixkit</span>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+/* ---------- Home ---------- */
+
+function HomePage({ go, onLogin }: Nav) {
+  return (
+    <>
+      <section className="hero">
+        <HeroVideo />
+        <div className="hero-inner">
+          <p className="kicker rise" style={{ "--i": 0 } as React.CSSProperties}>
+            Fitness challenges with your friends
+          </p>
+          <h1 className="mega rise" style={{ "--i": 1 } as React.CSSProperties}>
+            A little competition. <em className="serif">A lot of progress.</em>
+          </h1>
+          <div className="hero-foot rise" style={{ "--i": 2 } as React.CSSProperties}>
+            <p className="lede">
+              Rival turns your workouts into a friendly contest. Start a challenge, bring your people, and climb the
+              leaderboard together.
+            </p>
+            <div className="hero-actions">
+              <button className="btn btn-primary btn-lg" onClick={onLogin}>
+                Start competing <ArrowRight size={18} aria-hidden />
+              </button>
+              <button className="btn btn-glass btn-lg" onClick={() => go("how")}>
+                How it works
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="wrap split">
+        <Reveal className="split-copy">
+          <Lane n="01" label="The competition" />
+          <h2 className="headline">
+            Better because we're <em className="serif">competing.</em>
+          </h2>
+          <p className="lede">
+            Every workout moves a leaderboard your friends are watching. That's the whole trick: it's easier to show up
+            when someone is one point behind you.
+          </p>
+          <dl className="facts-list">
+            <div>
+              <dt>Live standings</dt>
+              <dd>Ranks shift the moment anyone logs a workout.</dd>
+            </div>
+            <div>
+              <dt>Points, not private data</dt>
+              <dd>Friends see your score. Never your routes, times or activities.</dd>
+            </div>
+            <div>
+              <dt>Something on the line</dt>
+              <dd>A small entry fee builds a shared prize pool. It's the nudge, not the point.</dd>
+            </div>
+          </dl>
+        </Reveal>
+        <Reveal className="split-visual" delay={120}>
+          <ProductPreview />
+        </Reveal>
+      </section>
+
+      <section className="wrap how">
+        <Reveal className="how-photo">
+          <Photo src={sprintTall} alt="A runner mid-stride on a track, seen from the ground">
+            <figcaption>
+              <b>04</b> Every day counts
+            </figcaption>
+          </Photo>
+        </Reveal>
+        <div className="how-copy">
+          <Reveal>
+            <Lane n="02" label="How it works" />
+            <h2 className="headline">
+              Make progress. <em className="serif">Make it count.</em>
+            </h2>
+          </Reveal>
+          <StepList />
+          <Reveal>
+            <button className="text-link" onClick={() => go("how")}>
+              The full rundown <ArrowRight size={16} aria-hidden />
+            </button>
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="bleed">
+        <Photo src={trackDuel} alt="Two runners racing side by side on a track" />
+        <Reveal className="bleed-copy">
+          <Lane n="03" label="The Rival way" />
+          <blockquote className="display">
+            Nobody trains harder than someone <em className="serif">one point behind.</em>
+          </blockquote>
+          <button className="text-link" onClick={() => go("way")}>
+            Read why it works <ArrowRight size={16} aria-hidden />
+          </button>
+        </Reveal>
+      </section>
+
+      <section className="wrap ways">
+        <Reveal>
+          <Lane n="04" label="Ways to play" />
+          <h2 className="headline">
+            Find your <em className="serif">rival.</em>
+          </h2>
+        </Reveal>
+        <div className="ways-list">
+          {[
+            { name: "Private play", text: "Your friends, team or office. Invite only, never listed." },
+            { name: "Public events", text: "Open to anyone. Community and city-wide, with bigger prize pools." },
+            { name: "Leagues", text: "Hosted by a gym, club or tournament, scored by fitness or the league's own stats." },
+            { name: "Prediction rounds", text: "An optional side game: call real sports results for bonus points." },
+          ].map((way, i) => (
+            <Reveal key={way.name} delay={i * 60}>
+              <button className="way-row" onClick={() => go("play")}>
+                <b>0{i + 1}</b>
+                <span className="way-name">{way.name}</span>
+                <span className="way-text">{way.text}</span>
+                <ArrowUpRight size={22} aria-hidden />
+              </button>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      <Finale onLogin={onLogin} />
+    </>
+  );
+}
+
+function Finale({ onLogin, children }: { onLogin: () => void; children?: ReactNode }) {
+  return (
+    <section className="bleed finale">
+      <Photo src={silhouette} alt="The silhouette of a runner at sunrise" />
+      <Reveal className="bleed-copy">
+        <h2 className="mega">
+          {children ?? (
+            <>
+              Earn your <em className="serif">edge.</em>
+            </>
+          )}
+        </h2>
+        <p className="lede">Your next challenge is one invite away.</p>
+        <button className="btn btn-primary btn-lg" onClick={onLogin}>
+          Start competing <ArrowRight size={18} aria-hidden />
+        </button>
+      </Reveal>
+    </section>
+  );
+}
+
+/** The top of an inner page: a large headline beside a photograph. */
+function PageHero(props: { lane: string; label: string; title: ReactNode; lede: string; photo: string; alt: string }) {
+  return (
+    <section className="wrap page-hero">
+      <div className="page-hero-copy">
+        <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
+          <Lane n={props.lane} label={props.label} />
+        </div>
+        <h1 className="display rise" style={{ "--i": 1 } as React.CSSProperties}>
+          {props.title}
+        </h1>
+        <p className="lede rise" style={{ "--i": 2 } as React.CSSProperties}>
+          {props.lede}
+        </p>
+      </div>
+      <div className="rise" style={{ "--i": 2 } as React.CSSProperties}>
+        <Photo src={props.photo} alt={props.alt} eager />
+      </div>
+    </section>
+  );
+}
+
+/* ---------- How it works ---------- */
+
+function HowPage({ go, onLogin }: Nav) {
+  return (
+    <>
+      <PageHero
+        lane="01"
+        label="How it works"
+        title={
+          <>
+            Show up. <em className="serif">Keep score.</em>
+          </>
+        }
+        lede="A Rival challenge takes a minute to set up and runs itself from there. Here is the whole thing, start to finish."
+        photo={trackStride}
+        alt="A runner's stride and long shadow on a track"
+      />
+
+      <section className="wrap chapters-long">
+        <Reveal className="chapter">
+          <div className="chapter-copy">
+            <span className="chapter-n">01</span>
+            <h2 className="headline">Start a challenge</h2>
+            <p className="lede">
+              Give it a name, choose what each player puts in, and decide how long it runs. Then choose how the prize
+              pool is shared: winner takes all, a podium, a shared goal, or team against team.
+            </p>
+          </div>
+          <div className="chapter-visual" aria-hidden>
+            <div className="demo-panel">
+              <small>Entry fee, each</small>
+              <div className="mini-chips">
+                <span>$1</span>
+                <span>$2</span>
+                <span className="on">$5</span>
+              </div>
+              <small>Runs for</small>
+              <div className="mini-chips">
+                <span>1 day</span>
+                <span>3 days</span>
+                <span className="on">1 week</span>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+
+        <Reveal className="chapter flip">
+          <div className="chapter-copy">
+            <span className="chapter-n">02</span>
+            <h2 className="headline">Bring your people</h2>
+            <p className="lede">
+              Private games and leagues are invite only: share a six-letter code or a link. Public events are listed
+              for anyone to join. Every event holds up to eight players.
+            </p>
+          </div>
+          <div className="chapter-visual" aria-hidden>
+            <div className="demo-panel center">
+              <small>Invite code</small>
+              <div className="demo-code">K7M2QX</div>
+            </div>
+          </div>
+        </Reveal>
+
+        <Reveal className="chapter">
+          <div className="chapter-copy">
+            <span className="chapter-n">03</span>
+            <h2 className="headline">Move, and earn points</h2>
+            <p className="lede">
+              Scoring rewards consistency. The daily cap means nobody can win the week in a single afternoon, so the
+              person who keeps showing up is the one to beat.
+            </p>
+          </div>
+          <div className="chapter-visual" aria-hidden>
+            <ul className="demo-rules">
+              <li>
+                <b>+1</b> 20 active minutes in a day
+              </li>
+              <li>
+                <b>+1</b> every 5 km
+              </li>
+              <li>
+                <b>3</b> points a day, at most
+              </li>
+            </ul>
+          </div>
+        </Reveal>
+
+        <Reveal className="chapter flip">
+          <div className="chapter-copy">
+            <span className="chapter-n">04</span>
+            <h2 className="headline">Climb, then collect</h2>
+            <p className="lede">
+              The leaderboard updates as workouts come in. When time runs out, the prize pool is paid out automatically
+              by the rules you chose. If fewer than two people joined, everyone gets their entry back.
+            </p>
+          </div>
+          <div className="chapter-visual">
+            <ProductPreview />
+          </div>
+        </Reveal>
+      </section>
+
+      <section className="wrap principles">
+        <Reveal>
+          <Lane n="02" label="Fair by design" />
+          <h2 className="headline">
+            The fine print, <em className="serif">in plain words.</em>
+          </h2>
+        </Reveal>
+        <div className="principles-grid">
+          <Reveal>
+            <h3>Your workouts stay yours</h3>
+            <p>Other players see your points and nothing else. Your activities are only ever visible to you.</p>
+          </Reveal>
+          <Reveal delay={80}>
+            <h3>Nobody holds the pool</h3>
+            <p>Entry fees are locked until the event ends, then paid out by the rules. No person can move them early.</p>
+          </Reveal>
+          <Reveal delay={160}>
+            <h3>It's a demo</h3>
+            <p>Rival currently runs on test money: devnet USDC, with no real value. Nothing here costs you anything.</p>
+          </Reveal>
+        </div>
+        <Reveal>
+          <button className="text-link" onClick={() => go("play")}>
+            See the ways to play <ArrowRight size={16} aria-hidden />
+          </button>
+        </Reveal>
+      </section>
+
+      <Finale onLogin={onLogin}>
+        Ready when <em className="serif">you are.</em>
+      </Finale>
+    </>
+  );
+}
+
+/* ---------- The Rival way ---------- */
+
+function WayPage({ go, onLogin }: Nav) {
+  return (
+    <>
+      <section className="wrap essay-head">
+        <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
+          <Lane n="01" label="The Rival way" />
+        </div>
+        <h1 className="mega rise" style={{ "--i": 1 } as React.CSSProperties}>
+          Built to compete. <em className="serif">Made to grow.</em>
+        </h1>
+      </section>
+
+      <section className="bleed bleed-short rise" style={{ "--i": 2 } as React.CSSProperties}>
+        <Photo src={duoFront} alt="Two friends running towards the camera on a city path" eager />
+      </section>
+
+      <section className="wrap essay">
+        <Reveal className="essay-lead">
+          <p>
+            Most fitness plans fail for a simple reason: nobody notices when you skip a day. Rival fixes that with the
+            oldest motivator there is. <em className="serif">Someone to beat.</em>
+          </p>
+        </Reveal>
+
+        <div className="tenets">
+          <Reveal className="tenet">
+            <span className="chapter-n">01</span>
+            <h2>Accountability you can see</h2>
+            <p>
+              A leaderboard is a promise made in public. When your friends can watch it move, a rest day becomes a
+              choice instead of a default.
+            </p>
+          </Reveal>
+          <Reveal className="tenet" delay={80}>
+            <span className="chapter-n">02</span>
+            <h2>Consistency over heroics</h2>
+            <p>
+              Points are capped each day. You can't buy the week with one enormous Sunday, so the habit wins, not the
+              highlight.
+            </p>
+          </Reveal>
+          <Reveal className="tenet" delay={160}>
+            <span className="chapter-n">03</span>
+            <h2>Stakes as a nudge</h2>
+            <p>
+              A few dollars in a shared pool is enough to make a Tuesday run matter. The money is the spark. The
+              progress is the point.
+            </p>
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="wrap duo">
+        <Reveal>
+          <Photo src={duoBack} alt="Two runners side by side, seen from behind in morning light" />
+        </Reveal>
+        <Reveal delay={120} className="duo-offset">
+          <Photo src={runnerCity} alt="A runner in the city, seen from a low angle" />
+        </Reveal>
+      </section>
+
+      <section className="wrap essay">
+        <Reveal className="pull">
+          <blockquote className="display">
+            Not a bet on exercise. <em className="serif">A reason to show up.</em>
+          </blockquote>
+          <p className="lede">
+            Rival is friendly by design. Small entry fees, groups of people who know each other, and a score that only
+            ever measures effort. Everybody who plays ends the week fitter than they started it.
+          </p>
+          <button className="text-link" onClick={() => go("how")}>
+            See how a challenge works <ArrowRight size={16} aria-hidden />
+          </button>
+        </Reveal>
+      </section>
+
+      <Finale onLogin={onLogin}>
+        Progress is better <em className="serif">together.</em>
+      </Finale>
+    </>
+  );
+}
+
+/* ---------- Ways to play ---------- */
+
+function PlayPage({ onLogin }: Nav) {
+  const modes = [
+    {
+      name: "Private play",
+      accent: "play.",
+      title: "Private",
+      text: "The classic. Start a game, send the code to the group chat, and settle who's actually been training. Invite only and never listed anywhere.",
+      points: ["Invite by code or link", "Up to eight players", "You set the fee and the length"],
+      photo: duoBack,
+      alt: "Two friends running together",
+    },
+    {
+      name: "Public events",
+      accent: "events.",
+      title: "Public",
+      text: "Open to anyone on Rival. Join a community challenge that's about to start, or create one and let the field come to you.",
+      points: ["Listed for everyone", "Join in one tap", "Bigger fields, bigger prize pools"],
+      photo: trackLanes,
+      alt: "A runner alone on numbered track lanes",
+    },
+    {
+      name: "Leagues",
+      accent: "play.",
+      title: "League",
+      text: "For gyms, clubs and tournaments. An organizer hosts and invites members, and can score by fitness or by the league's own stat sheet.",
+      points: ["Hosted by an organizer", "Members join with a code", "Fitness or league-stat scoring"],
+      photo: trackDuel,
+      alt: "Two athletes racing on a track",
+    },
+  ];
+  return (
+    <>
+      <section className="wrap essay-head">
+        <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
+          <Lane n="01" label="Ways to play" />
+        </div>
+        <h1 className="mega rise" style={{ "--i": 1 } as React.CSSProperties}>
+          Pick your <em className="serif">arena.</em>
+        </h1>
+        <p className="lede rise" style={{ "--i": 2 } as React.CSSProperties}>
+          Three kinds of competition, four ways to share the prize pool, and one optional side game.
+        </p>
+      </section>
+
+      <section className="wrap chapters-long">
+        {modes.map((mode, i) => (
+          <Reveal key={mode.name} className={`chapter chapter-photo${i % 2 ? " flip" : ""}`}>
+            <div className="chapter-copy">
+              <span className="chapter-n">0{i + 1}</span>
+              <h2 className="headline">
+                {mode.title} <em className="serif">{mode.accent}</em>
+              </h2>
+              <p className="lede">{mode.text}</p>
+              <ul className="tick-list">
+                {mode.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="chapter-visual">
+              <Photo src={mode.photo} alt={mode.alt} />
+            </div>
+          </Reveal>
+        ))}
+      </section>
+
+      <section className="wrap principles">
+        <Reveal>
+          <Lane n="02" label="Sharing the pool" />
+          <h2 className="headline">
+            Four ways to <em className="serif">win.</em>
+          </h2>
+        </Reveal>
+        <div className="principles-grid four">
+          {FORMATS.map((format, i) => (
+            <Reveal key={format} delay={i * 70}>
+              <h3>{FORMAT_INFO[format].title}</h3>
+              <p>
+                {FORMAT_INFO[format].line} <span>{FORMAT_INFO[format].example}</span>
+              </p>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      <section className="wrap split">
+        <Reveal className="split-copy">
+          <Lane n="03" label="The side game" />
+          <h2 className="headline">
+            Prediction <em className="serif">rounds.</em>
+          </h2>
+          <p className="lede">
+            Switch them on when you create an event. Each round, everyone calls the result of a real sports game. A
+            right call earns bonus points, and the bolder the call, the more it's worth.
+          </p>
+        </Reveal>
+        <Reveal className="split-visual" delay={120}>
+          <div className="demo-panel pick" aria-hidden>
+            <small>NBA · sample round</small>
+            <div className="demo-pick-title">Home vs Away</div>
+            <div className="demo-pick">
+              <div className="on">
+                <em>Your pick</em>
+                <span>Home</span>
+                <b>1.6 pts</b>
+              </div>
+              <div>
+                <em>&nbsp;</em>
+                <span>Away</span>
+                <b>2.7 pts</b>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      <Finale onLogin={onLogin}>
+        Find your <em className="serif">rival.</em>
+      </Finale>
+    </>
+  );
+}

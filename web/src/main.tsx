@@ -16,7 +16,7 @@ createRoot(document.getElementById("root")!).render(
         config={{
           // Email code only: no wallet buttons, no seed phrases.
           loginMethods: ["email"],
-          appearance: { theme: "dark", accentColor: "#929BFF" },
+          appearance: { theme: "dark", accentColor: "#78AFFF" },
           embeddedWallets: {
             // Privy creates a Solana wallet behind the scenes the first time someone logs in.
             solana: { createOnLogin: "users-without-wallets" },

@@ -17,7 +17,7 @@ import ChallengePage from "./ChallengePage";
 import CreateChallenge from "./CreateChallenge";
 import Dashboard from "./Dashboard";
 import HowItWorks from "./HowItWorks";
-import Landing from "./Landing";
+import Site from "./Site";
 import ModeScreen from "./ModeScreen";
 import WithdrawNote from "./WithdrawNote";
 import { isMode, type Mode } from "./modes";
@@ -214,7 +214,7 @@ export default function App() {
       {!ready ? (
         <div className="splash">{!introPlayed && <Wordmark />}</div>
       ) : !authenticated ? (
-        <Landing onLogin={login} />
+        <Site onLogin={login} />
       ) : !session ? (
         <div className="splash">
           <Wordmark />
