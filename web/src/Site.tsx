@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ArrowRight, ArrowUpRight, Menu, X } from "lucide-react";
 import { FORMAT_INFO, FORMATS } from "./formats";
+import { CapGraphic, LaneBoard, Matchup, ModeGraphic, RuleStrip } from "./graphics";
 import { PHOTOS, type Picture } from "./media";
 import { HeroVideo, Lane, Photo, ProductPreview, StepList } from "./sitekit";
 import { DemoBanner, Reveal, Wordmark } from "./ui";
@@ -180,6 +181,8 @@ function HomePage({ go, onLogin }: Nav) {
         </div>
       </section>
 
+      <RuleStrip />
+
       <section className="wrap split">
         <Reveal className="split-copy">
           <Lane n="01" label="The competition" />
@@ -211,13 +214,9 @@ function HomePage({ go, onLogin }: Nav) {
       </section>
 
       <section className="wrap how">
-        <Reveal className="how-photo">
-          <Photo photo={PHOTOS.stretch} sizes="(min-width: 960px) 40vw, 100vw">
-            <figcaption>
-              <b>04</b> Every day counts
-            </figcaption>
-          </Photo>
-        </Reveal>
+        <div className="how-visual">
+          <LaneBoard />
+        </div>
         <div className="how-copy">
           <Reveal>
             <Lane n="02" label="How it works" />
@@ -234,17 +233,19 @@ function HomePage({ go, onLogin }: Nav) {
         </div>
       </section>
 
-      <section className="bleed">
-        <Photo photo={PHOTOS.duoStreet} />
-        <Reveal className="bleed-copy">
-          <Lane n="03" label="The Rival way" />
-          <blockquote className="display">
-            Nobody trains harder than someone <em className="serif">one point behind.</em>
-          </blockquote>
-          <button className="text-link" onClick={() => go("way")}>
-            Read why it works <ArrowRight size={16} aria-hidden />
-          </button>
-        </Reveal>
+      <section className="versus">
+        <div className="wrap versus-inner">
+          <Reveal className="versus-copy">
+            <Lane n="03" label="The Rival way" />
+            <blockquote className="display">
+              Nobody trains harder than someone <em className="serif">one point behind.</em>
+            </blockquote>
+            <button className="text-link" onClick={() => go("way")}>
+              Read why it works <ArrowRight size={16} aria-hidden />
+            </button>
+          </Reveal>
+          <Matchup />
+        </div>
       </section>
 
       <section className="wrap ways">
@@ -511,13 +512,8 @@ function WayPage({ go, onLogin }: Nav) {
         </div>
       </section>
 
-      <section className="wrap duo">
-        <Reveal>
-          <Photo photo={PHOTOS.duoBack} sizes="(min-width: 960px) 50vw, 100vw" />
-        </Reveal>
-        <Reveal delay={120} className="duo-offset">
-          <Photo photo={PHOTOS.barbell} />
-        </Reveal>
+      <section className="wrap cap-section">
+        <CapGraphic />
       </section>
 
       <section className="wrap essay">
@@ -552,7 +548,7 @@ function PlayPage({ onLogin }: Nav) {
       title: "Private",
       text: "The classic. Start a game, send the code to the group chat, and settle who's actually been training. Invite only and never listed anywhere.",
       points: ["Invite by code or link", "Up to eight players", "You set the fee and the length"],
-      photo: PHOTOS.duoBack,
+      mode: "private" as const,
     },
     {
       name: "Public events",
@@ -560,7 +556,7 @@ function PlayPage({ onLogin }: Nav) {
       title: "Public",
       text: "Open to anyone on Rival. Join a community challenge that's about to start, or create one and let the field come to you.",
       points: ["Listed for everyone", "Join in one tap", "Bigger fields, bigger prize pools"],
-      photo: PHOTOS.trackLanes,
+      mode: "public" as const,
     },
     {
       name: "Leagues",
@@ -568,7 +564,7 @@ function PlayPage({ onLogin }: Nav) {
       title: "League",
       text: "For gyms, clubs and tournaments. An organizer hosts and invites members, and can score by fitness or by the league's own stat sheet.",
       points: ["Hosted by an organizer", "Members join with a code", "Fitness or league-stat scoring"],
-      photo: PHOTOS.dribble,
+      mode: "league" as const,
     },
   ];
   return (
@@ -587,7 +583,7 @@ function PlayPage({ onLogin }: Nav) {
 
       <section className="wrap chapters-long">
         {modes.map((mode, i) => (
-          <Reveal key={mode.name} className={`chapter chapter-photo${i % 2 ? " flip" : ""}`}>
+          <Reveal key={mode.name} className={`chapter${i % 2 ? " flip" : ""}`}>
             <div className="chapter-copy">
               <span className="chapter-n">0{i + 1}</span>
               <h2 className="headline">
@@ -601,7 +597,7 @@ function PlayPage({ onLogin }: Nav) {
               </ul>
             </div>
             <div className="chapter-visual">
-              <Photo photo={mode.photo} sizes="(min-width: 960px) 50vw, 100vw" />
+              <ModeGraphic mode={mode.mode} />
             </div>
           </Reveal>
         ))}
