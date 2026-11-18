@@ -111,6 +111,7 @@ class Challenge(Base):
     created_at: Mapped[datetime] = mapped_column(default=_now)
     settle_tx: Mapped[str | None]  # the transaction that paid out or refunded
     score_sheet: Mapped[str | None] = mapped_column(Text)  # final points as JSON; its hash is stored onchain
+    attestation: Mapped[str | None] = mapped_column(Text)  # Proof of Effort JSON (attest.py); offchain only
     # Where the main points come from: None or "fitness" (players log workouts), or "league_stats" (league only).
     scoring_source: Mapped[str | None]
     stat_weights: Mapped[str | None] = mapped_column(Text)  # JSON {"goals": 2, "assists": 1, "points": 0}

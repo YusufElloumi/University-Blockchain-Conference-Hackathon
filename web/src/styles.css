@@ -4044,3 +4044,142 @@ input[type="checkbox"] {
 .board-extras .share {
   color: var(--accent-bright);
 }
+
+/* ---------- Proof of Effort: result check, workout states, fitness sync note ---------- */
+.proof-card .card-title-row {
+  margin-bottom: 16px;
+}
+
+.proof-checks {
+  display: grid;
+  gap: 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proof-checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.proof-checks li > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.proof-checks li.ok > svg {
+  color: var(--ok);
+}
+
+.proof-checks li.bad > svg {
+  color: var(--danger);
+}
+
+.proof-checks li.unknown > svg {
+  color: var(--text-3);
+}
+
+.proof-checks b {
+  display: block;
+  font-weight: 500;
+}
+
+.proof-checks span {
+  color: var(--text-2);
+}
+
+.proof-details {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.proof-details summary {
+  cursor: pointer;
+  color: var(--text-3);
+}
+
+.proof-details dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 12px 0;
+}
+
+.proof-details dt {
+  color: var(--text-3);
+}
+
+.proof-details dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.proof-card .btn-row {
+  margin-top: 8px;
+}
+
+.workout-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.workout-state {
+  flex: none;
+  align-self: center;
+}
+
+.workout-state.verified {
+  border-color: rgba(127, 209, 166, 0.3);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.workout-state.rejected {
+  border-color: rgba(240, 144, 143, 0.3);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.connect-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 18px;
+  margin-top: 16px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.connect-row:hover {
+  border-color: var(--line-strong);
+}
+
+.connect-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.connect-text b {
+  font-weight: 500;
+}
+
+.modal-plain .modal-body {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  margin-bottom: 22px;
+}

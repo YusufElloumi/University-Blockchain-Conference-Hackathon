@@ -23,19 +23,27 @@ import scoring
 FINAL_STATUSES = ("settled", "refunded")
 
 
-def recompute(session: Session, challenge: db.Challenge, user_id: int) -> scoring.ScoreSheet:
-    """Fetches the player's activities for the challenge and replaces their stored points."""
+def sheet_for(session: Session, challenge: db.Challenge, user_id: int) -> scoring.ScoreSheet:
+    """The player's score for the challenge, worked out from their activities. Stores nothing."""
     if uses_league_stats(challenge):
         return scoring.ScoreSheet()  # points come from the uploaded stat sheet, not workouts
     provider = fitness.get_provider()
     start, end = db.utc(challenge.start_time), db.utc(challenge.end_time)
-    sheet = scoring.score_daily_mover(
+    return scoring.score_daily_mover(
         provider.fetch_activities(session, user_id, start, end),
         start,
         end,
         counts_manual=provider.counts_manual,
         requires_device=provider.requires_device,
     )
+
+
+def recompute(session: Session, challenge: db.Challenge, user_id: int) -> scoring.ScoreSheet:
+    """Fetches the player's activities for the challenge and replaces their stored points."""
+    if uses_league_stats(challenge):
+        return scoring.ScoreSheet()
+    provider = fitness.get_provider()
+    sheet = sheet_for(session, challenge, user_id)
     if challenge.status in FINAL_STATUSES:
         return sheet  # the result is already onchain; stored points no longer change
     session.execute(

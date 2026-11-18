@@ -110,6 +110,8 @@ What each numbered flow does:
 | What can a dishonest or hacked oracle do? | Name the wrong player as winner. |
 | What can it not do? | Send funds to an outsider (winners must be in the player list), take a cut, settle before the end time without the visible `end_early` event, or trap funds (the refund timeout). |
 | What makes lying detectable? | `settle` records a hash of the final score sheet, so the published scores cannot be quietly changed afterwards, and every settlement is a public transaction. |
+| How can a player check a result? (Proof of Effort, Nov 18) | A separate **verifier key** (`5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway`) signs each result with Ed25519: challenge, program, network, rules version and fingerprint, score-sheet hash, payout shares, time, nonce. The browser checks the signature against the published key and re-hashes the score sheet against the `score_hash` stored onchain. `python attest.py verify <file>` does the same from a terminal. The proof stays offchain and holds no fitness data. |
+| What does a proof not show? | That a workout happened. It shows our verifier approved the result under the named rules. The program does not check the signature yet (the oracle signs the transaction); checking it onchain with Solana's Ed25519 program is the next step. |
 | Who else is trusted? | Strava and the watch for the data; Privy for wallet custody; our server not to leak the oracle key. |
 | What would we add later? | A 24-hour dispute window before payout, two-of-three signers (or a group vote) on results, and an independent data attestation service. |
 

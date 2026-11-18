@@ -55,6 +55,9 @@ QUICKNODE_STREAM_SECURITY_TOKEN = os.environ.get("QUICKNODE_STREAM_SECURITY_TOKE
 FITNESS_PROVIDER = os.environ.get("FITNESS_PROVIDER") or "mock"  # mock, manual, or strava
 # The oracle's public address (not its key). New challenges must name it, or we could never settle them.
 ORACLE_PUBLIC_KEY = os.environ.get("ORACLE_PUBLIC_KEY") or "6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD"
+# The verifier's public address: Proof of Effort records must be signed by it. Also published in the
+# README and in web/src/proof.ts, so a proof can be checked without asking our server who to trust.
+VERIFIER_PUBLIC_KEY = os.environ.get("VERIFIER_PUBLIC_KEY") or "5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway"
 
 # Settlement. Grace period: how long after the end we wait for late activities (0 for demos; 12 hours suits Strava).
 SETTLE_GRACE_SECONDS = int(os.environ.get("SETTLE_GRACE_SECONDS") or 0)
