@@ -7443,7 +7443,7 @@ input[type="checkbox"] {
 }
 
 .site-foot .wordmark {
-  font-size: clamp(52px, 8.5vw, 136px);
+  font-size: clamp(34px, 3.4vw, 52px);
 }
 
 .essay-lead p {
