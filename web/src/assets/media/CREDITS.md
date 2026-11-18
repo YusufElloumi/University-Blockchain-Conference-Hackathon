@@ -15,8 +15,10 @@ Stills are single frames taken from the clips. The licence label on each page wa
 How it is served: every photo has a 1920px file, and 4K sources also have a 3840px file that only large or
 high-density screens download (`srcset` in `Photo`, `web/src/sitekit.tsx`). The film has four sizes; the browser
 picks one by screen width, so phones get the 1.6 MB file and only screens wider than 2400px get the 18 MB 4K file.
-The colour footage is shown in black and white by a CSS filter (`.photo img`, `.film video` in `styles.css`),
-not baked into the files. The file list and descriptions used by the pages are in `web/src/media.ts`.
+The files themselves are black and white with one object per shot left in a brand colour: blue hand wraps, green
+running shoes and a blue basketball in the film; blue wraps and green tennis shoes in the photos. This was done with
+the tools in `scripts/media/` (settings in the README there). The page only adds contrast (`.photo img`, `.film video`
+in `styles.css`); it must not apply a grayscale filter, which would remove the colour. The file list and descriptions used by the pages are in `web/src/media.ts`.
 
 On 2026-11-18 the site moved from photographs to drawn graphics outside the hero, so the stills that were no longer shown (barbell, dribble, duo-back, duo-street, pedal, stretch, track-lanes) were removed. Their clips are still in the hero film where listed above.
 
