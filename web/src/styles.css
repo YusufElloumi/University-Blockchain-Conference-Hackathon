@@ -5519,3 +5519,941 @@ input[type="checkbox"] {
 .starter > img {
   object-position: 30% 50%;
 }
+
+/* The wordmark is set in the editorial italic serif, like the headline highlights. */
+.wordmark > span,
+.intro-word > span {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.24em;
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+
+.wordmark > span {
+  /* Optical alignment with the mark: the serif sits a touch high otherwise. */
+  transform: translateY(-0.03em);
+  padding-right: 0.06em;
+}
+
+.intro-word > span {
+  padding: 0.1em 0.14em 0.1em 0.16em;
+}
+
+@keyframes word-open {
+  from {
+    max-width: 0;
+    opacity: 0;
+  }
+  to {
+    max-width: 3.4em;
+    opacity: 1;
+  }
+}
+
+/* Instrument Serif has a single weight, so a hairline outline in the text colour adds a touch of heft. */
+.wordmark > span,
+.intro-word > span {
+  -webkit-text-stroke: 0.012em currentColor;
+  letter-spacing: 0.014em;
+}
+
+/* ---------- 17. Competition layer: a third typeface, more green, graphic systems ---------- */
+
+/*
+  Three typographic roles:
+    sans (Geist)             the interface and body copy
+    serif italic             emotion and editorial emphasis, the signature
+    caps (Barlow Condensed)  competition: labels, status, ranks, scores, countdowns
+  The caps face is only ever small labels or numerals. It never sets a headline.
+*/
+:root {
+  --caps: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+}
+
+.eyebrow,
+.field-label,
+.lane,
+.kicker,
+.status-pill,
+.badge,
+.tag,
+.board-head,
+.chapters li,
+.side-nav-label,
+.demo-banner,
+.preview-stats small,
+.ch-stat small,
+.public-card-pool small,
+.photo figcaption,
+.demo-panel small,
+.site-menu a b,
+.way-row b,
+.mode-row b,
+.tabs .count,
+.section-head .count,
+.comp-foot,
+.side-tag,
+.demo-pick em,
+.graphic-head,
+.graphic-foot {
+  font-family: var(--caps);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.eyebrow,
+.field-label,
+.lane,
+.board-head,
+.side-nav-label,
+.preview-stats small,
+.ch-stat small,
+.public-card-pool small,
+.demo-panel small {
+  font-size: 13px;
+}
+
+.kicker {
+  font-size: 15px;
+  letter-spacing: 0.12em;
+}
+
+.demo-banner,
+.chapters li,
+.photo figcaption {
+  font-size: 12.5px;
+  letter-spacing: 0.12em;
+}
+
+.badge,
+.status-pill {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.tag {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.section-head .count,
+.comp-foot {
+  font-size: 13.5px;
+  letter-spacing: 0.08em;
+}
+
+.tabs .count {
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+
+/* Scoreboard numerals: ranks, points, countdowns */
+.board-rank,
+.board-pts,
+.comp-rank,
+.comp-points b,
+.ch-stat b,
+.preview-stats b,
+.public-card-pool,
+.event-row-stake,
+.round-total,
+.side b,
+.balance-chip {
+  font-family: var(--caps);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.board-rank {
+  font-size: 22px;
+}
+
+.board-pts {
+  display: grid;
+  justify-items: end;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.board-pts small {
+  margin-top: 3px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.board-row.leader .board-pts small {
+  color: var(--green);
+}
+
+.board.compact .board-rank {
+  font-size: 18px;
+}
+
+.board.compact .board-pts {
+  font-size: 23px;
+}
+
+.board.compact .board-pts small {
+  display: none;
+}
+
+.comp-rank {
+  font-size: 76px;
+  letter-spacing: 0;
+}
+
+.comp-points b {
+  font-size: 36px;
+}
+
+.comp-rank small,
+.comp-points small {
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ch-stat b {
+  font-size: 28px;
+}
+
+.ch-stat b span {
+  font-weight: 500;
+}
+
+.preview-stats b {
+  font-size: 24px;
+}
+
+.public-card-pool {
+  font-size: 36px;
+}
+
+.side b {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+@media (min-width: 720px) {
+  .ch-stat b {
+    font-size: 32px;
+  }
+
+  .ch-stat-pool b {
+    font-size: 48px;
+    letter-spacing: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .board-rank {
+    font-size: 18px;
+  }
+
+  .board-pts {
+    font-size: 26px;
+  }
+}
+
+/* More green: "live" and forward motion read as green; blue stays the brand and the action colour. */
+.live-dot {
+  background: var(--green);
+  box-shadow: 0 0 0 0 rgba(188, 235, 156, 0.6);
+  animation-name: pulse-green;
+}
+
+@keyframes pulse-green {
+  70% {
+    box-shadow: 0 0 0 7px rgba(188, 235, 156, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(188, 235, 156, 0);
+  }
+}
+
+.status-pill.live {
+  border-color: var(--green-line);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.is-live,
+.event-row-extra {
+  color: var(--green);
+}
+
+.comp-card.live::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--green), transparent 70%);
+}
+
+.goal-met,
+.board-sub .share {
+  color: var(--green);
+}
+
+.step-list li:hover .step-list-n {
+  color: var(--green);
+}
+
+.step-list-n {
+  transition: color 0.25s ease;
+}
+
+.mark.hit {
+  background: var(--green);
+  color: var(--green-ink);
+}
+
+.picks-row .good {
+  border-color: var(--green-line);
+  color: var(--green);
+}
+
+.text-link:hover {
+  border-color: var(--green);
+}
+
+/* Progress as a track: a start mark, a finish mark, and the runner's position. */
+.comp-progress,
+.ch-progress {
+  position: relative;
+  overflow: visible;
+}
+
+.comp-progress::before,
+.comp-progress::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 9px;
+  background: var(--line-strong);
+}
+
+.comp-progress::after {
+  right: 0;
+}
+
+.comp-progress i {
+  border-radius: 3px;
+}
+
+/* Leaderboard rows respond to the pointer */
+.board-row {
+  transition:
+    background-color 0.25s ease,
+    transform 0.3s var(--ease);
+}
+
+.board-row:not(.you):hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* ----- Graphic system: shared frame ----- */
+.graphic {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 72px),
+    var(--surface);
+  overflow: hidden;
+}
+
+.graphic-head,
+.graphic-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.graphic-head {
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+}
+
+.graphic-foot {
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--green);
+}
+
+.live-tag i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse-green 2s ease-out infinite;
+}
+
+/* Lane board */
+.lane-axis,
+.lane-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 0.9fr) minmax(0, 2.2fr) 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+}
+
+.lane-axis {
+  height: 34px;
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lane-axis > span:last-child,
+.lane-total {
+  text-align: right;
+}
+
+.lane-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+  text-align: center;
+}
+
+.lane-row {
+  height: 58px;
+  border-top: 1px solid var(--line);
+}
+
+.lane-n {
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.lane-name {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lane-day {
+  display: grid;
+  gap: 3px;
+}
+
+.lane-day i {
+  height: 7px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.lane-day i.on {
+  background: var(--text-3);
+}
+
+.lane-total {
+  font-family: var(--caps);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.lane-row.you {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.lane-row.you .lane-n,
+.lane-row.you .lane-total {
+  color: var(--accent-bright);
+}
+
+.lane-row.you .lane-day i.on {
+  background: var(--accent);
+}
+
+.lane-row.lead .lane-day i.on {
+  background: var(--green);
+}
+
+.lane-row.lead:not(.you) .lane-total,
+.lane-row.lead:not(.you) .lane-n {
+  color: var(--green);
+}
+
+/* The week fills in day by day when the board scrolls into view. */
+.reveal .lane-day i.on {
+  opacity: 0;
+  transform: scaleY(0.2);
+  transform-origin: bottom;
+}
+
+.reveal.in .lane-day i.on {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.35s ease,
+    transform 0.5s var(--ease);
+  transition-delay: calc(var(--d) * 110ms + 250ms);
+}
+
+.how-visual {
+  min-width: 0;
+}
+
+/* Head to head */
+.versus {
+  border-block: 1px solid var(--line);
+  background:
+    radial-gradient(60% 80% at 85% 50%, rgba(120, 175, 255, 0.07), transparent 70%),
+    var(--bg-raised);
+}
+
+.versus-inner {
+  display: grid;
+  gap: 48px;
+  align-items: center;
+  padding-block: 88px;
+}
+
+.versus-copy blockquote {
+  max-width: 14ch;
+  margin: 0 0 32px;
+}
+
+.matchup-score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 30px 20px 18px;
+}
+
+.matchup-side {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.matchup-side small {
+  color: var(--text-2);
+  font-family: var(--caps);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.matchup-side b {
+  font-family: var(--caps);
+  font-size: clamp(84px, 13vw, 132px);
+  font-weight: 600;
+  line-height: 0.9;
+  color: var(--green);
+}
+
+.matchup-side.you b,
+.matchup-side.you small {
+  color: var(--accent-bright);
+}
+
+.matchup-vs {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 24px;
+}
+
+.matchup-vs i {
+  width: 1px;
+  height: 28px;
+  background: var(--line-strong);
+}
+
+.matchup-gap {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 20px 24px;
+}
+
+.matchup-gap span {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--text-2);
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.matchup-gap span:first-child {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-bright);
+}
+
+/* Rules strip under the hero */
+.rule-strip {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-inline: 20px;
+}
+
+.rule-cell {
+  display: grid;
+  gap: 6px;
+  padding: 26px 16px 26px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.rule-cell small {
+  color: var(--green);
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+.rule-cell b {
+  font-family: var(--caps);
+  font-size: clamp(48px, 6vw, 76px);
+  font-weight: 600;
+  line-height: 0.95;
+}
+
+.rule-cell b span {
+  margin-left: 6px;
+  color: var(--text-3);
+  font-size: 0.34em;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.rule-cell p {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+/* Daily cap illustration */
+.cap-section {
+  padding-block: 0 24px;
+}
+
+.cap-rows > div {
+  padding-top: 16px;
+}
+
+.cap-rows > div + div {
+  border-top: 1px solid var(--line);
+}
+
+.cap-rows small {
+  display: block;
+  padding: 0 20px 6px;
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cap-rows .lane-row {
+  border-top: 0;
+}
+
+/* Ways to play: a ticket, an open list, a stat sheet */
+.ticket {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.ticket-main {
+  display: grid;
+  gap: 18px;
+  padding: 26px 24px;
+}
+
+.ticket small {
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ticket-code {
+  font-family: var(--caps);
+  font-size: clamp(44px, 7vw, 64px);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1;
+}
+
+.ticket-seats {
+  display: flex;
+  gap: 6px;
+}
+
+.ticket-seats span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px dashed var(--line-strong);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ticket-seats .on {
+  border-style: solid;
+  background: var(--surface-2);
+}
+
+.ticket-seats .on:last-of-type,
+.ticket-seats span:nth-child(5) {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.ticket-stub {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  padding: 0 26px;
+  border-left: 1px dashed var(--line-strong);
+}
+
+.ticket-stub b {
+  font-family: var(--caps);
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--green);
+}
+
+.ticket-stub b span {
+  color: var(--text-3);
+  font-size: 0.5em;
+}
+
+.open-list,
+.stat-sheet {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.open-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px 34px;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.open-row:last-of-type {
+  border-bottom: 0;
+}
+
+.open-name {
+  font-size: 15.5px;
+  font-weight: 500;
+}
+
+.open-meter {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.open-meter i {
+  display: block;
+  height: 100%;
+  background: var(--green);
+}
+
+.open-count {
+  font-family: var(--caps);
+  font-size: 17px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.open-starts {
+  grid-column: 1 / -1;
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sheet-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 44px 56px;
+  align-items: center;
+  padding: 0 20px;
+  height: 46px;
+  border-bottom: 1px solid var(--line);
+  font-size: 15px;
+}
+
+.sheet-row:last-of-type {
+  border-bottom: 0;
+}
+
+.sheet-row span:not(:first-child) {
+  font-family: var(--caps);
+  font-size: 19px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--text-2);
+}
+
+.sheet-row span:last-child {
+  color: var(--text);
+}
+
+.sheet-head {
+  height: 34px;
+  color: var(--text-3);
+}
+
+.sheet-head span,
+.sheet-head span:not(:first-child) {
+  color: var(--text-3);
+  font-family: var(--caps);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sheet-row.lead span:last-child {
+  color: var(--green);
+}
+
+@media (min-width: 720px) {
+  .rule-strip {
+    grid-template-columns: repeat(4, 1fr);
+    padding-inline: 40px;
+  }
+
+  .rule-cell {
+    padding: 34px 24px 34px 0;
+  }
+
+  .rule-cell + .rule-cell {
+    padding-left: 24px;
+    border-left: 1px solid var(--line);
+  }
+
+  .versus-inner {
+    padding-block: 128px;
+  }
+}
+
+@media (min-width: 960px) {
+  .versus-inner {
+    grid-template-columns: 1fr 1fr;
+    gap: 96px;
+  }
+
+  .how-visual {
+    position: sticky;
+    top: 130px;
+  }
+
+  .how {
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+  }
+}
+
+@media (max-width: 480px) {
+  .lane-axis,
+  .lane-row {
+    grid-template-columns: 22px minmax(0, 0.8fr) minmax(0, 2fr) 30px;
+    gap: 8px;
+    padding: 0 14px;
+  }
+
+  .lane-name {
+    font-size: 13.5px;
+  }
+
+  .lane-total {
+    font-size: 22px;
+  }
+
+  .lane-days {
+    gap: 3px;
+  }
+
+  .graphic-head,
+  .graphic-foot {
+    padding: 12px 14px;
+  }
+
+  .graphic-foot span:last-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal .lane-day i.on {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.versus-copy blockquote {
+  max-width: 13em;
+  font-size: clamp(38px, 4.6vw, 64px);
+  line-height: 1.02;
+}
+
+.chapters li {
+  font-size: 13.5px;
+}

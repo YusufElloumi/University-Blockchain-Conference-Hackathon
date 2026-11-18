@@ -19,6 +19,7 @@ export default function Leaderboard(props: {
   const teams = props.format === "teams" ? (props.formatConfig?.teams ?? []) : [];
   const goal = props.format === "goal" ? props.formatConfig : undefined;
   const flip = useFlip();
+  const top = Math.max(0, ...props.players.map((p) => p.points));
   const used = new Map<string, number>();
 
   return (
@@ -88,6 +89,8 @@ export default function Leaderboard(props: {
               )}
               <span className="board-pts" role="cell">
                 {p.points}
+                {/* How far behind first place, so the chase is visible at a glance. */}
+                {top > 0 && <small>{p.points >= top ? "Lead" : `−${Math.round((top - p.points) * 10) / 10}`}</small>}
               </span>
             </div>
           );
