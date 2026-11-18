@@ -1,6 +1,6 @@
 import { ShieldCheck, Target, Wallet } from "lucide-react";
 import type { Session } from "./App";
-import { Steps } from "./Landing";
+import { StepList } from "./sitekit";
 import { MODE_INFO, MODES } from "./modes";
 import { Eyebrow } from "./ui";
 
@@ -19,7 +19,7 @@ export default function HowItWorks({ session }: { session: Session }) {
         </div>
       </header>
 
-      <Steps />
+      <StepList compact />
 
       <div className="section-head">
         <h2>Ways to play</h2>

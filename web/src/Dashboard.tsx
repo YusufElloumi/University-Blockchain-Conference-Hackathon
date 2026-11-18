@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { ArrowRight, ChevronRight, CircleHelp, LogOut, Pencil, Plus, Trophy } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, ArrowUpRight, ChevronRight, CircleHelp, LogOut, Pencil, Plus } from "lucide-react";
 import type { ChallengeState, ChallengeView, Me, MyEvent } from "./api";
 import type { Session } from "./App";
 import { EventRow, eventStatus, InviteCodeBox } from "./events";
 import { money } from "./format";
-import { MODE_INFO, MODES } from "./modes";
-import { Avatar, EmptyState, Eyebrow, Skeleton } from "./ui";
+import { PHOTOS } from "./media";
+import { MODE_INFO, ModeBadge, MODES } from "./modes";
+import { Avatar, Eyebrow, Skeleton } from "./ui";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -14,11 +15,13 @@ function greeting(): string {
 
 const ordinal = (n: number) => {
   const tail = n % 100;
-  if (tail >= 11 && tail <= 13) return `${n}th`;
-  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+  if (tail >= 11 && tail <= 13) return "th";
+  return ["th", "st", "nd", "rd"][n % 10] ?? "th";
 };
 
-/** The signed-in home: your competitions, your balance, and the ways to play. */
+type Standing = { rank: number; of: number; points: number };
+
+/** The signed-in home: your competitions first, what to do next, and your account to the side. */
 export default function Dashboard(props: {
   session: Session;
   balance: number | null;
@@ -31,10 +34,11 @@ export default function Dashboard(props: {
   const { session, balance } = props;
   const { me, call, go } = session;
   const [events, setEvents] = useState<MyEvent[] | null>(null);
-  const [standing, setStanding] = useState<Record<string, string>>({});
+  const [standing, setStanding] = useState<Record<string, Standing>>({});
   const [now, setNow] = useState(Date.now());
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(me.name);
+  const codeBox = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,8 +55,10 @@ export default function Dashboard(props: {
               .then((state) => {
                 const you = state.players?.find((p) => p.is_you);
                 if (!you || cancelled) return;
-                const line = `${ordinal(you.rank)} of ${state.players!.length} · ${you.points} pt${you.points === 1 ? "" : "s"}`;
-                setStanding((old) => ({ ...old, [e.address]: line }));
+                setStanding((old) => ({
+                  ...old,
+                  [e.address]: { rank: you.rank, of: state.players!.length, points: you.points },
+                }));
               })
               .catch(() => undefined),
           );
@@ -75,18 +81,41 @@ export default function Dashboard(props: {
     }
   }
 
+  function focusCode() {
+    codeBox.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    codeBox.current?.querySelector("input")?.focus({ preventScroll: true });
+  }
+
   const openEvent = (address: string) => go({ view: "challenge", address });
   const active = events?.filter((e) => !eventStatus(e, now).done) ?? [];
   const finished = events?.filter((e) => eventStatus(e, now).done) ?? [];
+  const live = active.filter((e) => eventStatus(e, now).live).length;
+  const message =
+    events === null
+      ? " "
+      : active.length === 0
+        ? "Nothing on the line yet. Start something, or join a friend."
+        : live > 0
+          ? `${live} ${live === 1 ? "competition is" : "competitions are"} live. Every workout counts.`
+          : `${active.length} ${active.length === 1 ? "competition is" : "competitions are"} about to start.`;
 
   return (
     <div className="dash">
-      <header className="page-head">
+      <header className="welcome">
         <div>
           <Eyebrow>{new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</Eyebrow>
-          <h1 className="headline">
+          <h1 className="display">
             {greeting()}, <em className="serif">{me.name}.</em>
           </h1>
+          <p className="lede">{message}</p>
+        </div>
+        <div className="welcome-actions">
+          <button className="btn btn-primary" onClick={() => go({ view: "create", mode: "private" })}>
+            <Plus size={16} aria-hidden /> Start a challenge
+          </button>
+          <button className="btn btn-quiet" onClick={focusCode}>
+            Join with a code
+          </button>
         </div>
       </header>
 
@@ -98,25 +127,40 @@ export default function Dashboard(props: {
               {active.length > 0 && <span className="count">{active.length} active</span>}
             </div>
             {events === null ? (
-              <Skeleton rows={2} height={76} />
+              <Skeleton rows={1} height={210} />
             ) : active.length === 0 ? (
-              <EmptyState
-                icon={<Trophy size={20} strokeWidth={1.75} />}
-                title="Nothing on the line yet"
-                text="Join a friend's challenge with their code, find a public event, or start your own."
-              >
-                <button className="btn btn-primary" onClick={() => go({ view: "create", mode: "private" })}>
-                  <Plus size={16} aria-hidden /> Start a challenge
-                </button>
-                <button className="btn btn-quiet" onClick={() => go({ view: "mode", mode: "public" })}>
-                  Browse public events
-                </button>
-              </EmptyState>
+              <div className="starter">
+                <img src={PHOTOS.tennisFeet.src} alt="" />
+                <div className="starter-copy">
+                  <h3 className="headline">
+                    Your first rival is <em className="serif">waiting.</em>
+                  </h3>
+                  <p>Start a game for your friends, or jump into a public event that's about to begin.</p>
+                  <div className="starter-actions">
+                    <button className="btn btn-primary" onClick={() => go({ view: "create", mode: "private" })}>
+                      <Plus size={16} aria-hidden /> Start a challenge
+                    </button>
+                    <button className="btn btn-glass" onClick={() => go({ view: "mode", mode: "public" })}>
+                      Browse public events
+                    </button>
+                  </div>
+                </div>
+              </div>
             ) : (
-              <div className="stack">
+              <div className="comp-grid">
                 {active.map((e) => (
-                  <EventRow key={e.address} event={e} now={now} onOpen={openEvent} showMode extra={standing[e.address]} />
+                  <CompetitionCard key={e.address} event={e} now={now} standing={standing[e.address]} onOpen={openEvent} />
                 ))}
+              </div>
+            )}
+            {events !== null && !me.test_funds_used && (
+              <div className="nudge">
+                <span>
+                  <b>New here?</b> Add {me.test_funds_amount} devnet USDC to cover your first entry fees. It's demo money.
+                </span>
+                <button className="btn btn-quiet btn-sm" onClick={props.onAddFunds} disabled={props.busy}>
+                  {props.busy ? "Adding..." : `Add ${me.test_funds_amount} devnet USDC`}
+                </button>
               </div>
             )}
           </section>
@@ -125,18 +169,15 @@ export default function Dashboard(props: {
             <div className="section-head">
               <h2>Ways to play</h2>
             </div>
-            <div className="mode-cards">
-              {MODES.map((mode) => {
-                const { Icon, title, line } = MODE_INFO[mode];
+            <div className="mode-rows">
+              {MODES.map((mode, i) => {
+                const { title, line } = MODE_INFO[mode];
                 return (
-                  <button key={mode} className="mode-card" onClick={() => go({ view: "mode", mode })}>
-                    <span className="icon-tile">
-                      <Icon size={18} strokeWidth={1.75} aria-hidden />
-                    </span>
-                    <span className="mode-card-title">
-                      {title} <ArrowRight size={15} aria-hidden />
-                    </span>
-                    <span className="mode-card-line">{line}</span>
+                  <button key={mode} className="mode-row" onClick={() => go({ view: "mode", mode })}>
+                    <b>0{i + 1}</b>
+                    <span className="mode-row-title">{title}</span>
+                    <span className="mode-row-line">{line}</span>
+                    <ArrowUpRight size={18} aria-hidden />
                   </button>
                 );
               })}
@@ -159,27 +200,26 @@ export default function Dashboard(props: {
         </div>
 
         <aside className="dash-rail">
+          <div ref={codeBox}>
+            <InviteCodeBox
+              session={session}
+              onJoined={(c: ChallengeView) => openEvent(c.address)}
+              hint="Enter it to open a friend's game or a league."
+            />
+          </div>
+
           <section className="card balance-card">
-            <Eyebrow>Your balance</Eyebrow>
-            <div className="balance-amount">{balance === null ? <span className="skeleton inline" /> : money(balance)}</div>
-            <p className="fine">{balance === null ? " " : `${balance} devnet USDC`}</p>
-            <div className="balance-actions">
-              {!me.test_funds_used && (
-                <button className="btn btn-primary" onClick={props.onAddFunds} disabled={props.busy}>
-                  {props.busy ? "Adding..." : `Add ${me.test_funds_amount} devnet USDC`}
-                </button>
-              )}
-              <button className="btn btn-quiet" onClick={props.onWithdraw}>
+            <div className="balance-row">
+              <div>
+                <Eyebrow>Balance</Eyebrow>
+                <div className="balance-amount">{balance === null ? <span className="skeleton inline" /> : money(balance)}</div>
+              </div>
+              <button className="btn btn-quiet btn-sm" onClick={props.onWithdraw}>
                 Withdraw
               </button>
             </div>
+            <p className="fine">{balance === null ? " " : `${balance} devnet USDC · demo money, no real value`}</p>
           </section>
-
-          <InviteCodeBox
-            session={session}
-            onJoined={(c: ChallengeView) => openEvent(c.address)}
-            hint="Enter it here to open a friend's game or a league."
-          />
 
           <section className="card profile-card">
             <Eyebrow>Player name</Eyebrow>
@@ -216,5 +256,59 @@ export default function Dashboard(props: {
         </aside>
       </div>
     </div>
+  );
+}
+
+/** One of your active competitions: where you stand, and how far through it is. */
+function CompetitionCard(props: { event: MyEvent; now: number; standing?: Standing; onOpen: (address: string) => void }) {
+  const { event: e, now, standing } = props;
+  const status = eventStatus(e, now);
+  const start = new Date(e.start).getTime();
+  const end = new Date(e.end).getTime();
+  const progress = now <= start ? 0 : Math.min(1, (now - start) / Math.max(1, end - start));
+  const role = e.joined ? null : e.is_creator ? (e.mode === "league" ? "You're the organizer" : "You created this") : "You're invited";
+
+  return (
+    <button className={`comp-card${status.live ? " live" : ""}`} onClick={() => props.onOpen(e.address)}>
+      <span className="comp-top">
+        <ModeBadge mode={e.mode} />
+        <span className={`status-pill${status.live ? " live" : ""}`}>
+          {status.live && <span className="live-dot" />}
+          {status.live ? "Live" : status.text}
+        </span>
+      </span>
+      <span className="comp-name">{e.name}</span>
+      {e.organizer_name && <span className="comp-host">Hosted by {e.organizer_name}</span>}
+
+      <span className="comp-body">
+        {standing ? (
+          <>
+            <span className="comp-rank">
+              {standing.rank}
+              <sup>{ordinal(standing.rank)}</sup>
+              <small>of {standing.of}</small>
+            </span>
+            <span className="comp-points">
+              <b>{standing.points}</b>
+              <small>point{standing.points === 1 ? "" : "s"}</small>
+            </span>
+          </>
+        ) : (
+          <span className="comp-role">
+            {role ?? (status.live ? "You're in. Log a workout to get on the board." : "You're in. Scoring starts with the challenge.")}
+          </span>
+        )}
+      </span>
+
+      <span className="comp-progress" aria-hidden>
+        <i style={{ transform: `scaleX(${progress})` }} />
+      </span>
+      <span className="comp-foot">
+        <span>{status.live ? status.text : `${money(e.buy_in)} entry`}</span>
+        <span className="comp-go">
+          Open <ArrowRight size={15} aria-hidden />
+        </span>
+      </span>
+    </button>
   );
 }

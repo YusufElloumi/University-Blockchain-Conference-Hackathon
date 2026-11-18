@@ -45,13 +45,14 @@ export default function Leaderboard(props: {
               className={`board-row${p.is_you ? " you" : ""}${leader ? " leader" : ""}`}
             >
               <span className="board-rank" role="cell">
-                {leader ? <Crown size={15} strokeWidth={2} aria-label="First place" /> : p.rank}
+                {String(p.rank).padStart(2, "0")}
               </span>
               <span className="board-who" role="cell">
                 <Avatar name={p.name} size="sm" />
                 <span className="board-who-text">
                   <span className="board-name">
                     <span>{p.name}</span>
+                    {leader && <Crown className="board-crown" size={14} strokeWidth={2} aria-label="Leading" />}
                     {p.is_you && <span className="tag tag-accent">You</span>}
                   </span>
                   {props.picks && p.pick_points > 0 && (

@@ -17,12 +17,12 @@ import ChallengePage from "./ChallengePage";
 import CreateChallenge from "./CreateChallenge";
 import Dashboard from "./Dashboard";
 import HowItWorks from "./HowItWorks";
-import Landing from "./Landing";
+import Site from "./Site";
 import ModeScreen from "./ModeScreen";
 import WithdrawNote from "./WithdrawNote";
 import { isMode, type Mode } from "./modes";
 import Shell, { type Section } from "./Shell";
-import { prefersReducedMotion, Wordmark } from "./ui";
+import { IntroLogo, prefersReducedMotion, Wordmark } from "./ui";
 
 export type Route =
   | { view: "home" }
@@ -187,7 +187,7 @@ export default function App() {
   const [introHeld, setIntroHeld] = useState(introPlayed);
   useEffect(() => {
     if (!introPlayed) return;
-    const timer = setTimeout(() => setIntroHeld(false), 1250);
+    const timer = setTimeout(() => setIntroHeld(false), 2450);
     return () => clearTimeout(timer);
   }, [introPlayed]);
   const entered = !introHeld && ready;
@@ -207,14 +207,14 @@ export default function App() {
     <div className={`root${entered ? " entered" : ""}`}>
       {introPlayed && (
         <div className={`intro-screen${entered ? " out" : ""}`} aria-hidden>
-          <Wordmark />
+          <IntroLogo />
         </div>
       )}
 
       {!ready ? (
         <div className="splash">{!introPlayed && <Wordmark />}</div>
       ) : !authenticated ? (
-        <Landing onLogin={login} />
+        <Site onLogin={login} />
       ) : !session ? (
         <div className="splash">
           <Wordmark />
