@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ArrowRight, ArrowUpRight, Menu, X } from "lucide-react";
 import { FORMAT_INFO, FORMATS } from "./formats";
-import { CapGraphic, LaneBoard, Matchup, ModeGraphic, RuleStrip } from "./graphics";
+import { CapGraphic, HeroRules, LaneBoard, Matchup, ModeGraphic, RuleStrip } from "./graphics";
 import { PHOTOS, type Picture } from "./media";
 import { HeroVideo, Lane, Photo, ProductPreview, StepList } from "./sitekit";
 import { DemoBanner, Reveal, Wordmark } from "./ui";
@@ -165,18 +165,21 @@ function HomePage({ go, onLogin }: Nav) {
             A little competition. <em className="serif">A lot of progress.</em>
           </h1>
           <div className="hero-foot rise" style={{ "--i": 2 } as React.CSSProperties}>
-            <p className="lede">
-              Rival turns your workouts into a friendly contest. Start a challenge, bring your people, and climb the
-              leaderboard together.
-            </p>
-            <div className="hero-actions">
-              <button className="btn btn-primary btn-lg" onClick={onLogin}>
-                Start competing <ArrowRight size={18} aria-hidden />
-              </button>
-              <button className="btn btn-glass btn-lg" onClick={() => go("how")}>
-                How it works
-              </button>
+            <div className="hero-pitch">
+              <p className="lede">
+                Rival turns your workouts into a friendly contest. Start a challenge, bring your people, and climb the
+                leaderboard together.
+              </p>
+              <div className="hero-actions">
+                <button className="btn btn-primary btn-lg" onClick={onLogin}>
+                  Start competing <ArrowRight size={18} aria-hidden />
+                </button>
+                <button className="btn btn-glass btn-lg" onClick={() => go("how")}>
+                  How it works
+                </button>
+              </div>
             </div>
+            <HeroRules />
           </div>
         </div>
       </section>

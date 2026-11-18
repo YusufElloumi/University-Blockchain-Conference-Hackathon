@@ -6457,3 +6457,67 @@ input[type="checkbox"] {
 .chapters li {
   font-size: 13.5px;
 }
+
+/* Hero scorecard: the competition typeface, visible the moment the page loads */
+.hero-pitch {
+  display: grid;
+  gap: 24px;
+}
+
+.hero-rules {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .hero-foot {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+  }
+
+  .hero-rules {
+    display: flex;
+    margin: 0;
+  }
+
+  .hero-rules > div {
+    padding: 0 28px;
+    border-left: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  .hero-rules > div:last-child {
+    padding-right: 0;
+  }
+
+  .hero-rules dt {
+    font-family: var(--caps);
+    font-size: clamp(44px, 4.4vw, 64px);
+    font-weight: 600;
+    line-height: 0.95;
+    color: var(--text);
+  }
+
+  .hero-rules dt span {
+    margin-left: 5px;
+    color: var(--green);
+    font-size: 0.36em;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .hero-rules dd {
+    margin-top: 8px;
+    color: #c9ccd1;
+    font-family: var(--caps);
+    font-size: 13.5px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* The same numbers already sit on the hero at this width, so the strip below is not repeated. */
+  .rule-strip {
+    display: none;
+  }
+}

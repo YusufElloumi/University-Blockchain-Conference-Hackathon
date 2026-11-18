@@ -113,13 +113,32 @@ export function Matchup() {
 }
 
 /** The scoring rules as a scoreboard strip. These are the app's real numbers. */
+const RULES = [
+  { value: "20", unit: "min", label: "Active minutes for a point", short: "= 1 point" },
+  { value: "5", unit: "km", label: "Distance for a point", short: "= 1 point" },
+  { value: "3", unit: "pts", label: "Most you can earn in a day", short: "a day, at most" },
+  { value: "8", unit: "max", label: "Players in one event", short: "players" },
+];
+
+/** The first three rules as a compact scorecard that sits on the hero film (wide screens only). */
+export function HeroRules() {
+  return (
+    <dl className="hero-rules" aria-label="How points are scored">
+      {RULES.slice(0, 3).map((rule) => (
+        <div key={rule.label}>
+          <dt>
+            {rule.value}
+            <span>{rule.unit}</span>
+          </dt>
+          <dd>{rule.short}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function RuleStrip() {
-  const rules = [
-    { value: "20", unit: "min", label: "Active minutes for a point" },
-    { value: "5", unit: "km", label: "Distance for a point" },
-    { value: "3", unit: "pts", label: "Most you can earn in a day" },
-    { value: "8", unit: "max", label: "Players in one event" },
-  ];
+  const rules = RULES;
   return (
     <section className="rule-strip" aria-label="How scoring works">
       {rules.map((rule, i) => (
