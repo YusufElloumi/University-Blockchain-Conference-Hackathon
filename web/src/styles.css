@@ -7518,3 +7518,68 @@ input[type="checkbox"] {
     background: linear-gradient(180deg, var(--bg) 0%, rgba(7, 8, 9, 0.72) 22%, rgba(7, 8, 9, 0.1) 58%, var(--bg) 100%);
   }
 }
+
+/* ---------- 21. Header: always visible, page links in the competition caps ---------- */
+.site-nav.tucked {
+  transform: none;
+}
+
+.site-links {
+  gap: clamp(28px, 3vw, 52px);
+}
+
+.site-links a {
+  padding: 8px 0;
+  color: rgba(245, 246, 244, 0.82);
+  font-family: var(--caps);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.site-links a:hover,
+.site-links a.on {
+  color: var(--text);
+}
+
+.site-links a::after {
+  height: 2px;
+  background: var(--green);
+}
+
+.site-nav-inner {
+  height: 72px;
+}
+
+.site-menu {
+  inset: calc(var(--banner-h) + 72px) 0 0 0;
+}
+
+.site:not(.site-home) .site-main {
+  padding-top: 72px;
+}
+
+.site-foot nav a,
+.site-foot nav button {
+  font-family: var(--caps);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* The header is always on screen now, so the pinned race scene starts below it. */
+.race-pin {
+  padding-top: calc(var(--banner-h) + 72px + 20px);
+}
+
+@media (max-width: 1099px) {
+  .race-pin {
+    padding-top: calc(var(--banner-h) + 72px + 12px);
+  }
+}
+
+.race-still .race-pin {
+  padding-top: 96px;
+}
