@@ -7,7 +7,7 @@ import { Reveal } from "./ui";
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
 /** A sample week: points per day (the real cap is 3 a day). */
-const WEEK: { name: string; you?: boolean; days: number[] }[] = [
+export const WEEK: { name: string; you?: boolean; days: number[] }[] = [
   { name: "Maya", days: [2, 2, 0, 3, 2, 1, 2] },
   { name: "You", you: true, days: [2, 1, 2, 0, 2, 2, 2] },
   { name: "Jordan", days: [1, 0, 2, 2, 1, 0, 3] },
@@ -18,21 +18,29 @@ const WEEK: { name: string; you?: boolean; days: number[] }[] = [
 const sum = (list: number[]) => list.reduce((a, b) => a + b, 0);
 
 /** One lane: seven day cells, each holding up to three pips (points earned that day). */
-function LaneRow(props: { n: number; name: string; days: number[]; you?: boolean; lead?: boolean }) {
+export function LaneRow(props: {
+  n: number;
+  name: string;
+  days: number[];
+  you?: boolean;
+  lead?: boolean;
+  upto?: number; // only count and show the first this-many days (the scroll story reveals the week)
+}) {
+  const upto = props.upto ?? props.days.length;
   return (
     <div className={`lane-row${props.you ? " you" : ""}${props.lead ? " lead" : ""}`}>
       <b className="lane-n">{String(props.n).padStart(2, "0")}</b>
       <span className="lane-name">{props.name}</span>
       <span className="lane-days">
         {props.days.map((points, d) => (
-          <span key={d} className="lane-day" style={{ "--d": d } as React.CSSProperties}>
+          <span key={d} className={`lane-day${d === upto - 1 ? " today" : ""}`} style={{ "--d": d } as React.CSSProperties}>
             {[2, 1, 0].map((pip) => (
-              <i key={pip} className={pip < points ? "on" : ""} />
+              <i key={pip} className={d < upto && pip < points ? "on" : ""} />
             ))}
           </span>
         ))}
       </span>
-      <span className="lane-total">{sum(props.days)}</span>
+      <span className="lane-total">{sum(props.days.slice(0, upto))}</span>
     </div>
   );
 }
@@ -113,13 +121,32 @@ export function Matchup() {
 }
 
 /** The scoring rules as a scoreboard strip. These are the app's real numbers. */
+const RULES = [
+  { value: "20", unit: "min", label: "Active minutes for a point", short: "= 1 point" },
+  { value: "5", unit: "km", label: "Distance for a point", short: "= 1 point" },
+  { value: "3", unit: "pts", label: "Most you can earn in a day", short: "a day, at most" },
+  { value: "8", unit: "max", label: "Players in one event", short: "players" },
+];
+
+/** The first three rules as a compact scorecard that sits on the hero film (wide screens only). */
+export function HeroRules() {
+  return (
+    <dl className="hero-rules" aria-label="How points are scored">
+      {RULES.slice(0, 3).map((rule) => (
+        <div key={rule.label}>
+          <dt>
+            {rule.value}
+            <span>{rule.unit}</span>
+          </dt>
+          <dd>{rule.short}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function RuleStrip() {
-  const rules = [
-    { value: "20", unit: "min", label: "Active minutes for a point" },
-    { value: "5", unit: "km", label: "Distance for a point" },
-    { value: "3", unit: "pts", label: "Most you can earn in a day" },
-    { value: "8", unit: "max", label: "Players in one event" },
-  ];
+  const rules = RULES;
   return (
     <section className="rule-strip" aria-label="How scoring works">
       {rules.map((rule, i) => (
