@@ -1,17 +1,29 @@
 // The three play modes. Mode is our server's record only; the Solana program does not know about it.
 
+import { Building2, Globe, Lock, type LucideIcon } from "lucide-react";
+
 export type Mode = "league" | "public" | "private";
 
 export const MODES: Mode[] = ["league", "public", "private"];
 
 export const MODE_INFO: Record<
   Mode,
-  { title: string; badge: string; icon: string; line: string; create: string; noun: string; inviteOnly: boolean }
+  {
+    title: string;
+    nav: string;
+    badge: string;
+    Icon: LucideIcon;
+    line: string;
+    create: string;
+    noun: string;
+    inviteOnly: boolean;
+  }
 > = {
   league: {
     title: "League Play",
+    nav: "Leagues",
     badge: "League",
-    icon: "🏟️",
+    Icon: Building2,
     line: "Hosted by a gym, club or tournament. Join with the organizer's code.",
     create: "Create a league",
     noun: "league",
@@ -19,17 +31,19 @@ export const MODE_INFO: Record<
   },
   public: {
     title: "Public Events",
+    nav: "Public",
     badge: "Public",
-    icon: "🌍",
-    line: "Open to anyone. Community and city-wide, with bigger pots.",
+    Icon: Globe,
+    line: "Open to anyone. Community and city-wide, with bigger prize pools.",
     create: "Create a public event",
     noun: "public event",
     inviteOnly: false,
   },
   private: {
     title: "Private Play",
+    nav: "Private",
     badge: "Private",
-    icon: "🔒",
+    Icon: Lock,
     line: "Your friends, team or office. Invite only, never listed.",
     create: "Create a private game",
     noun: "private game",
@@ -39,11 +53,13 @@ export const MODE_INFO: Record<
 
 export const isMode = (value: string | null | undefined): value is Mode => MODES.includes(value as Mode);
 
-/** The small coloured label shown on event cards and the event page. */
+/** The small label shown on event cards and the event page. */
 export function ModeBadge({ mode }: { mode: Mode }) {
+  const { Icon, badge } = MODE_INFO[mode];
   return (
-    <span className={`mode-badge mode-${mode}`}>
-      {MODE_INFO[mode].icon} {MODE_INFO[mode].badge}
+    <span className="badge">
+      <Icon size={12} strokeWidth={2} aria-hidden />
+      {badge}
     </span>
   );
 }

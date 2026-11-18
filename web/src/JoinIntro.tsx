@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 import type { StatWeights } from "./api";
 import { usdc } from "./format";
+import {
+  ChevronsUp,
+  ClipboardList,
+  Footprints,
+  Goal,
+  Handshake,
+  Target,
+  Timer,
+  Trophy,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 /**
  * "How it works": three short screens shown every time someone taps Join, before any money moves.
@@ -18,10 +30,10 @@ export type JoinIntroProps = {
   onClose: () => void;
 };
 
-const STAT_LINES: { key: keyof StatWeights; icon: string; one: string }[] = [
-  { key: "goals", icon: "🥅", one: "goal" },
-  { key: "assists", icon: "🤝", one: "assist" },
-  { key: "points", icon: "📋", one: "stat point" },
+const STAT_LINES: { key: keyof StatWeights; Icon: LucideIcon; one: string }[] = [
+  { key: "goals", Icon: Goal, one: "goal" },
+  { key: "assists", Icon: Handshake, one: "assist" },
+  { key: "points", Icon: ClipboardList, one: "stat point" },
 ];
 
 /** "15 minutes", "1 day", "1 week", "1 month", "3 days"... */
@@ -50,31 +62,39 @@ export default function JoinIntro(props: JoinIntroProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [props]);
 
-  const rules = stats
-    ? STAT_LINES.filter(({ key }) => (props.weights?.[key] ?? 0) > 0).map(({ key, icon, one }) => ({
-        icon,
+  const rules: { Icon: LucideIcon; text: string }[] = stats
+    ? STAT_LINES.filter(({ key }) => (props.weights?.[key] ?? 0) > 0).map(({ key, Icon, one }) => ({
+        Icon,
         text: `1 ${one} = ${pts(props.weights![key])}`,
       }))
     : [
-        { icon: "⏱", text: "20 active min = 1 pt" },
-        { icon: "📍", text: "Every 5 km = 1 pt" },
-        { icon: "🔝", text: "Up to 3 pts a day" },
+        { Icon: Timer, text: "20 active min = 1 pt" },
+        { Icon: Footprints, text: "Every 5 km = 1 pt" },
+        { Icon: ChevronsUp, text: "Up to 3 pts a day" },
       ];
 
   const screens = [
     {
-      art: stats ? <ScoreArt /> : <RunArt />,
-      title: stats ? "Score to earn points" : "Move to earn points",
+      art: <RingArt Icon={stats ? Goal : Footprints} />,
+      title: stats ? (
+        <>
+          Score to earn <em className="serif">points.</em>
+        </>
+      ) : (
+        <>
+          Move to earn <em className="serif">points.</em>
+        </>
+      ),
       body: (
-        <ul className="intro-rules">
+        <ul className="modal-rules">
           {rules.map((r) => (
             <li key={r.text}>
-              <span aria-hidden>{r.icon}</span> {r.text}
+              <r.Icon size={16} strokeWidth={1.75} aria-hidden /> {r.text}
             </li>
           ))}
           {props.hasPicks && (
             <li>
-              <span aria-hidden>🎯</span> + prediction picks
+              <Target size={16} strokeWidth={1.75} aria-hidden /> Plus prediction picks
             </li>
           )}
         </ul>
@@ -82,18 +102,26 @@ export default function JoinIntro(props: JoinIntroProps) {
     },
     {
       art: <ClimbArt />,
-      title: "Climb the table",
-      body: <p>Points move you up the table. Top spot wears the crown.</p>,
+      title: (
+        <>
+          Climb the <em className="serif">leaderboard.</em>
+        </>
+      ),
+      body: <p>Every point moves you up. Your group sees your points, and only your points.</p>,
     },
     {
-      art: <WinArt />,
-      title: "First place takes the pot",
+      art: <WinArt amount={usdc(pool)} />,
+      title: (
+        <>
+          First place takes the <em className="serif">pool.</em>
+        </>
+      ),
       body: (
         <>
           <p>
-            After {termLabel(props.lengthMs)}, #1 wins the whole pool: <b>{usdc(pool)}</b>. Ties split it.
+            After {termLabel(props.lengthMs)}, first place wins the whole prize pool: <b>{usdc(pool)}</b>. Ties split it.
           </p>
-          <p className="intro-fine">Joining shares your points (never your activities) with this group.</p>
+          <p className="fine">Joining shares your points (never your activities) with this group.</p>
         </>
       ),
     },
@@ -102,31 +130,25 @@ export default function JoinIntro(props: JoinIntroProps) {
   const last = step === screens.length - 1;
 
   return (
-    <div className="intro-backdrop" onClick={() => !props.busy && props.onClose()}>
-      <div
-        className="intro"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="intro-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button className="intro-close" onClick={props.onClose} disabled={props.busy} aria-label="Close">
-          ✕
+    <div className="modal-backdrop" onClick={() => !props.busy && props.onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="intro-title" onClick={(e) => e.stopPropagation()}>
+        <button className="icon-btn modal-close" onClick={props.onClose} disabled={props.busy} aria-label="Close">
+          <X size={16} aria-hidden />
         </button>
-        <div className="intro-art" key={step}>
-          {screen.art}
+        <div className="modal-step" key={step}>
+          <div className="modal-art">{screen.art}</div>
+          <h2 id="intro-title" className="modal-title">
+            {screen.title}
+          </h2>
+          <div className="modal-body">{screen.body}</div>
         </div>
-        <h2 id="intro-title" className="intro-title">
-          {screen.title}
-        </h2>
-        <div className="intro-body">{screen.body}</div>
-        <div className="intro-dots" aria-label={`Step ${step + 1} of ${screens.length}`}>
+        <div className="modal-dots" aria-label={`Step ${step + 1} of ${screens.length}`}>
           {screens.map((_, i) => (
             <i key={i} className={i === step ? "on" : ""} />
           ))}
         </div>
         <button
-          className="primary"
+          className="btn btn-primary btn-block btn-lg"
           onClick={() => (last ? props.onReady() : setStep(step + 1))}
           disabled={props.busy}
           autoFocus
@@ -140,128 +162,43 @@ export default function JoinIntro(props: JoinIntroProps) {
 
 /* ---------- Pictures, drawn in code so they stay sharp and match the theme ---------- */
 
-function Figure(props: { x: number; y: number; className?: string; children?: React.ReactNode }) {
-  // A simple stick figure standing at (x, y) = feet; children draw the limbs.
+/** A progress ring closing around an activity icon. */
+function RingArt({ Icon }: { Icon: LucideIcon }) {
   return (
-    <g className={props.className} transform={`translate(${props.x} ${props.y})`}>
-      <circle cx="0" cy="-58" r="9" className="art-head" />
-      <line x1="0" y1="-49" x2="0" y2="-22" className="art-limb" />
-      {props.children}
-    </g>
+    <div className="art art-ring" aria-hidden>
+      <svg viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="50" className="art-ring-track" />
+        <circle cx="60" cy="60" r="50" className="art-ring-fill" pathLength={100} />
+      </svg>
+      <Icon size={34} strokeWidth={1.5} />
+      <span className="art-plus">+1</span>
+    </div>
   );
 }
 
-function ScoreArt() {
-  return (
-    <svg viewBox="0 36 240 108" className="art" aria-hidden>
-      <line x1="0" y1="132" x2="240" y2="132" className="art-ground" />
-      {/* goal and net */}
-      <g className="art-net">
-        <rect x="178" y="62" width="52" height="70" className="art-goal" />
-        {[0, 1, 2, 3].map((i) => (
-          <line key={`v${i}`} x1={188 + i * 11} y1="62" x2={188 + i * 11} y2="132" className="art-mesh" />
-        ))}
-        {[0, 1, 2, 3, 4].map((i) => (
-          <line key={`h${i}`} x1="178" y1={74 + i * 12} x2="230" y2={74 + i * 12} className="art-mesh" />
-        ))}
-      </g>
-      {/* goalie, diving the wrong way */}
-      <g transform="rotate(-25 172 132)">
-        <Figure x={172} y={132} className="art-goalie">
-          <line x1="0" y1="-42" x2="-18" y2="-60" className="art-limb" />
-          <line x1="0" y1="-42" x2="16" y2="-56" className="art-limb" />
-          <line x1="0" y1="-22" x2="-8" y2="0" className="art-limb" />
-          <line x1="0" y1="-22" x2="9" y2="0" className="art-limb" />
-        </Figure>
-      </g>
-      {/* striker */}
-      <Figure x={52} y={132} className="art-player">
-        <line x1="0" y1="-42" x2="-16" y2="-30" className="art-limb" />
-        <line x1="0" y1="-42" x2="15" y2="-50" className="art-limb" />
-        <line x1="0" y1="-22" x2="-10" y2="0" className="art-limb" />
-        <line x1="0" y1="-22" x2="20" y2="-10" className="art-limb kick" />
-      </Figure>
-      <circle cx="76" cy="124" r="7" className="art-ball" />
-    </svg>
-  );
-}
-
-function RunArt() {
-  return (
-    <svg viewBox="0 36 240 108" className="art" aria-hidden>
-      <line x1="0" y1="132" x2="240" y2="132" className="art-ground" />
-      <line x1="190" y1="132" x2="190" y2="60" className="art-pole" />
-      <rect x="190" y="60" width="30" height="20" className="art-flag" />
-      {[0, 1, 2].map((i) => (
-        <line key={i} x1={40 - i * 4} y1={80 + i * 14} x2={62 - i * 4} y2={80 + i * 14} className="art-speed" />
-      ))}
-      <g className="art-runner">
-        <Figure x={100} y={132} className="art-player">
-          <line x1="0" y1="-42" x2="-16" y2="-30" className="art-limb" />
-          <line x1="0" y1="-42" x2="16" y2="-54" className="art-limb" />
-          <line x1="0" y1="-22" x2="-16" y2="-4" className="art-limb" />
-          <line x1="0" y1="-22" x2="14" y2="0" className="art-limb" />
-        </Figure>
-      </g>
-    </svg>
-  );
-}
-
+/** A small leaderboard where "you" climb to the top. */
 function ClimbArt() {
-  const rows = [
-    { cls: "art-row r1", name: "A" },
-    { cls: "art-row r2", name: "B" },
-    { cls: "art-row you", name: "You" },
-    { cls: "art-row r4", name: "D" },
-  ];
   return (
-    <svg viewBox="0 0 240 164" className="art" aria-hidden>
-      {rows.map((r, i) => (
-        <g key={r.name} className={r.cls} style={{ transform: `translateY(${28 + i * 34}px)` }}>
-          <rect x="30" y="0" width="180" height="26" rx="7" />
-          <circle cx="48" cy="13" r="7" className="art-dot" />
-          <rect x="62" y="9" width={r.name === "You" ? 46 : 60} height="8" rx="4" className="art-bar" />
-          <rect x="178" y="9" width="20" height="8" rx="4" className="art-bar" />
-        </g>
+    <div className="art art-climb" aria-hidden>
+      {["r1", "r2", "you", "r4"].map((row) => (
+        <div key={row} className={`art-row ${row}`}>
+          <i />
+          <b />
+          <span />
+        </div>
       ))}
-      <g className="art-crown">
-        <path d="M36 -3 L40 -17 L48 -9 L54 -20 L60 -9 L68 -17 L72 -3 Z" />
-      </g>
-    </svg>
+    </div>
   );
 }
 
-function WinArt() {
-  const falling = Array.from({ length: 12 }, (_, i) => i);
+/** A trophy with the prize pool underneath. */
+function WinArt({ amount }: { amount: string }) {
   return (
-    <svg viewBox="0 0 240 150" className="art" aria-hidden>
-      {falling.map((i) => {
-        const x = 18 + ((i * 53) % 210);
-        const bill = i % 3 !== 0;
-        return (
-          <g key={i} className="art-fall" style={{ animationDelay: `${(i * 0.23) % 2.2}s`, transformOrigin: `${x}px 0` }}>
-            {bill ? (
-              <rect x={x} y="-14" width="16" height="9" rx="2" className="art-bill" />
-            ) : (
-              <circle cx={x} cy="-10" r="5" className="art-coin" />
-            )}
-          </g>
-        );
-      })}
-      <line x1="0" y1="140" x2="240" y2="140" className="art-ground" />
-      {/* trophy held overhead */}
-      <g className="art-trophy">
-        <path d="M108 26 h24 v10 a12 12 0 0 1 -24 0 Z" />
-        <path d="M108 30 h-6 a6 6 0 0 0 6 8 M132 30 h6 a6 6 0 0 1 -6 8" className="art-handle" />
-        <rect x="117" y="47" width="6" height="7" />
-        <rect x="111" y="54" width="18" height="4" rx="1" />
-      </g>
-      <Figure x={120} y={140} className="art-player">
-        <line x1="0" y1="-42" x2="-10" y2="-80" className="art-limb" />
-        <line x1="0" y1="-42" x2="10" y2="-80" className="art-limb" />
-        <line x1="0" y1="-22" x2="-9" y2="0" className="art-limb" />
-        <line x1="0" y1="-22" x2="9" y2="0" className="art-limb" />
-      </Figure>
-    </svg>
+    <div className="art art-win" aria-hidden>
+      <span className="art-trophy">
+        <Trophy size={34} strokeWidth={1.5} />
+      </span>
+      <b>{amount}</b>
+    </div>
   );
 }

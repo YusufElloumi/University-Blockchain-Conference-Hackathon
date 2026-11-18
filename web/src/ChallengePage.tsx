@@ -13,8 +13,33 @@ import type { Session } from "./App";
 import { buildJoinTransaction, explorerTx, fetchChallenge, friendlyError, type ChallengeInfo } from "./chain";
 import { ago, countdown, money, usdc, when } from "./format";
 import JoinIntro from "./JoinIntro";
-import { InviteCodeBox } from "./ModeScreen";
+import { InviteCodeBox } from "./events";
+import Leaderboard from "./Leaderboard";
 import { MODE_INFO, ModeBadge } from "./modes";
+import { EmptyState, Eyebrow, Skeleton } from "./ui";
+import {
+  Activity,
+  ArrowUpRight,
+  Bike,
+  Check,
+  ChevronLeft,
+  CircleCheck,
+  Dumbbell,
+  Flag,
+  Footprints,
+  Lock,
+  Mountain,
+  PersonStanding,
+  Share2,
+  Target,
+  Timer,
+  Trophy,
+  Undo2,
+  UserPlus,
+  Waves,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 type Tab = "table" | "feed" | "me";
 type Phase = "joining" | "live" | "ended" | "settled" | "refunded";
@@ -22,18 +47,25 @@ type Phase = "joining" | "live" | "ended" | "settled" | "refunded";
 const PHASE_LABEL: Record<Phase, string> = {
   joining: "Joining open",
   live: "Live",
-  ended: "Full time",
+  ended: "Finished",
   settled: "Final",
   refunded: "Refunded",
 };
-const TYPE_ICON: Record<string, string> = { run: "🏃", walk: "🚶", hike: "🥾", ride: "🚴", swim: "🏊", workout: "🏋️" };
+const TYPE_ICON: Record<string, LucideIcon> = {
+  run: Footprints,
+  walk: PersonStanding,
+  hike: Mountain,
+  ride: Bike,
+  swim: Waves,
+  workout: Dumbbell,
+};
 const MINUTE_CHOICES = [20, 30, 45, 60, 90];
-const FEED_ICON: Record<string, string> = {
-  ChallengeCreated: "📣",
-  PlayerJoined: "💵",
-  ChallengeEnded: "⏱️",
-  ChallengeSettled: "🏆",
-  ChallengeRefunded: "↩️",
+const FEED_ICON: Record<string, LucideIcon> = {
+  ChallengeCreated: Flag,
+  PlayerJoined: UserPlus,
+  ChallengeEnded: Timer,
+  ChallengeSettled: Trophy,
+  ChallengeRefunded: Undo2,
 };
 
 export default function ChallengePage(props: { address: string; session: Session; balance: number | null }) {
@@ -177,12 +209,17 @@ export default function ChallengePage(props: { address: string; session: Session
   const tabs: Tab[] = statsScored ? ["table", "feed"] : ["table", "feed", "me"];
   const inviteCode = mode && MODE_INFO[mode].inviteOnly ? state?.challenge?.invite_code : undefined;
 
+  const { markMode } = session;
+  useEffect(() => {
+    markMode(mode ?? null);
+  }, [markMode, mode]);
+
   async function onInvite() {
     // Invite-only events share the code, so the link works for people who have not been let in yet.
     const query = inviteCode ? `invite=${inviteCode}` : `challenge=${address}`;
     const link = `${window.location.origin}${window.location.pathname}?${query}`;
     try {
-      if (navigator.share) await navigator.share({ title: "Loser Buys", text: "Join my fitness challenge", url: link });
+      if (navigator.share) await navigator.share({ title: "Rival", text: "Join my fitness challenge", url: link });
       else {
         await navigator.clipboard.writeText(link);
         setCopied(true);
@@ -195,27 +232,33 @@ export default function ChallengePage(props: { address: string; session: Session
 
   if (locked) {
     return (
-      <>
-        <button className="link back" onClick={() => go({ view: "home" })}>
-          ‹ Home
+      <div className="narrow">
+        <button className="back" onClick={() => go({ view: "home" })}>
+          <ChevronLeft size={16} aria-hidden /> Home
         </button>
-        <section className="card">
-          <b>This event is invite only.</b>
-          <p className="muted">Ask the organizer or a friend in it for the invite code.</p>
-        </section>
-        <InviteCodeBox session={session} onJoined={() => loadState()} />
-      </>
+        <EmptyState
+          icon={<Lock size={20} strokeWidth={1.75} />}
+          title="This event is invite only"
+          text="Ask the organizer or a friend in it for the invite code."
+        />
+        <InviteCodeBox session={session} title="Enter invite code" onJoined={() => loadState()} />
+      </div>
     );
   }
 
   if (!info) {
-    return (
-      <>
-        <p className="muted center">{error || "Loading challenge..."}</p>
-        <button className="link center-link" onClick={() => go({ view: "home" })}>
+    return error ? (
+      <div className="center-state">
+        <p>{error}</p>
+        <button className="btn btn-quiet" onClick={() => go({ view: "home" })}>
           Back to home
         </button>
-      </>
+      </div>
+    ) : (
+      <div aria-label="Loading challenge">
+        <Skeleton rows={1} height={220} />
+        <Skeleton rows={3} height={64} />
+      </div>
     );
   }
 
@@ -234,91 +277,238 @@ export default function ChallengePage(props: { address: string; session: Session
   const pool = state?.pool ?? info.pool;
   const name = state?.challenge?.name ?? "Weekly challenge";
   const result = state?.feed.filter((f) => f.kind === "ChallengeSettled" || f.kind === "ChallengeRefunded").pop();
+  const ResultIcon = result ? FEED_ICON[result.kind] : null;
+  // How far through the event we are, for the thin progress line under the header.
+  const span = info.endTime.getTime() - info.startTime.getTime();
+  const progress =
+    phase === "joining" ? 0 : phase === "live" ? Math.min(1, Math.max(0, (now - info.startTime.getTime()) / span)) : 1;
+  const showAdmin =
+    state?.you.is_admin && state.challenge && info.status === "open" && info.players.length >= 2 && phase !== "ended";
+  const showJoin = phase === "joining" && !inOnchain && !!state;
+  const showConsent = inOnchain && !!state && !onTable;
+  const showInvite = phase === "joining" && !full;
+  const showStats = statsScored && state?.you.is_creator && info.status === "open";
 
   return (
-    <>
-      <button className="link back" onClick={() => go(mode ? { view: "mode", mode } : { view: "home" })}>
-        ‹ {mode ? MODE_INFO[mode].title : "Home"}
+    <div className="challenge">
+      <button className="back" onClick={() => go(mode ? { view: "mode", mode } : { view: "home" })}>
+        <ChevronLeft size={16} aria-hidden /> {mode ? MODE_INFO[mode].title : "Home"}
       </button>
 
-      <section className={`scoreboard ${phase}`}>
-        <div className="scoreboard-top">
-          <div className="league">{name}</div>
-          <div className={`pill ${phase}`}>
-            {phase === "live" && <span className="dot" />}
+      <section className={`ch-hero ${phase}`}>
+        <div className="ch-hero-top">
+          <div className="ch-hero-meta">
+            {mode && <ModeBadge mode={mode} />}
+            {state?.challenge?.organizer_name && <span>Hosted by {state.challenge.organizer_name}</span>}
+          </div>
+          <div className={`status-pill ${phase}`}>
+            {phase === "live" && <span className="live-dot" />}
             {PHASE_LABEL[phase]}
           </div>
         </div>
-        {mode && (
-          <div className="scoreboard-meta">
-            <ModeBadge mode={mode} />
-            {state?.challenge?.organizer_name && <span>Hosted by {state.challenge.organizer_name}</span>}
+        <h1 className="ch-title">{name}</h1>
+        <div className="ch-stats">
+          <div className="ch-stat ch-stat-pool">
+            <small>{phase === "settled" ? "Paid out" : phase === "refunded" ? "Returned" : "Prize pool"}</small>
+            <b>{money(phase === "settled" || phase === "refunded" ? info.buyIn * info.players.length : pool)}</b>
           </div>
-        )}
-        <div className="pool-label">{phase === "settled" ? "Paid out" : phase === "refunded" ? "Returned" : "Prize pool"}</div>
-        <div className="pool-amount">{money(phase === "settled" || phase === "refunded" ? info.buyIn * info.players.length : pool)}</div>
-        <div className="scoreboard-stats">
-          <div>
-            <b>{info.players.length}</b>
-            <span>of {info.maxPlayers} players</span>
+          <div className="ch-stat">
+            <small>Players</small>
+            <b>
+              {info.players.length}
+              <span> / {info.maxPlayers}</span>
+            </b>
           </div>
-          <div>
+          <div className="ch-stat">
+            <small>Entry fee</small>
             <b>{money(info.buyIn)}</b>
-            <span>buy-in</span>
           </div>
-          <div>
+          <div className="ch-stat">
+            <small>{phase === "joining" ? "Starts in" : phase === "live" ? "Time left" : "Ended"}</small>
             <b>
               {phase === "joining"
                 ? countdown(info.startTime, now)
                 : phase === "live"
                   ? countdown(info.endTime, now)
-                  : "0:00"}
+                  : when(info.endTime)}
             </b>
-            <span>{phase === "joining" ? "to kick-off" : phase === "live" ? "remaining" : "time left"}</span>
           </div>
+        </div>
+        <div className="ch-progress" role="progressbar" aria-label="Event progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
+          <i style={{ width: `${progress * 100}%` }} />
         </div>
       </section>
 
-      {result && (
-        <div className={`result ${result.kind === "ChallengeSettled" ? "win" : ""}`}>
-          <span>{FEED_ICON[result.kind]}</span> {result.text}{" "}
-          <a href={explorerTx(result.signature)} target="_blank" rel="noreferrer">
-            details
-          </a>
-        </div>
-      )}
-      {phase === "ended" && info.players.length >= 2 && (
-        <div className="result">Final whistle. Scores are being checked, then the pool is paid out.</div>
-      )}
-      {(phase === "live" || phase === "ended") && info.players.length < 2 && (
-        <section className="card">
-          <b>Not enough players joined.</b>
-          <p className="muted">A challenge needs at least 2. Every buy-in goes back.</p>
-          <button className="primary" onClick={() => onFinish(false)} disabled={busy || !state?.challenge}>
-            {busy ? "Refunding..." : "Refund the buy-in"}
-          </button>
-        </section>
-      )}
-
-      {/* Joining */}
-      {phase === "joining" && !inOnchain && state && (
-        <section className="card">
-          {full ? (
-            <p className="muted">This challenge is full.</p>
-          ) : (
-            <>
-              <button className="primary" onClick={() => setIntro(true)} disabled={busy || !canAfford}>
-                {busy ? "Joining..." : `Join for ${usdc(info.buyIn)}`}
-              </button>
-              <p className="fine">
-                {canAfford
-                  ? `${usdc(info.buyIn)} moves from your balance into the pool. Top scorer takes the pool.`
-                  : "You need more in your balance. Add devnet USDC from the home screen first."}
-              </p>
-            </>
+      <div className="ch-grid">
+        {/* ----- What needs your attention: results, joining, confirmation ----- */}
+        <div className="ch-top">
+          {result && ResultIcon && (
+            <div className={`notice-card${result.kind === "ChallengeSettled" ? " win" : ""}`}>
+              <span className="icon-tile">
+                <ResultIcon size={18} strokeWidth={1.75} aria-hidden />
+              </span>
+              <div>
+                <b>{result.text}</b>
+                <a href={explorerTx(result.signature)} target="_blank" rel="noreferrer">
+                  View receipt <ArrowUpRight size={13} aria-hidden />
+                </a>
+              </div>
+            </div>
           )}
-        </section>
-      )}
+          {phase === "ended" && info.players.length >= 2 && (
+            <div className="notice-card">
+              <span className="icon-tile">
+                <Timer size={18} strokeWidth={1.75} aria-hidden />
+              </span>
+              <div>
+                <b>Time's up.</b>
+                <span>Scores are being checked, then the prize pool is paid out.</span>
+              </div>
+            </div>
+          )}
+          {(phase === "live" || phase === "ended") && info.players.length < 2 && (
+            <section className="card">
+              <h2 className="card-title">Not enough players joined</h2>
+              <p className="muted">A challenge needs at least 2. Every entry fee goes back.</p>
+              <button className="btn btn-primary btn-block" onClick={() => onFinish(false)} disabled={busy || !state?.challenge}>
+                {busy ? "Refunding..." : "Refund the entry fee"}
+              </button>
+            </section>
+          )}
+
+          {showJoin && (
+            <section className="card join-card">
+              {full ? (
+                <p className="muted">This challenge is full.</p>
+              ) : (
+                <>
+                  <div>
+                    <h2 className="card-title">Join this challenge</h2>
+                    <p className="fine">
+                      {canAfford
+                        ? `${usdc(info.buyIn)} moves from your balance into the prize pool. Top scorer takes the pool.`
+                        : "You need more in your balance. Add devnet USDC from the home screen first."}
+                    </p>
+                  </div>
+                  <button className="btn btn-primary btn-lg" onClick={() => setIntro(true)} disabled={busy || !canAfford}>
+                    {busy ? "Joining..." : `Join for ${usdc(info.buyIn)}`}
+                  </button>
+                </>
+              )}
+            </section>
+          )}
+          {inOnchain && info.status === "open" && (
+            <div className={`deposit${state?.you.deposit_confirmed ? " confirmed" : ""}`}>
+              {state?.you.deposit_confirmed ? <CircleCheck size={16} aria-hidden /> : <span className="spinner" aria-hidden />}
+              <span>{state?.you.deposit_confirmed ? "Entry confirmed. You're in." : "Entry sent. Waiting for confirmation..."}</span>
+              {lastTx && (
+                <a href={explorerTx(lastTx)} target="_blank" rel="noreferrer">
+                  Receipt <ArrowUpRight size={13} aria-hidden />
+                </a>
+              )}
+            </div>
+          )}
+          {showConsent && (
+            <section className="card">
+              <label className="consent">
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                <span>Share my challenge points with this group. They see points only, never my activities.</span>
+              </label>
+              <button className="btn btn-primary btn-block" onClick={onConsentOnly} disabled={busy || !consent}>
+                Add me to the leaderboard
+              </button>
+            </section>
+          )}
+          {error && (
+            <div className="message error" role="alert">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* ----- Side column: picks, invites, organizer tools ----- */}
+        <div className="ch-rail">
+          {state?.rounds && (
+            <PickRounds
+              session={session}
+              address={address}
+              rounds={state.rounds}
+              phase={phase}
+              now={now}
+              onPicked={loadState}
+            />
+          )}
+          {showInvite && (
+            <section className="card invite-card">
+              <Eyebrow>{mode === "league" ? "Invite members" : "Invite friends"}</Eyebrow>
+              {inviteCode && (
+                <div className="invite-code" aria-label={`Invite code ${inviteCode}`}>
+                  {inviteCode}
+                </div>
+              )}
+              <button className="btn btn-quiet btn-block" onClick={onInvite}>
+                {copied ? (
+                  <>
+                    <Check size={16} aria-hidden /> Link copied
+                  </>
+                ) : (
+                  <>
+                    <Share2 size={16} aria-hidden /> Share invite link
+                  </>
+                )}
+              </button>
+            </section>
+          )}
+          {showStats && <LeagueStats session={session} address={address} onChanged={loadState} />}
+          {showAdmin && (
+            <section className="card admin">
+              <Eyebrow>Admin</Eyebrow>
+              {confirmEnd ? (
+                <>
+                  <p className="muted">This ends the challenge for everyone and pays the pool to the current leader.</p>
+                  <div className="btn-row">
+                    <button className="btn btn-danger" onClick={() => onFinish(true)} disabled={busy}>
+                      Yes, end and pay out
+                    </button>
+                    <button className="btn btn-text" onClick={() => setConfirmEnd(false)}>
+                      Keep playing
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button className="btn btn-quiet btn-block" onClick={() => setConfirmEnd(true)} disabled={busy}>
+                  {busy ? "Ending and paying out..." : "End challenge now"}
+                </button>
+              )}
+            </section>
+          )}
+        </div>
+
+        {/* ----- The competition itself ----- */}
+        <div className="ch-body">
+          <nav className="tabs" role="tablist">
+            {tabs.map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
+                {t === "table" ? "Leaderboard" : t === "feed" ? "Feed" : "My workouts"}
+                {t === "feed" && !!state?.feed.length && <span className="count">{state.feed.length}</span>}
+              </button>
+            ))}
+          </nav>
+          <div className="tab-panel" key={tab}>
+            {tab === "table" && <Table state={state} phase={phase} />}
+            {tab === "feed" && <Feed state={state} now={now} />}
+            {tab === "me" && !statsScored && (
+              <MyWorkouts
+                session={session}
+                canAdd={onTable && config.fitness.can_add && phase !== "settled" && phase !== "refunded"}
+                address={address}
+                onScored={loadState}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
       {intro && (
         <JoinIntro
           scoring={state?.challenge?.scoring_source ?? "fitness"}
@@ -332,98 +522,7 @@ export default function ChallengePage(props: { address: string; session: Session
           onClose={() => setIntro(false)}
         />
       )}
-      {inOnchain && info.status === "open" && (
-        <div className={`deposit ${state?.you.deposit_confirmed ? "confirmed" : ""}`}>
-          {state?.you.deposit_confirmed ? "✓ Deposit confirmed. You're in." : "Deposit sent. Waiting for confirmation..."}
-          {lastTx && (
-            <>
-              {" "}
-              <a href={explorerTx(lastTx)} target="_blank" rel="noreferrer">
-                details
-              </a>
-            </>
-          )}
-        </div>
-      )}
-      {inOnchain && state && !onTable && (
-        <section className="card">
-          <label className="consent">
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-            <span>Share my challenge points with this group. They see points only, never my activities.</span>
-          </label>
-          <button className="primary" onClick={onConsentOnly} disabled={busy || !consent}>
-            Put me on the table
-          </button>
-        </section>
-      )}
-      {state?.rounds && (
-        <PickRounds
-          session={session}
-          address={address}
-          rounds={state.rounds}
-          phase={phase}
-          now={now}
-          onPicked={loadState}
-        />
-      )}
-      {phase === "joining" && !full && (
-        <>
-          <button className="secondary" onClick={onInvite}>
-            {copied ? "Link copied!" : mode === "league" ? "Invite members" : "Invite friends"}
-          </button>
-          {inviteCode && (
-            <p className="fine center">
-              Invite code <b className="code">{inviteCode}</b>
-            </p>
-          )}
-        </>
-      )}
-      {error && (
-        <div className="message error" role="alert">
-          {error}
-        </div>
-      )}
-
-      <nav className="tabs" role="tablist" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
-        {tabs.map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-            {t === "table" ? "Table" : t === "feed" ? `Feed${state?.feed.length ? ` (${state.feed.length})` : ""}` : "My workouts"}
-          </button>
-        ))}
-      </nav>
-
-      {state?.you.is_admin && state.challenge && info.status === "open" && info.players.length >= 2 && phase !== "ended" && (
-        <section className="admin">
-          <div className="label">Admin</div>
-          {confirmEnd ? (
-            <>
-              <p className="muted">This ends the challenge for everyone and pays the pool to the current leader.</p>
-              <div className="row">
-                <button className="small danger" onClick={() => onFinish(true)} disabled={busy}>
-                  Yes, end and pay out
-                </button>
-                <button className="link" onClick={() => setConfirmEnd(false)}>
-                  Keep playing
-                </button>
-              </div>
-            </>
-          ) : (
-            <button className="secondary" onClick={() => setConfirmEnd(true)} disabled={busy}>
-              {busy ? "Ending and paying out..." : "End week now"}
-            </button>
-          )}
-        </section>
-      )}
-
-      {tab === "table" && <Table state={state} phase={phase} />}
-      {tab === "feed" && <Feed state={state} now={now} />}
-      {tab === "me" && !statsScored && (
-        <MyWorkouts session={session} canAdd={onTable && config.fitness.can_add && phase !== "settled" && phase !== "refunded"} address={address} onScored={loadState} />
-      )}
-      {statsScored && state?.you.is_creator && info.status === "open" && (
-        <LeagueStats session={session} address={address} onChanged={loadState} />
-      )}
-    </>
+    </div>
   );
 }
 
@@ -460,15 +559,15 @@ function PickRounds(props: {
 
   return (
     <section className="card pickem">
-      <div className="row tight">
-        <div className="label">Pick{current ? ` · Round ${current.number}/${total}` : ""}</div>
+      <div className="card-title-row">
+        <Eyebrow>Prediction pick{current ? ` · Round ${current.number} of ${total}` : ""}</Eyebrow>
         <a
           className="powered"
           href={current?.market_url ?? "https://www.gemini.com/predictions"}
           target="_blank"
           rel="noreferrer"
         >
-          Gemini ↗
+          Gemini <ArrowUpRight size={12} aria-hidden />
         </a>
       </div>
 
@@ -504,12 +603,14 @@ function PickRounds(props: {
                   onClick={() => setPeek(peek === i + 1 ? null : i + 1)}
                   aria-label={r ? `Round ${i + 1}: ${r.title}` : `Round ${i + 1}`}
                 >
-                  {mark === "hit" ? "✓" : mark === "miss" ? "✗" : ""}
+                  {mark === "hit" ? <Check size={12} strokeWidth={3} aria-hidden /> : mark === "miss" ? <X size={12} strokeWidth={3} aria-hidden /> : null}
                 </button>
               );
             })}
           </div>
-          <span className="round-total">🎯 {myPoints} pts</span>
+          <span className="round-total">
+            <Target size={13} aria-hidden /> {myPoints} pts
+          </span>
         </div>
       )}
       {peeked && (
@@ -531,7 +632,7 @@ function RoundCard(props: { round: PickRound; now: number; saving: string; onCho
   const open = !round.locked;
   return (
     <div className="round">
-      <div className="fine">
+      <div className="round-meta">
         {round.league} ·{" "}
         {open
           ? `locks in ${countdown(new Date(round.locks_at), props.now)}`
@@ -573,7 +674,9 @@ function RoundCard(props: { round: PickRound; now: number; saving: string; onCho
           ))}
         </div>
       ) : (
-        <p className="fine">🔒 {round.picks_made} picked · hidden until kick-off</p>
+        <p className="fine with-icon">
+          <Lock size={12} aria-hidden /> {round.picks_made} picked · hidden until kick-off
+        </p>
       )}
     </div>
   );
@@ -646,10 +749,10 @@ function LeagueStats(props: { session: Session; address: string; onChanged: () =
     <section className="card stats-card">
       <div className="stats-head">
         <div>
-          <div className="label">Stat sheet</div>
+          <Eyebrow>Stat sheet</Eyebrow>
           <div className="stats-status">{status}</div>
         </div>
-        <button type="button" className="chip" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <button type="button" className="btn btn-quiet btn-sm" onClick={() => setOpen(!open)} aria-expanded={open}>
           {open ? "Done" : "Manage"}
         </button>
       </div>
@@ -687,7 +790,7 @@ function LeagueStats(props: { session: Session; address: string; onChanged: () =
                 onChange={(e) => setText(e.target.value)}
                 aria-label="CSV from Grok"
               />
-              <button className="small wide" onClick={() => upload(text)} disabled={busy || !text.trim()}>
+              <button className="btn btn-primary btn-block" onClick={() => upload(text)} disabled={busy || !text.trim()}>
                 {busy ? "Uploading..." : "Upload"}
               </button>
             </>
@@ -719,43 +822,23 @@ function LeagueStats(props: { session: Session; address: string; onChanged: () =
 }
 
 function Table({ state, phase }: { state: ChallengeState | null; phase: Phase }) {
-  if (!state) return <p className="muted center">Loading...</p>;
-  if (!state.players) return <p className="muted center">Join this challenge to see the table.</p>;
+  if (!state) return <Skeleton rows={4} height={60} />;
+  if (!state.players)
+    return (
+      <EmptyState
+        icon={<Trophy size={20} strokeWidth={1.75} />}
+        title="The leaderboard is for players"
+        text="Join this challenge to see how everyone is doing."
+      />
+    );
   const days = Math.max(0, ...state.players.map((p) => p.ticks.length));
   const form = state.challenge?.scoring_source !== "league_stats"; // stat sheets have no daily form
   return (
-    <section className={form ? "standings" : "standings no-form"}>
-      <div className="standings-head">
-        <span>#</span>
-        <span>Player</span>
-        {form && <span>Form</span>}
-        <span>Pts</span>
-      </div>
-      {state.players.map((p, i) => (
-        <div key={i} className={`standing${p.is_you ? " you" : ""}${p.rank === 1 && p.points > 0 ? " leader" : ""}`}>
-          <span className="rank">{p.rank}</span>
-          <span className="who">
-            <span className="avatar">{p.name.slice(0, 1).toUpperCase()}</span>
-            <span className="who-text">
-              <span className="who-name">
-                {p.name} {p.is_you && <span className="tag">You</span>}
-              </span>
-              {state.rounds && p.pick_points > 0 && <span className="who-pick">🎯 {p.pick_points}</span>}
-            </span>
-          </span>
-          {form && (
-            <span className="form" aria-label={`${p.ticks.filter(Boolean).length} active days of ${p.ticks.length}`}>
-              {p.ticks.slice(-7).map((hit, d) => (
-                <i key={d} className={hit ? "hit" : "miss"} />
-              ))}
-            </span>
-          )}
-          <span className="pts">{p.points}</span>
-        </div>
-      ))}
+    <section className="card board-card">
+      <Leaderboard players={state.players} form={form} picks={!!state.rounds} />
       {(phase === "joining" || form) && (
-        <p className="fine">
-          {phase === "joining" ? "Scoring starts at kick-off." : `Form: active days${days > 7 ? ", last 7" : ""}.`}
+        <p className="fine board-note">
+          {phase === "joining" ? "Scoring starts when the challenge does." : `Form shows active days${days > 7 ? " (last 7)" : ""}.`}
         </p>
       )}
     </section>
@@ -763,24 +846,36 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
 }
 
 function Feed({ state, now }: { state: ChallengeState | null; now: number }) {
-  if (!state) return <p className="muted center">Loading...</p>;
-  if (state.feed.length === 0) return <p className="muted center">Nothing yet. Joins and payouts show up here live.</p>;
+  if (!state) return <Skeleton rows={3} height={56} />;
+  if (state.feed.length === 0)
+    return (
+      <EmptyState
+        icon={<Activity size={20} strokeWidth={1.75} />}
+        title="Nothing yet"
+        text="Joins and payouts show up here as they happen."
+      />
+    );
   return (
-    <section className="feed">
-      {[...state.feed].reverse().map((item) => (
-        <div key={item.signature + item.kind} className="feed-item">
-          <span className="feed-icon">{FEED_ICON[item.kind] ?? "•"}</span>
-          <div>
-            <div>{item.text}</div>
-            <div className="fine">
-              {ago(item.time, now)} ·{" "}
-              <a href={explorerTx(item.signature)} target="_blank" rel="noreferrer">
-                details
-              </a>
+    <section className="card feed">
+      {[...state.feed].reverse().map((item) => {
+        const Icon = FEED_ICON[item.kind] ?? Activity;
+        return (
+          <div key={item.signature + item.kind} className="feed-item">
+            <span className="icon-tile icon-tile-sm">
+              <Icon size={15} strokeWidth={1.75} aria-hidden />
+            </span>
+            <div>
+              <div>{item.text}</div>
+              <div className="fine">
+                {ago(item.time, now)} ·{" "}
+                <a href={explorerTx(item.signature)} target="_blank" rel="noreferrer">
+                  receipt
+                </a>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }
@@ -827,56 +922,76 @@ function MyWorkouts(props: { session: Session; canAdd: boolean; address: string;
   }
 
   return (
-    <>
+    <div className="workouts">
       {props.canAdd && (
         <section className="card">
-          <div className="label">Log a workout</div>
-          <div className="chips">
-            {config.fitness.types.map((t) => (
-              <button key={t} type="button" className={t === type ? "chip on" : "chip"} onClick={() => setType(t)}>
-                {TYPE_ICON[t] ?? ""} {t}
-              </button>
-            ))}
+          <h2 className="card-title">Log a workout</h2>
+          <div className="field">
+            <span className="field-label">Activity</span>
+            <div className="chips">
+              {config.fitness.types.map((t) => {
+                const Icon = TYPE_ICON[t] ?? Activity;
+                return (
+                  <button key={t} type="button" className={t === type ? "chip cap on" : "chip cap"} onClick={() => setType(t)}>
+                    <Icon size={15} strokeWidth={1.75} aria-hidden /> {t}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="label gap">Minutes</div>
-          <div className="chips">
-            {MINUTE_CHOICES.map((m) => (
-              <button key={m} type="button" className={m === minutes ? "chip on" : "chip"} onClick={() => setMinutes(m)}>
-                {m}
-              </button>
-            ))}
+          <div className="field">
+            <span className="field-label">Minutes</span>
+            <div className="chips">
+              {MINUTE_CHOICES.map((m) => (
+                <button key={m} type="button" className={m === minutes ? "chip on" : "chip"} onClick={() => setMinutes(m)}>
+                  {m}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="label gap">Distance (km, optional)</div>
-          <input inputMode="decimal" placeholder="0" value={km} onChange={(e) => setKm(e.target.value.replace(/[^0-9.]/g, ""))} aria-label="Distance in kilometres" />
-          <button className="primary" onClick={onAdd} disabled={busy}>
+          <label className="field">
+            <span className="field-label">Distance (km, optional)</span>
+            <input inputMode="decimal" placeholder="0" value={km} onChange={(e) => setKm(e.target.value.replace(/[^0-9.]/g, ""))} aria-label="Distance in kilometres" />
+          </label>
+          <button className="btn btn-primary btn-block" onClick={onAdd} disabled={busy}>
             {busy ? "Saving..." : "Add workout"}
           </button>
           <p className="fine">Source: {config.fitness.label}. Counts from now.</p>
           {outcome && <div className={`message ${outcome.good ? "ok" : "error"}`}>{outcome.text}</div>}
         </section>
       )}
-      <h2 className="section-title">Only you can see these</h2>
+      <div className="section-head">
+        <h2>Your workouts</h2>
+        <span className="count with-icon">
+          <Lock size={11} aria-hidden /> Only you can see these
+        </span>
+      </div>
       {list === null ? (
-        <p className="muted">Loading...</p>
+        <Skeleton rows={2} height={56} />
       ) : list.length === 0 ? (
-        <p className="muted">No workouts yet.</p>
+        <EmptyState icon={<Footprints size={20} strokeWidth={1.75} />} title="No workouts yet" />
       ) : (
-        <section className="feed">
-          {list.map((a) => (
-            <div key={a.id} className="feed-item">
-              <span className="feed-icon">{TYPE_ICON[a.type] ?? "•"}</span>
-              <div>
+        <section className="card feed">
+          {list.map((a) => {
+            const Icon = TYPE_ICON[a.type] ?? Activity;
+            return (
+              <div key={a.id} className="feed-item">
+                <span className="icon-tile icon-tile-sm">
+                  <Icon size={15} strokeWidth={1.75} aria-hidden />
+                </span>
                 <div>
-                  <b>{a.type}</b> · {a.minutes} min{a.distance_km ? ` · ${a.distance_km} km` : ""}
-                </div>
-                <div className="fine">
-                  {when(new Date(a.start))} · {a.verified ? a.device : "unverified"}
+                  <div>
+                    <b className="cap">{a.type}</b> · {a.minutes} min{a.distance_km ? ` · ${a.distance_km} km` : ""}
+                  </div>
+                  <div className="fine">
+                    {when(new Date(a.start))} · {a.verified ? a.device : "unverified"}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       )}
-    </>
+    </div>
   );
 }
