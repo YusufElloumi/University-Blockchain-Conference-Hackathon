@@ -64,7 +64,7 @@ What each numbered flow does:
 | **QuickNode Streams** | Push onchain events to our server | Streams dashboard or REST API; JS filter; webhook destination | Stream (Solana Devnet, "Programs + Logs") -> filter by our program ID -> `POST /webhooks/quicknode` with HMAC check | Free trial account **(confirm devnet on free plan and whether a card is needed)** | Free trial: 10M credits, 1 Stream, includes 1 month **(verified from pricing page)** | Free plan: 1 Stream, chain tip only, no Solana backfill, no reorg handling; Stream pauses after 3 failed deliveries **(verified)** | QuickNode bounty |
 | **Strava API** | Verified activity data | REST v3, OAuth2 (`activity:read`), one webhook subscription | API server only, behind the `FitnessProvider` interface | **A Strava subscription is required to create an app (verified) - costs money unless someone already subscribes**; new apps hold 1 athlete, raise to 10 from the dashboard without review **(verified)** | API itself is free; the subscription is not | Activities only (no steps, sleep, recovery); strict rules on showing data to others, 7-day cache, no AI use (see section 5); 200 requests/15 min, 2,000/day | Consumer (daily use) |
 | **Mock / Manual provider** | Stand-in for Strava; demo and tests | Our own code | Same interface as Strava | None | Free | Not verified data; labelled as such in the UI | Consumer |
-| **Gemini Prediction Markets** (stretch) | Weekly pick'em tiebreaker | REST `GET /v1/prediction-markets/events`, public, no key **(verified)** | API server proxies and caches market data | None for market data; trading needs an account, API key, and terms acceptance | Free | Cannot create custom markets; 120 public requests/min; browser (CORS) access not documented | Gemini bounty |
+| **Gemini Prediction Markets** (stretch) | Prediction rounds: one market per round, points for a right pick | REST `GET /v1/prediction-markets/events`, public, no key **(verified)** | API server proxies and caches market data | None for market data; trading needs an account, API key, and terms acceptance | Free | Cannot create custom markets; 120 public requests/min; browser (CORS) access not documented | Gemini bounty |
 | **Grok Bot** (optional) | xAI's assistant inside X; could watch our program's onchain events and post a group recap | Grok Bot on X **(capabilities to confirm by testing)** | Reads public onchain events only; must never receive fitness data | X Premium (organizers provide redemption links) | Free via the hackathon perk **(confirm)** | Strava policy forbids sending its data to AI; unclear whether it can read Solana devnet | Grok bounty |
 | **Vercel** | Host the web app | Git deploy | Static React build | Free Hobby plan | Free | Hobby plan is for non-commercial use | Submission (deployed app) |
 | **Render + Neon** | Host the API and database | Git deploy; Postgres URL | FastAPI web service; `DATABASE_URL` switches SQLite to Postgres | Free plans **(confirm current limits)** | Free | Free web services sleep when idle and lose local files, which is why the deployed database is Neon, not a SQLite file; a sleeping server can pause the Stream | Submission (deployed app) |
@@ -85,7 +85,7 @@ What each numbered flow does:
 
 | Situation | Rule |
 |---|---|
-| **Tie** | Tied players split the pool equally; any leftover fraction goes to the first listed winner. With the optional Gemini pick'em on, a correct pick breaks the tie first. |
+| **Tie** | Tied players split the pool equally; any leftover fraction goes to the first listed winner. There is no tiebreaker. |
 | **Missing or delayed data** | Scores are not final until a grace period after the end time (12 hours by default, zero for demos). Before finalizing, the API re-fetches each player's activities for the week in case a webhook was missed. If Strava is down, the API waits rather than settling on partial data. |
 | **Oracle never settles** | 72 hours after the end time anyone can call `refund` and every buy-in is returned. Funds cannot be stuck. |
 | **Not enough players** | If fewer than 2 players joined by the start time, `refund` returns the buy-ins. |
@@ -206,10 +206,10 @@ The fun version is obvious: friends who are not competing this week back whoever
 
 ### The most natural Gemini feature
 
-**Weekly pick'em tiebreaker.** When creating a challenge, the group can switch on "Pick'em". The app shows a few live sports events from Gemini with the market's current odds. Each member makes one free pick before the week starts. If the fitness contest ends in a tie, the member whose pick was right wins; if still tied, they split.
+**Prediction rounds** (built Nov 17; it replaced an earlier pick'em tiebreaker, now removed). The organizer picks themes and a round frequency. Each round the server chooses one real Gemini market and every player picks a side; a right pick earns 1 / probability points, capped at 5. Pick points add to the main score. Details: README, "How we use Gemini Prediction Markets".
 
 - Uses Gemini for something real: event discovery, live prices, and settlement results.
-- Server-side only, public endpoints, no key, no trading, no cost. About 3-4 hours.
+- Server-side only, public endpoints, no key, no trading, no cost.
 
 ### Is it worth building?
 
@@ -218,7 +218,7 @@ The fun version is obvious: friends who are not competing this week back whoever
 - **It qualifies.** The hackathon guide requires the "Gemini Prediction Markets API (market data and/or trading endpoints)", and one stated objective is to "bring prediction market data into other apps, such as news, social, or onchain applications". A pick'em inside a social app matches that.
 - **The prize is large.** $2,500 / $1,000 / $500 with three places, more than the QuickNode bounty, and first place gets a finalist pitch slot.
 - **The odds are modest.** The feature is adjacent to our product rather than central to it, and other teams will build whole projects around Gemini (analytics, trading bots). Third place is a realistic best case.
-- **It adds a little chance** to a contest we otherwise describe as pure skill, which is why it is opt-in and only a tiebreaker.
+- **It adds some chance** to a contest we otherwise describe as skill. Picks are free, for points only, and can be turned off when creating an event.
 
 Ask Gemini at office hours what would make this entry stronger before spending time on it.
 
@@ -232,7 +232,7 @@ This is not legal advice. It is a list of things a lawyer would need to look at 
 | Money transmission | If we, or a key we control, can direct users' money, regulators may treat us as a money transmitter (registration, licences, KYC/AML). A program-held vault helps, but our oracle key decides who gets paid |
 | Taking a fee | A cut of the pool increases both of the risks above. The MVP takes none |
 | Side bets on friends | Betting on someone else's result looks like sports betting or an unregistered event contract. Much higher risk than self-backed pools |
-| Chance elements | A pick'em tiebreaker adds chance. Keep it optional and free |
+| Chance elements | Prediction picks add chance. Keep them optional, free, and points only |
 | Age and location | Real money would need 18+ checks and location restrictions |
 | Disputes and fraud | Health data can be faked; with real money that becomes fraud and a consumer-protection issue |
 | Health and privacy | Fitness data is sensitive personal data (GDPR, state privacy laws). Collect little, keep it briefly, never put it onchain |

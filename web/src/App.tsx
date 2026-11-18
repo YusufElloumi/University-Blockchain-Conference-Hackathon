@@ -16,6 +16,7 @@ import ChallengePage from "./ChallengePage";
 import CreateChallenge from "./CreateChallenge";
 import { money, usdc } from "./format";
 import ModeScreen from "./ModeScreen";
+import WithdrawNote from "./WithdrawNote";
 import { isMode, MODE_INFO, MODES, type Mode } from "./modes";
 
 export type Route =
@@ -73,6 +74,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   const tokenGetter = useRef(getAccessToken);
   tokenGetter.current = getAccessToken;
@@ -150,7 +152,7 @@ export default function App() {
       const result = await call<Me>("POST", "/me/fund");
       setMe(result);
       setBalance(result.usdc);
-      setNotice(`Added ${usdc(result.test_funds_amount)} of test money.`);
+      setNotice(`Added ${result.test_funds_amount} devnet USDC.`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -162,17 +164,23 @@ export default function App() {
 
   return (
     <div className="page">
-      <div className="demo-banner">Demo - test tokens only</div>
+      <div className="demo-banner">Demo · Devnet USDC only, no real money</div>
       <header>
         <button className="brand" onClick={() => go({ view: "home" })} aria-label="Home">
           LOSER<span>BUYS</span>
         </button>
         {session && (
-          <div className="wallet-chip" title="Your balance (test money)">
-            {balance === null ? "..." : money(balance)}
+          <div className="head-right">
+            <button className="withdraw-btn" onClick={() => setWithdrawOpen(true)}>
+              Withdraw
+            </button>
+            <div className="wallet-chip" title="Your balance (devnet USDC)">
+              {balance === null ? "..." : money(balance)}
+            </div>
           </div>
         )}
       </header>
+      {withdrawOpen && <WithdrawNote onClose={() => setWithdrawOpen(false)} />}
 
       {!ready ? (
         <p className="muted center">Loading...</p>
@@ -295,10 +303,10 @@ function Home(props: {
       <section className="card wallet-card gap">
         <div className="label">Your balance</div>
         <div className="big-number">{balance === null ? "..." : money(balance)}</div>
-        <div className="fine">{balance === null ? "" : `${usdc(balance)} (test money)`}</div>
+        <div className="fine">{balance === null ? "" : `${balance} devnet USDC`}</div>
         {!me.test_funds_used && (
           <button className="secondary" onClick={props.onAddFunds} disabled={props.busy}>
-            {props.busy ? "Adding..." : `Add test funds (${usdc(me.test_funds_amount)})`}
+            {props.busy ? "Adding..." : `Add ${me.test_funds_amount} devnet USDC`}
           </button>
         )}
       </section>
