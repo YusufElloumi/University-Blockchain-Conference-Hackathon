@@ -66,6 +66,7 @@ import auth
 import chain
 import db
 import events
+import formats
 import fitness
 import leaguestats
 import pickrounds
@@ -241,6 +242,8 @@ class NewChallenge(BaseModel):
     stat_weights: dict[Literal["goals", "assists", "points"], float] | None = None
     pick_themes: list[Literal[tuple(pickrounds.THEMES)]] = Field(default_factory=list)  # type: ignore[valid-type]
     round_hours: Literal[pickrounds.ROUND_CHOICES] | None = None  # type: ignore[valid-type]
+    format: Literal[formats.FORMATS] = formats.DEFAULT_FORMAT  # type: ignore[valid-type]
+    format_config: dict | None = None  # the format's settings; see formats.clean_config
 
 
 class InviteCode(BaseModel):
@@ -250,6 +253,7 @@ class InviteCode(BaseModel):
 class JoinRecord(BaseModel):
     consent: bool  # "Share my challenge points with this group"
     deposit_tx: str | None = Field(default=None, max_length=100)
+    team: int | None = Field(default=None, ge=0, le=1)  # teams format: which team they are joining
 
 
 class NewActivity(BaseModel):
@@ -341,6 +345,9 @@ def _challenge_view(challenge: db.Challenge) -> dict:
         "pick_themes": pickrounds.settings(challenge)[0],
         "round_hours": pickrounds.settings(challenge)[1],
         "round_count": pickrounds.round_count(challenge),
+        "format": formats.of(challenge)[0],
+        "format_config": formats.of(challenge)[1],
+        "format_summary": formats.describe(*formats.of(challenge)),
     }
 
 
@@ -384,6 +391,11 @@ def record_challenge(
     if body.stat_weights and not all(0 <= v <= 10 for v in body.stat_weights.values()):
         raise HTTPException(400, "Stat weights must be between 0 and 10.")
     themes = list(dict.fromkeys(body.pick_themes))
+    try:
+        format_config = formats.clean_config(body.format, body.format_config,
+                                             league_stats=body.scoring_source == "league_stats")
+    except formats.FormatError as e:
+        raise HTTPException(400, str(e)) from e
     if bool(themes) != bool(body.round_hours):
         raise HTTPException(400, "Choose at least one theme and how often a round opens, or turn picks off.")
     challenge = _register(
@@ -396,6 +408,9 @@ def record_challenge(
             challenge.stat_weights = json.dumps({**leaguestats.DEFAULT_WEIGHTS, **(body.stat_weights or {})})
         challenge.pick_themes = json.dumps(themes)
         challenge.round_hours = body.round_hours
+        # The format is fixed here, before anyone else can join, and never changes afterwards.
+        challenge.format = body.format
+        challenge.format_config = json.dumps(format_config)
         session.commit()
     return _challenge_view(challenge)
 
@@ -451,7 +466,7 @@ def record_join(
         session.add(
             db.Participant(
                 challenge_id=challenge.id, user_id=user.id, deposit_tx=body.deposit_tx,
-                consent_at=datetime.now(timezone.utc),
+                consent_at=datetime.now(timezone.utc), team=_team_for(session, challenge, body.team),
             )
         )
         try:
@@ -460,6 +475,19 @@ def record_join(
             session.rollback()
         scores.recompute(session, challenge, user.id)
     return {"challenge": _challenge_view(challenge), "joined": True}
+
+
+def _team_for(session: Session, challenge: db.Challenge, picked: int | None) -> int | None:
+    """Teams format: the team the player picked, or (if they did not pick, e.g. our join script) the smaller one."""
+    if formats.of(challenge)[0] != "teams":
+        return None
+    if picked is not None:
+        return picked
+    sizes = [0, 0]
+    for team in session.scalars(select(db.Participant.team).where(db.Participant.challenge_id == challenge.id)):
+        if team in (0, 1):
+            sizes[team] += 1
+    return 0 if sizes[0] <= sizes[1] else 1
 
 
 @app.get("/challenges/{address}/leaderboard")
@@ -656,7 +684,7 @@ def challenge_state(
         if row.name == "PlayerJoined":
             pool_units, player_count = data["pool_total"], data["player_count"]
             deposit_confirmed = deposit_confirmed or data["player"] == user.wallet_address
-        elif row.name in ("ChallengeSettled", "ChallengeRefunded"):
+        elif row.name in ("ChallengeSettled", "ChallengeSettledSplit", "ChallengeRefunded"):
             pool_units = 0
     names = {
         u.wallet_address: scores.display_name(u)
@@ -664,18 +692,23 @@ def challenge_state(
     } if wallets else {}
     is_player = challenge is not None and _is_player(session, challenge, user)
     players = None
+    format_state = None
     rounds = None
     has_rounds = challenge is not None and bool(pickrounds.settings(challenge)[1])
     if is_player:
         if has_rounds:
             _update_rounds(session, challenge)
         board = scores.leaderboard(session, challenge)
+        fmt = scores.format_view(challenge, board)
         players = [
             {"rank": r["rank"], "name": r["name"], "points": r["points"], "ticks": r["ticks"],
              "base_points": r["base_points"], "pick_points": r["pick_points"],
+             "team": r["team"], "projected_share": fmt["projected"].get(r["user_id"], 0),
+             "goal_progress": fmt.get("progress", {}).get(r["user_id"]),
              "is_you": r["user_id"] == user.id}
             for r in board
         ]
+        format_state = {k: v for k, v in fmt.items() if k not in ("projected", "progress")}
         if has_rounds:
             names = {r["user_id"]: r["name"] for r in board}
             all_rounds = pickrounds.rounds_of(session, challenge)
@@ -698,6 +731,7 @@ def challenge_state(
         "pool": None if pool_units is None else pool_units / 10**config.USDC_DECIMALS,
         "player_count": player_count,
         "players": players,
+        "format": format_state,  # players only: team table, and whether a goal has been missed so far
         "rounds": rounds,
         # A wallet with no account here (or one that never shared a name) is shown by its last 4 characters.
         "feed": events.feed(rows, lambda wallet: names.get(wallet, f"Player {wallet[-4:]}")),
@@ -771,7 +805,8 @@ def score_sheet(address: str, user: db.User = Depends(current_user), session: Se
     if not challenge.score_sheet:
         raise HTTPException(404, "This challenge has not been settled.")
     sheet = json.loads(challenge.score_sheet)
-    return {"sheet": sheet, "sha256": settlement.sheet_hash(sheet).hex(), "transaction": challenge.settle_tx}
+    payout = settlement.payout_of(sheet)
+    return {"sheet": sheet, "payout": {"note": payout.note, "shares_bps": dict(payout.shares)}, "sha256": settlement.sheet_hash(sheet).hex(), "transaction": challenge.settle_tx}
 
 
 # ---------- Prediction rounds (Gemini Prediction Markets) ----------

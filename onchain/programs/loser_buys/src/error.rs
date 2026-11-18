@@ -36,4 +36,6 @@ pub enum ErrorCode {
     InvalidTokenAccount,
     #[msg("Math overflow")]
     MathOverflow,
+    #[msg("Need one share per winner, adding up to exactly 100%")]
+    InvalidShares,
 }

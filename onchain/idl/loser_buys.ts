@@ -404,6 +404,95 @@ export type LoserBuys = {
           }
         }
       ]
+    },
+    {
+      "name": "settleSplit",
+      "docs": [
+        "Oracle only, after the end time: pays the pool to the winners in fixed shares",
+        "(basis points, adding up to 100%). Used by formats such as a podium split."
+      ],
+      "discriminator": [
+        3,
+        170,
+        152,
+        217,
+        94,
+        9,
+        9,
+        213
+      ],
+      "accounts": [
+        {
+          "name": "oracle",
+          "signer": true,
+          "relations": [
+            "challenge"
+          ]
+        },
+        {
+          "name": "challenge",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  108,
+                  108,
+                  101,
+                  110,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge.creator",
+                "account": "challenge"
+              },
+              {
+                "kind": "account",
+                "path": "challenge.challengeId",
+                "account": "challenge"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "winners",
+          "type": {
+            "vec": "pubkey"
+          }
+        },
+        {
+          "name": "sharesBps",
+          "type": {
+            "vec": "u16"
+          }
+        },
+        {
+          "name": "scoreHash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -472,6 +561,19 @@ export type LoserBuys = {
         207,
         169,
         122
+      ]
+    },
+    {
+      "name": "challengeSettledSplit",
+      "discriminator": [
+        16,
+        10,
+        247,
+        252,
+        136,
+        217,
+        253,
+        182
       ]
     },
     {
@@ -573,6 +675,11 @@ export type LoserBuys = {
       "code": 6016,
       "name": "mathOverflow",
       "msg": "Math overflow"
+    },
+    {
+      "code": 6017,
+      "name": "invalidShares",
+      "msg": "Need one share per winner, adding up to exactly 100%"
     }
   ],
   "types": [
@@ -782,6 +889,46 @@ export type LoserBuys = {
           },
           {
             "name": "payoutEach",
+            "type": "u64"
+          },
+          {
+            "name": "scoreHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "challengeSettledSplit",
+      "docs": [
+        "Emitted by `settle_split`: each winner's amount is listed, in the same order as `winners`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "winners",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "amounts",
+            "type": {
+              "vec": "u64"
+            }
+          },
+          {
+            "name": "poolTotal",
             "type": "u64"
           },
           {

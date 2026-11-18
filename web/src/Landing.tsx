@@ -282,6 +282,9 @@ function HeroPreview() {
       points: p.score,
       base_points: p.score,
       pick_points: 0,
+      team: null,
+      projected_share: 0,
+      goal_progress: null,
       ticks: p.ticks,
       is_you: !!p.you,
     }));

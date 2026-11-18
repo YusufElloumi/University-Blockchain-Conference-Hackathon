@@ -1,5 +1,6 @@
 import { Crown, Target } from "lucide-react";
 import type { PlayerRow } from "./api";
+import { goalUnit, type Format, type FormatConfig } from "./formats";
 import { Avatar, useFlip } from "./ui";
 
 /**
@@ -11,7 +12,12 @@ export default function Leaderboard(props: {
   form: boolean; // show the row of active-day dots
   picks: boolean; // show prediction points under the name
   compact?: boolean;
+  format?: Format;
+  formatConfig?: FormatConfig;
+  showShares?: boolean; // show what each player would win if the event ended now
 }) {
+  const teams = props.format === "teams" ? (props.formatConfig?.teams ?? []) : [];
+  const goal = props.format === "goal" ? props.formatConfig : undefined;
   const flip = useFlip();
   const used = new Map<string, number>();
 
@@ -53,6 +59,19 @@ export default function Leaderboard(props: {
                       <Target size={11} aria-hidden /> {p.pick_points} from picks
                     </span>
                   )}
+                  {(p.team != null && teams[p.team]) || goal || (props.showShares && props.format === "podium" && p.projected_share > 0) ? (
+                    <span className="board-sub board-extras">
+                      {p.team != null && teams[p.team] && <span>{teams[p.team]}</span>}
+                      {goal && p.goal_progress != null && (
+                        <span className={p.goal_progress >= (goal.target ?? 0) ? "goal-met" : ""}>
+                          {Math.min(p.goal_progress, goal.target ?? 0)}/{goal.target} {goalUnit(goal.metric, goal.target)}
+                        </span>
+                      )}
+                      {props.showShares && p.projected_share > 0 && props.format === "podium" && (
+                        <span className="share">Wins {Math.round(p.projected_share)}%</span>
+                      )}
+                    </span>
+                  ) : null}
                 </span>
               </span>
               {props.form && (

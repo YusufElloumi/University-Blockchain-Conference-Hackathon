@@ -38,6 +38,16 @@ pub struct ChallengeSettled {
     pub score_hash: [u8; 32],
 }
 
+/// Emitted by `settle_split`: each winner's amount is listed, in the same order as `winners`.
+#[event]
+pub struct ChallengeSettledSplit {
+    pub challenge: Pubkey,
+    pub winners: Vec<Pubkey>,
+    pub amounts: Vec<u64>,
+    pub pool_total: u64,
+    pub score_hash: [u8; 32],
+}
+
 #[event]
 pub struct ChallengeRefunded {
     pub challenge: Pubkey,

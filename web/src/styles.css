@@ -3436,6 +3436,181 @@ input[type="checkbox"] {
   }
 }
 
+/* The running figure: limbs swing from fixed joints (viewBox units), the far side dimmer for depth. */
+.art-run {
+  width: 140px;
+  height: 120px;
+}
+
+.art-run svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.art-run line,
+.art-run circle {
+  fill: none;
+  stroke: var(--accent-bright);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.art-run circle {
+  fill: var(--accent-bright);
+  stroke-width: 0;
+}
+
+.art-run .far line {
+  stroke: var(--accent);
+  opacity: 0.45;
+}
+
+.run-body {
+  animation: run-bob 0.36s ease-in-out infinite alternate;
+}
+
+.run-thigh,
+.run-shin,
+.run-arm,
+.run-forearm {
+  transform-box: view-box;
+  animation-duration: 0.72s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.run-thigh {
+  transform-origin: 58px 62px;
+  animation-name: run-thigh;
+}
+
+.run-shin {
+  transform-origin: 58px 80px;
+  animation-name: run-shin;
+}
+
+.run-arm {
+  transform-origin: 62px 41px;
+  animation-name: run-arm;
+}
+
+.run-forearm {
+  transform-origin: 62px 53px;
+  animation-name: run-forearm;
+}
+
+/* The far limbs are half a stride behind the near ones. */
+.run-thigh.far,
+.run-thigh.far .run-shin,
+.run-arm.far,
+.run-arm.far .run-forearm {
+  animation-delay: -0.36s;
+}
+
+.run-lines line {
+  stroke: var(--accent);
+  stroke-width: 3;
+  opacity: 0;
+  animation: run-streak 0.9s linear infinite;
+}
+
+.run-lines line:nth-child(2) {
+  animation-delay: -0.3s;
+}
+
+.run-lines line:nth-child(3) {
+  animation-delay: -0.6s;
+}
+
+.art-run .run-ground {
+  stroke: var(--line-strong);
+  stroke-width: 3;
+  stroke-dasharray: 14 10;
+  animation: run-ground 0.48s linear infinite;
+}
+
+.art-run .art-plus {
+  top: 0;
+  right: -6px;
+}
+
+@keyframes run-bob {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-3px);
+  }
+}
+
+/* Negative angles swing forward (the runner faces right). */
+@keyframes run-thigh {
+  0%,
+  100% {
+    transform: rotate(-42deg);
+  }
+  50% {
+    transform: rotate(32deg);
+  }
+}
+
+@keyframes run-shin {
+  0%,
+  100% {
+    transform: rotate(18deg);
+  }
+  40% {
+    transform: rotate(40deg);
+  }
+  60% {
+    transform: rotate(95deg);
+  }
+  80% {
+    transform: rotate(110deg);
+  }
+}
+
+@keyframes run-arm {
+  0%,
+  100% {
+    transform: rotate(40deg);
+  }
+  50% {
+    transform: rotate(-50deg);
+  }
+}
+
+@keyframes run-forearm {
+  0%,
+  100% {
+    transform: rotate(-70deg);
+  }
+  50% {
+    transform: rotate(-100deg);
+  }
+}
+
+@keyframes run-streak {
+  0% {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  30% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+@keyframes run-ground {
+  to {
+    stroke-dashoffset: 24;
+  }
+}
+
 .art-climb {
   width: 200px;
   height: 132px;
@@ -3648,4 +3823,224 @@ input[type="checkbox"] {
   .art-ring-fill {
     stroke-dashoffset: 0;
   }
+
+  /* A still mid-stride pose instead of the running loop. */
+  .art-run * {
+    animation: none !important;
+  }
+
+  .run-thigh.near {
+    transform: rotate(-38deg);
+  }
+
+  .run-thigh.far {
+    transform: rotate(30deg);
+  }
+
+  .run-thigh.near .run-shin {
+    transform: rotate(20deg);
+  }
+
+  .run-thigh.far .run-shin {
+    transform: rotate(90deg);
+  }
+
+  .run-arm.near {
+    transform: rotate(40deg);
+  }
+
+  .run-arm.far {
+    transform: rotate(-45deg);
+  }
+
+  .run-forearm {
+    transform: rotate(-80deg);
+  }
+
+  .run-lines line {
+    opacity: 0.5;
+  }
+}
+
+/* ---------- Competition formats ---------- */
+
+.format-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+@media (min-width: 560px) {
+  .format-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.format-tile {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.format-tile .icon-tile {
+  grid-row: span 3;
+  align-self: start;
+}
+
+.format-tile b {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.format-tile span:not(.icon-tile) {
+  font-size: 13px;
+}
+
+.format-tile small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.format-tile:hover {
+  border-color: var(--line-strong);
+}
+
+.format-tile.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.fine.warn {
+  color: var(--danger);
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stepper b {
+  min-width: 120px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-names {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 12px;
+}
+
+@media (min-width: 560px) {
+  .team-names {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.team-pick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px 0 6px;
+}
+
+.format-bar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 0 0 14px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.format-bar > div {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.format-bar b {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.format-bar-note {
+  color: var(--text-3);
+}
+
+.team-table {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.team-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.team-row.leader {
+  border-color: var(--accent-line);
+}
+
+.team-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.team-row.leader .team-name svg {
+  color: var(--accent-bright);
+}
+
+.team-members {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.team-avg {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-avg small {
+  margin-left: 4px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.board-extras {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.board-extras .goal-met,
+.board-extras .share {
+  color: var(--accent-bright);
 }

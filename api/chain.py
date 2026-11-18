@@ -8,6 +8,7 @@ Command line (from api/):
     python chain.py show <challenge>
     python chain.py end-early <challenge>
     python chain.py settle <challenge> <winner> [<winner> ...]
+    python chain.py settle-split <challenge> <winner>:<basis points> [...]   (shares add up to 10000)
 
 Devnet only. The oracle key is read from the file named by ORACLE_KEYPAIR_PATH.
 """
@@ -172,17 +173,7 @@ def end_early(client: Client, oracle: Keypair, challenge: Pubkey) -> str:
     return _send(client, oracle, instruction)
 
 
-def settle(client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pubkey], score_hash: bytes) -> str:
-    """Reports the winners and pays out the pool. Returns the transaction signature."""
-    if len(score_hash) != 32:
-        raise ValueError("score_hash must be 32 bytes (a SHA-256 digest)")
-    state = fetch_challenge(client, challenge)
-    data = (
-        _discriminator("settle")
-        + struct.pack("<I", len(winners))
-        + b"".join(bytes(w) for w in winners)
-        + score_hash
-    )
+def _settle_accounts(state: "Challenge", oracle: Keypair, challenge: Pubkey, winners: list[Pubkey]) -> list[AccountMeta]:
     accounts = [
         AccountMeta(oracle.pubkey(), is_signer=True, is_writable=False),
         AccountMeta(challenge, is_signer=False, is_writable=True),
@@ -190,10 +181,42 @@ def settle(client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pub
         AccountMeta(TOKEN_PROGRAM_ID, is_signer=False, is_writable=False),
     ]
     # One token account per winner, in the same order as the winner list.
-    accounts += [
+    return accounts + [
         AccountMeta(token_account_for(w, state.mint), is_signer=False, is_writable=True) for w in winners
     ]
-    return _send(client, oracle, Instruction(PROGRAM_ID, data, accounts))
+
+
+def _pubkeys(keys: list[Pubkey]) -> bytes:
+    return struct.pack("<I", len(keys)) + b"".join(bytes(k) for k in keys)
+
+
+def settle(client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pubkey], score_hash: bytes) -> str:
+    """Reports the winners and pays out the pool in equal shares. Returns the transaction signature."""
+    if len(score_hash) != 32:
+        raise ValueError("score_hash must be 32 bytes (a SHA-256 digest)")
+    state = fetch_challenge(client, challenge)
+    data = _discriminator("settle") + _pubkeys(winners) + score_hash
+    return _send(client, oracle, Instruction(PROGRAM_ID, data, _settle_accounts(state, oracle, challenge, winners)))
+
+
+def settle_split(
+    client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pubkey], shares_bps: list[int], score_hash: bytes
+) -> str:
+    """Pays the pool in fixed shares (basis points, adding up to 10,000), for example a podium.
+    Returns the transaction signature."""
+    if len(score_hash) != 32:
+        raise ValueError("score_hash must be 32 bytes (a SHA-256 digest)")
+    if len(shares_bps) != len(winners) or sum(shares_bps) != 10_000:
+        raise ValueError("need one share per winner, adding up to 10,000 basis points")
+    state = fetch_challenge(client, challenge)
+    data = (
+        _discriminator("settle_split")
+        + _pubkeys(winners)
+        + struct.pack("<I", len(shares_bps))
+        + b"".join(struct.pack("<H", s) for s in shares_bps)
+        + score_hash
+    )
+    return _send(client, oracle, Instruction(PROGRAM_ID, data, _settle_accounts(state, oracle, challenge, winners)))
 
 
 def refund(client: Client, payer: Keypair, challenge: Pubkey) -> str:
@@ -254,6 +277,13 @@ def _main(argv: list[str]) -> None:
         winners = [Pubkey.from_string(w) for w in argv[3:]]
         score_hash = hashlib.sha256(b"command-line-settle").digest()
         print("settle:", explorer.format(settle(client, load_oracle(), challenge, winners, score_hash)))
+        print("status now:", fetch_challenge(client, challenge).status)
+    elif command == "settle-split":
+        pairs = [arg.split(":") for arg in argv[3:]]  # <winner>:<basis points>
+        winners = [Pubkey.from_string(w) for w, _ in pairs]
+        score_hash = hashlib.sha256(b"command-line-settle-split").digest()
+        signature = settle_split(client, load_oracle(), challenge, winners, [int(b) for _, b in pairs], score_hash)
+        print("settle_split:", explorer.format(signature))
         print("status now:", fetch_challenge(client, challenge).status)
     else:
         print(__doc__)

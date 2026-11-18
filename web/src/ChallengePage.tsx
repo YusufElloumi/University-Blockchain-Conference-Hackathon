@@ -15,6 +15,7 @@ import { ago, countdown, money, usdc, when } from "./format";
 import JoinIntro from "./JoinIntro";
 import { InviteCodeBox } from "./events";
 import Leaderboard from "./Leaderboard";
+import { FORMAT_INFO, type Format } from "./formats";
 import { MODE_INFO, ModeBadge } from "./modes";
 import { EmptyState, Eyebrow, Skeleton } from "./ui";
 import {
@@ -24,6 +25,7 @@ import {
   Check,
   ChevronLeft,
   CircleCheck,
+  Crown,
   Dumbbell,
   Flag,
   Footprints,
@@ -59,12 +61,19 @@ const TYPE_ICON: Record<string, LucideIcon> = {
   swim: Waves,
   workout: Dumbbell,
 };
+/** Feed events that end a challenge. true = someone was paid (shown as a win). */
+const RESULT_KINDS: Record<string, boolean> = {
+  ChallengeSettled: true,
+  ChallengeSettledSplit: true,
+  ChallengeRefunded: false,
+};
 const MINUTE_CHOICES = [20, 30, 45, 60, 90];
 const FEED_ICON: Record<string, LucideIcon> = {
   ChallengeCreated: Flag,
   PlayerJoined: UserPlus,
   ChallengeEnded: Timer,
   ChallengeSettled: Trophy,
+  ChallengeSettledSplit: Trophy,
   ChallengeRefunded: Undo2,
 };
 
@@ -129,14 +138,14 @@ export default function ChallengePage(props: { address: string; session: Session
     };
   }, [loadChain, loadState]);
 
-  async function recordJoin(signature?: string) {
+  async function recordJoin(signature?: string, team: number | null = null) {
     await retryWhileNotReady(() =>
-      call("POST", `/challenges/${address}/join`, { consent: true, deposit_tx: signature ?? null }),
+      call("POST", `/challenges/${address}/join`, { consent: true, deposit_tx: signature ?? null, team }),
     );
     await loadState();
   }
 
-  async function onJoin() {
+  async function onJoin(team: number | null) {
     if (!info) return;
     setBusy(true);
     setError("");
@@ -144,7 +153,7 @@ export default function ChallengePage(props: { address: string; session: Session
       const signature = await send(await buildJoinTransaction(me.wallet, info));
       setLastTx(signature);
       await Promise.all([loadChain(), refreshBalance()]);
-      await recordJoin(signature);
+      await recordJoin(signature, team);
       setIntro(false);
     } catch (e) {
       console.error(e);
@@ -276,7 +285,7 @@ export default function ChallengePage(props: { address: string; session: Session
   const full = info.players.length >= info.maxPlayers;
   const pool = state?.pool ?? info.pool;
   const name = state?.challenge?.name ?? "Weekly challenge";
-  const result = state?.feed.filter((f) => f.kind === "ChallengeSettled" || f.kind === "ChallengeRefunded").pop();
+  const result = state?.feed.filter((f) => f.kind in RESULT_KINDS).pop();
   const ResultIcon = result ? FEED_ICON[result.kind] : null;
   // How far through the event we are, for the thin progress line under the header.
   const span = info.endTime.getTime() - info.startTime.getTime();
@@ -343,7 +352,7 @@ export default function ChallengePage(props: { address: string; session: Session
         {/* ----- What needs your attention: results, joining, confirmation ----- */}
         <div className="ch-top">
           {result && ResultIcon && (
-            <div className={`notice-card${result.kind === "ChallengeSettled" ? " win" : ""}`}>
+            <div className={`notice-card${RESULT_KINDS[result.kind] ? " win" : ""}`}>
               <span className="icon-tile">
                 <ResultIcon size={18} strokeWidth={1.75} aria-hidden />
               </span>
@@ -386,7 +395,7 @@ export default function ChallengePage(props: { address: string; session: Session
                     <h2 className="card-title">Join this challenge</h2>
                     <p className="fine">
                       {canAfford
-                        ? `${usdc(info.buyIn)} moves from your balance into the prize pool. Top scorer takes the pool.`
+                        ? `${usdc(info.buyIn)} moves from your balance into the prize pool. ${state?.challenge?.format_summary ?? ""}`
                         : "You need more in your balance. Add devnet USDC from the home screen first."}
                     </p>
                   </div>
@@ -465,7 +474,7 @@ export default function ChallengePage(props: { address: string; session: Session
               <Eyebrow>Admin</Eyebrow>
               {confirmEnd ? (
                 <>
-                  <p className="muted">This ends the challenge for everyone and pays the pool to the current leader.</p>
+                  <p className="muted">This ends the challenge for everyone and pays the pool by the current standings.</p>
                   <div className="btn-row">
                     <button className="btn btn-danger" onClick={() => onFinish(true)} disabled={busy}>
                       Yes, end and pay out
@@ -514,6 +523,8 @@ export default function ChallengePage(props: { address: string; session: Session
           scoring={state?.challenge?.scoring_source ?? "fitness"}
           weights={state?.challenge?.stat_weights ?? null}
           hasPicks={!!state?.challenge?.round_hours}
+          format={state?.challenge?.format ?? "winner_takes_all"}
+          formatConfig={state?.challenge?.format_config ?? {}}
           lengthMs={info.endTime.getTime() - info.startTime.getTime()}
           buyIn={info.buyIn}
           playersAfterJoin={info.players.length + 1}
@@ -833,15 +844,78 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
     );
   const days = Math.max(0, ...state.players.map((p) => p.ticks.length));
   const form = state.challenge?.scoring_source !== "league_stats"; // stat sheets have no daily form
+  const challenge = state.challenge;
+  const final = phase === "settled" || phase === "refunded";
   return (
     <section className="card board-card">
-      <Leaderboard players={state.players} form={form} picks={!!state.rounds} />
+      {challenge && (
+        <FormatBar
+          format={challenge.format}
+          summary={challenge.format_summary}
+          goalMissed={!!state.format?.goal_missed && state.players.length > 0 && phase !== "joining"}
+        />
+      )}
+      {challenge?.format === "teams" && state.format?.teams && (
+        <TeamTable teams={state.format.teams} mine={state.players.find((p) => p.is_you)?.team ?? null} />
+      )}
+      <Leaderboard
+        players={state.players}
+        form={form}
+        picks={!!state.rounds}
+        format={challenge?.format}
+        formatConfig={challenge?.format_config}
+        showShares={phase !== "joining" && !final}
+      />
       {(phase === "joining" || form) && (
         <p className="fine board-note">
           {phase === "joining" ? "Scoring starts when the challenge does." : `Form shows active days${days > 7 ? " (last 7)" : ""}.`}
         </p>
       )}
     </section>
+  );
+}
+
+/** How this event pays, above the leaderboard. */
+function FormatBar(props: { format: Format; summary: string; goalMissed: boolean }) {
+  const { Icon, title } = FORMAT_INFO[props.format];
+  return (
+    <div className="format-bar">
+      <span className="icon-tile icon-tile-sm">
+        <Icon size={15} strokeWidth={1.75} aria-hidden />
+      </span>
+      <div>
+        <b>{title}</b>
+        <span>{props.summary}</span>
+        {props.goalMissed && <span className="format-bar-note">Nobody has reached the goal yet.</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Teams format: the two teams, best average first. */
+function TeamTable(props: {
+  teams: { team: number; name: string; average: number | null; members: number; rank: number | null }[];
+  mine: number | null;
+}) {
+  return (
+    <div className="team-table" role="table" aria-label="Team standings">
+      {props.teams.map((t) => (
+        <div key={t.team} role="row" className={`team-row${t.rank === 1 ? " leader" : ""}`}>
+          <span role="cell" className="team-name">
+            {t.rank === 1 && t.average ? <Crown size={14} strokeWidth={2} aria-label="Leading" /> : null}
+            {t.name}
+            {props.mine === t.team && <span className="tag tag-accent">Your team</span>}
+          </span>
+          <span role="cell" className="team-members">
+            {t.members} {t.members === 1 ? "player" : "players"}
+          </span>
+          <span role="cell" className="team-avg">
+            {t.average ?? "-"}
+            <small>avg</small>
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
