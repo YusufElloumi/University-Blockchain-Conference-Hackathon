@@ -109,6 +109,28 @@ describe("loser_buys", () => {
       .signers([opts.signer ?? oracle])
       .rpc();
 
+  const settleSplit = (
+    c: { challenge: PublicKey; vault: PublicKey },
+    winners: Keypair[],
+    sharesBps: number[],
+    opts: { signer?: Keypair } = {}
+  ) =>
+    program.methods
+      .settleSplit(
+        winners.map((w) => w.publicKey),
+        sharesBps,
+        SCORE_HASH
+      )
+      .accountsPartial({
+        oracle: (opts.signer ?? oracle).publicKey,
+        challenge: c.challenge,
+        vault: c.vault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .remainingAccounts(asRemaining(winners))
+      .signers([opts.signer ?? oracle])
+      .rpc();
+
   const refund = (c: { challenge: PublicKey; vault: PublicKey }, refundTo: Keypair[]) =>
     program.methods
       .refund()
@@ -196,6 +218,38 @@ describe("loser_buys", () => {
     assert.equal(await balanceOf(b), before[1] + each + 1);
     assert.equal(await balanceOf(d), before[2] + each);
     assert.equal(Number((await getAccount(connection, c.vault)).amount), 0);
+  });
+
+  it("settle_split: podium 60/30/10, rounding dust goes to first place", async () => {
+    const [a, b, d] = players;
+    const c = await createChallenge(a);
+    for (const p of players) await join(c, p);
+    const before = await Promise.all(players.map(balanceOf));
+
+    await endEarly(c);
+    await settleSplit(c, [d, a, b], [6000, 3000, 1000]);
+
+    // Pool 3,000,003: 1,800,001 + 900,000 + 300,000 = 3,000,001, so 2 units of dust go to first.
+    assert.equal(await balanceOf(d), before[2] + 1_800_003);
+    assert.equal(await balanceOf(a), before[0] + 900_000);
+    assert.equal(await balanceOf(b), before[1] + 300_000);
+    assert.equal(Number((await getAccount(connection, c.vault)).amount), 0);
+    const state = await program.account.challenge.fetch(c.challenge);
+    assert.deepEqual(state.status, { settled: {} });
+  });
+
+  it("settle_split: rejects shares that do not add up to 100% or do not match the winners", async () => {
+    const [a, b] = players;
+    const c = await createChallenge(a);
+    await join(c, a);
+    await join(c, b);
+    await endEarly(c);
+    await expectError(settleSplit(c, [a, b], [6000, 3000]), "InvalidShares");
+    await expectError(settleSplit(c, [a, b], [10000]), "InvalidShares");
+    await expectError(settleSplit(c, [a], [10000], { signer: stranger }), "NotOracle");
+    await expectError(settleSplit(c, [a, a], [5000, 5000]), "InvalidWinners");
+    await settleSplit(c, [b, a], [7000, 3000]);
+    await expectError(settleSplit(c, [a], [10000]), "ChallengeNotOpen");
   });
 
   it("rejects joining after the challenge started", async () => {

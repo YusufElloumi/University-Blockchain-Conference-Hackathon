@@ -187,7 +187,7 @@ def _update_challenge(session: Session, name: str, fields: dict) -> None:
         challenge.end_time = datetime.fromtimestamp(fields["end_time"], timezone.utc)
         if db.utc(challenge.start_time) > db.utc(challenge.end_time):
             challenge.start_time = challenge.end_time  # ended before it began
-    elif name == "ChallengeSettled":
+    elif name in ("ChallengeSettled", "ChallengeSettledSplit"):
         challenge.status = "settled"
     elif name == "ChallengeRefunded":
         challenge.status = "refunded"
@@ -226,6 +226,9 @@ def feed(rows: list[db.ChainEvent], name_of) -> list[dict]:
             winners = [name_of(w) for w in data["winners"]]
             each = " each" if len(winners) > 1 else ""
             text = f"Settled - {_names(winners)} won {_usdc(data['payout_each'])}{each}"
+        elif row.name == "ChallengeSettledSplit":
+            paid = [f"{name_of(w)} won {_usdc(amount)}" for w, amount in zip(data["winners"], data["amounts"]) if amount]
+            text = f"Settled - {_names(paid)}"
         elif row.name == "ChallengeRefunded":
             text = f"Refunded - everyone got {_usdc(data['refund_each'])} back"
         else:

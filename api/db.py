@@ -116,6 +116,9 @@ class Challenge(Base):
     stat_weights: Mapped[str | None] = mapped_column(Text)  # JSON {"goals": 2, "assists": 1, "points": 0}
     pick_themes: Mapped[str | None] = mapped_column(Text)  # JSON list of prediction round themes; empty = off
     round_hours: Mapped[int | None]  # a new prediction round every this many hours (24 or 168)
+    # Competition format (see formats.py): winner_takes_all, podium, goal or teams. None = winner takes all.
+    format: Mapped[str | None]
+    format_config: Mapped[str | None] = mapped_column(Text)  # JSON settings of the format, fixed at creation
 
 
 class Participant(Base):
@@ -128,6 +131,7 @@ class Participant(Base):
     deposit_tx: Mapped[str | None]
     consent_at: Mapped[datetime]  # when they agreed to share their points with this group
     stat_name: Mapped[str | None]  # league stats: this player's name on the uploaded stat sheet
+    team: Mapped[int | None]  # teams format: index of the team they picked when joining
     joined_at: Mapped[datetime] = mapped_column(default=_now)
 
 

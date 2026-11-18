@@ -27,6 +27,7 @@ import chain
 import config
 import db
 import events
+import formats
 import leaguestats
 import pickrounds
 import scores
@@ -50,12 +51,23 @@ def build_sheet(session: Session, challenge: db.Challenge, players: list[str]) -
     participants = session.scalars(select(db.Participant.user_id).where(db.Participant.challenge_id == challenge.id))
     for user_id in participants:
         scores.recompute(session, challenge, user_id)
-    points = {row["wallet"]: row["points"] for row in scores.leaderboard(session, challenge)}
+    rows = {row["wallet"]: row for row in scores.leaderboard(session, challenge)}
+    fmt, settings = formats.of(challenge)
+
+    def entry(wallet: str) -> dict:
+        row = rows.get(wallet)  # a player who deposited but never agreed to share points has no score with us: zero
+        found = {"wallet": wallet, "points": row["points"] if row else 0}
+        if fmt == "goal":
+            found["active_days"] = row["active_days"] if row else 0
+        if fmt == "teams":
+            found["team"] = row["team"] if row else None
+        return found
+
     sheet = {
         "challenge": challenge.address,
         "rules": challenge.template,
-        # A player who deposited but never agreed to share points has no score with us: zero.
-        "scores": [{"wallet": wallet, "points": points.get(wallet, 0)} for wallet in players],
+        "format": {"name": fmt, **settings},  # fixed at creation; part of the hash
+        "scores": [entry(wallet) for wallet in players],
         "salt": secrets.token_hex(16),  # stops anyone guessing the sheet from the hash alone
     }
     if scores.uses_league_stats(challenge):
@@ -72,10 +84,17 @@ def build_sheet(session: Session, challenge: db.Challenge, players: list[str]) -
     return sheet
 
 
+def payout_of(sheet: dict) -> formats.Payout:
+    """Who is paid and how much, by the format written in the sheet. Ties are handled by each format's rules."""
+    settings = dict(sheet.get("format") or {"name": formats.DEFAULT_FORMAT})
+    fmt = settings.pop("name")
+    found = [formats.Entry(e["wallet"], e["points"], e.get("active_days", 0), e.get("team")) for e in sheet["scores"]]
+    return formats.payout(fmt, settings, found)
+
+
 def winners_of(sheet: dict) -> list[str]:
-    """Everyone tied on the top score. They split the pool equally."""
-    best = max(entry["points"] for entry in sheet["scores"])
-    return [entry["wallet"] for entry in sheet["scores"] if entry["points"] == best]
+    """Everyone the pool is paid to."""
+    return payout_of(sheet).wallets
 
 
 def _sync_times(challenge: db.Challenge, state: chain.Challenge) -> None:
@@ -133,10 +152,16 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
         if not pickrounds.resolve(session, challenge, give_up=end_now or waited):
             raise NotYet("Waiting for game results from Gemini.")
         sheet = build_sheet(session, challenge, [str(p) for p in state.players])
-        winners = winners_of(sheet)  # a tie at the top splits the pool
-        signature = chain.settle(client, oracle, address, [Pubkey.from_string(w) for w in winners], sheet_hash(sheet))
+        payout = payout_of(sheet)  # follows from the sheet alone, so anyone holding it can check the payout
+        keys = [Pubkey.from_string(w) for w in payout.wallets]
+        if payout.equal:
+            signature = chain.settle(client, oracle, address, keys, sheet_hash(sheet))
+        else:
+            signature = chain.settle_split(client, oracle, address, keys, [bps for _, bps in payout.shares],
+                                           sheet_hash(sheet))
         challenge.status, challenge.settle_tx, challenge.score_sheet = "settled", signature, json.dumps(sheet)
-        result.update(action="settled", status="settled", signature=signature, winners=winners)
+        result.update(action="settled", status="settled", signature=signature, winners=payout.wallets,
+                      note=payout.note)
     session.commit()
     try:
         events.catch_up(session, challenge.address)  # in case the Stream is not delivering right now

@@ -63,6 +63,17 @@ pub mod loser_buys {
         crate::instructions::settle::handle_settle(ctx, winners, score_hash)
     }
 
+    /// Oracle only, after the end time: pays the pool to the winners in fixed shares
+    /// (basis points, adding up to 100%). Used by formats such as a podium split.
+    pub fn settle_split<'info>(
+        ctx: Context<'info, Settle<'info>>,
+        winners: Vec<Pubkey>,
+        shares_bps: Vec<u16>,
+        score_hash: [u8; 32],
+    ) -> Result<()> {
+        crate::instructions::settle::handle_settle_split(ctx, winners, shares_bps, score_hash)
+    }
+
     /// Anyone: returns every buy-in when too few players joined or the oracle timed out.
     pub fn refund<'info>(ctx: Context<'info, Refund<'info>>) -> Result<()> {
         crate::instructions::refund::handle_refund(ctx)

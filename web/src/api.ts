@@ -1,5 +1,6 @@
 // Calls to our own API server. Calls about a person carry their Privy login token.
 
+import type { Format, FormatConfig } from "./formats";
 import type { Mode } from "./modes";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -41,6 +42,9 @@ export type ChallengeView = {
   pick_themes: string[];
   round_hours: number | null; // a prediction round every this many hours; null = no rounds
   round_count: number;
+  format: Format; // how the pool is paid; fixed when the event was created
+  format_config: FormatConfig;
+  format_summary: string; // one plain sentence
 };
 
 /** One of "my" events in a mode: joined, created, or invited to. */
@@ -56,6 +60,9 @@ export type PlayerRow = {
   base_points: number; // fitness or league-stat points
   pick_points: number; // prediction pick points
   ticks: boolean[];
+  team: number | null; // teams format: index into format_config.teams
+  projected_share: number; // percent of the pool this player would win if it ended now
+  goal_progress: number | null; // goal format: active days or points so far
   is_you: boolean;
 };
 
@@ -101,6 +108,12 @@ export type ChallengeState = {
   pool: number | null;
   player_count: number | null;
   players: PlayerRow[] | null; // null unless you are a player
+  format: {
+    format: Format;
+    summary: string;
+    goal_missed?: boolean; // goal format: nobody has reached it (yet)
+    teams?: { team: number; name: string; average: number | null; members: number; rank: number | null }[];
+  } | null;
   rounds: { total: number; max_points: number; list: PickRound[] } | null;
   feed: FeedItem[];
 };

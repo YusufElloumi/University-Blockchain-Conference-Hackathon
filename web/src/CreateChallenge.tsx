@@ -3,7 +3,8 @@ import type { ChallengeView, StatWeights } from "./api";
 import type { Session } from "./App";
 import { buildCreateTransaction, friendlyError } from "./chain";
 import { usdc } from "./format";
-import { Check, ChevronLeft } from "lucide-react";
+import { Check, ChevronLeft, Minus, Plus } from "lucide-react";
+import { FORMATS, FORMAT_INFO, PODIUM_PRESETS, goalUnit, type Format, type FormatConfig } from "./formats";
 import { MODE_INFO, ModeBadge, type Mode } from "./modes";
 import { Eyebrow } from "./ui";
 
@@ -49,6 +50,7 @@ const STAT_LABELS: { key: keyof StatWeights; label: string }[] = [
   { key: "points", label: "Points" },
 ];
 type Source = "fitness" | "league_stats";
+const PLACES = ["1st", "2nd", "3rd"];
 
 /** Chips where several can be on at once. */
 function MultiChips(props: { options: { id: string; label: string }[]; value: string[]; onChange: (v: string[]) => void }) {
@@ -93,7 +95,27 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const [picksOn, setPicksOn] = useState(true);
   const [themes, setThemes] = useState<string[]>(["basketball", "general"]);
   const [roundEvery, setRoundEvery] = useState(ROUND_EVERY[0]);
+  const [format, setFormat] = useState<Format>("winner_takes_all");
+  const [shares, setShares] = useState<number[]>(PODIUM_PRESETS[0]);
+  const [goalMetric, setGoalMetric] = useState<"active_days" | "points">("active_days");
+  const [goalTarget, setGoalTarget] = useState(5);
+  const [teamNames, setTeamNames] = useState(["Team A", "Team B"]);
   const usesStats = mode === "league" && source === "league_stats";
+  const metric = usesStats ? "points" : goalMetric; // stat sheets have no active days
+  const lengthDays = Math.max(1, Math.round(length.seconds / 86400));
+  const sharesOk =
+    shares.reduce((a, b) => a + b, 0) === 100 && shares.every((v, i) => v > 0 && (i === 0 || v <= shares[i - 1]));
+  const teamsOk =
+    teamNames.every((t) => t.trim()) && teamNames[0].trim().toLowerCase() !== teamNames[1].trim().toLowerCase();
+  const formatOk = format === "podium" ? sharesOk : format === "teams" ? teamsOk : true;
+  const formatConfig: FormatConfig | null =
+    format === "podium"
+      ? { shares }
+      : format === "goal"
+        ? { metric, target: goalTarget }
+        : format === "teams"
+          ? { teams: teamNames.map((t) => t.trim()) }
+          : null;
   const rounds = picksOn && themes.length > 0;
 
   function chooseSource(next: Source) {
@@ -125,6 +147,8 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
         stat_weights: usesStats ? weights : null,
         pick_themes: rounds ? themes : [],
         round_hours: rounds ? roundEvery.hours : null,
+        format,
+        format_config: formatConfig,
       });
       go({ view: "challenge", address });
     } catch (e) {
@@ -135,7 +159,11 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   }
 
   const ready =
-    !busy && !!name.trim() && (mode !== "league" || !!organizer.trim()) && !(picksOn && themes.length === 0);
+    !busy &&
+    !!name.trim() &&
+    (mode !== "league" || !!organizer.trim()) &&
+    !(picksOn && themes.length === 0) &&
+    formatOk;
 
   return (
     <div className="create">
@@ -193,6 +221,138 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
               <span className="field-label">Then it runs for</span>
               <Chips options={LENGTHS} value={length} label={(o) => o.label} onPick={setLength} />
             </div>
+          </section>
+
+          <section className="card">
+            <h2 className="card-title">Format</h2>
+            <p className="fine">How the prize pool is paid. Locked once the event is created.</p>
+            <div className="format-grid" role="radiogroup" aria-label="Competition format">
+              {FORMATS.map((f) => {
+                const { title, Icon, line, example } = FORMAT_INFO[f];
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    role="radio"
+                    aria-checked={format === f}
+                    className={format === f ? "format-tile on" : "format-tile"}
+                    onClick={() => setFormat(f)}
+                  >
+                    <span className="icon-tile icon-tile-sm">
+                      <Icon size={16} strokeWidth={1.75} aria-hidden />
+                    </span>
+                    <b>{title}</b>
+                    <span>{line}</span>
+                    <small>{example}</small>
+                  </button>
+                );
+              })}
+            </div>
+
+            {format === "podium" && (
+              <>
+                <div className="field">
+                  <span className="field-label">Split</span>
+                  <Chips
+                    options={PODIUM_PRESETS}
+                    value={PODIUM_PRESETS.find((p) => p.join() === shares.join()) ?? []}
+                    label={(o) => o.join(" / ")}
+                    onPick={(o) => setShares(o)}
+                  />
+                </div>
+                <div className="weights">
+                  {shares.map((v, i) => (
+                    <label key={i}>
+                      <span>{PLACES[i]} place %</span>
+                      <input
+                        inputMode="numeric"
+                        value={v}
+                        aria-label={`${PLACES[i]} place percent`}
+                        onChange={(e) =>
+                          setShares(
+                            shares.map((old, j) =>
+                              j === i ? Math.min(100, Number(e.target.value.replace(/[^0-9]/g, "")) || 0) : old,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                {!sharesOk && <p className="fine warn">Percentages must add up to 100, highest place first.</p>}
+              </>
+            )}
+
+            {format === "goal" && (
+              <>
+                {!usesStats && (
+                  <div className="segmented" role="radiogroup" aria-label="Goal type">
+                    {(["active_days", "points"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        role="radio"
+                        aria-checked={goalMetric === m}
+                        className={goalMetric === m ? "on" : ""}
+                        onClick={() => setGoalMetric(m)}
+                      >
+                        {m === "active_days" ? "Active days" : "Points"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="field">
+                  <span className="field-label">Goal</span>
+                  <div className="stepper">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label="Lower the goal"
+                      onClick={() => setGoalTarget(Math.max(1, goalTarget - 1))}
+                    >
+                      <Minus size={16} aria-hidden />
+                    </button>
+                    <b>
+                      {goalTarget} {goalUnit(metric, goalTarget)}
+                    </b>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label="Raise the goal"
+                      onClick={() => setGoalTarget(Math.min(100, goalTarget + 1))}
+                    >
+                      <Plus size={16} aria-hidden />
+                    </button>
+                  </div>
+                </div>
+                {metric === "active_days" && goalTarget > lengthDays && (
+                  <p className="fine warn">
+                    This event runs {length.label}, so nobody can reach {goalTarget} active days.
+                  </p>
+                )}
+                <p className="fine">Nobody reaches it? Everyone gets their entry fee back.</p>
+              </>
+            )}
+
+            {format === "teams" && (
+              <>
+                <div className="team-names">
+                  {teamNames.map((t, i) => (
+                    <label key={i} className="field">
+                      <span className="field-label">Team {i + 1}</span>
+                      <input
+                        value={t}
+                        maxLength={30}
+                        aria-label={`Team ${i + 1} name`}
+                        onChange={(e) => setTeamNames(teamNames.map((old, j) => (j === i ? e.target.value : old)))}
+                      />
+                    </label>
+                  ))}
+                </div>
+                {!teamsOk && <p className="fine warn">Give the two teams different names.</p>}
+                <p className="fine">Players pick a team when they join. Team score is the average, so sizes can differ.</p>
+              </>
+            )}
           </section>
 
           <section className="card">
@@ -294,6 +454,10 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
                 <dd>{length.label}</dd>
               </div>
               <div>
+                <dt>Format</dt>
+                <dd>{format === "podium" && sharesOk ? `Podium ${shares.join("/")}` : FORMAT_INFO[format].title}</dd>
+              </div>
+              <div>
                 <dt>Scoring</dt>
                 <dd>{usesStats ? "League stats" : "Fitness"}</dd>
               </div>
@@ -305,7 +469,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
             <button className="btn btn-primary btn-block btn-lg" onClick={onCreate} disabled={!ready}>
               {busy ? "Creating..." : info.create}
             </button>
-            <p className="fine center">Free to create. Top scorer takes the pool.</p>
+            <p className="fine center">Free to create. {FORMAT_INFO[format].line}</p>
             {error && (
               <div className="message error" role="alert">
                 {error}

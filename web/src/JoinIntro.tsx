@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { StatWeights } from "./api";
 import { usdc } from "./format";
+import { FORMAT_INFO, goalUnit, payoutTitle, type Format, type FormatConfig } from "./formats";
 import {
   ChevronsUp,
   ClipboardList,
@@ -22,11 +23,13 @@ export type JoinIntroProps = {
   scoring: "fitness" | "league_stats";
   weights: StatWeights | null;
   hasPicks: boolean;
+  format: Format;
+  formatConfig: FormatConfig;
   lengthMs: number;
   buyIn: number;
   playersAfterJoin: number;
   busy: boolean;
-  onReady: () => void;
+  onReady: (team: number | null) => void; // team: the team picked, for team events
   onClose: () => void;
 };
 
@@ -49,10 +52,26 @@ export function termLabel(ms: number): string {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
+/** One sentence on how this event pays, finishing "After 1 week, ...". */
+function payoutLine(format: Format, config: FormatConfig): string {
+  if (format === "podium") {
+    const places = (config.shares ?? []).map((p, i) => `${["1st", "2nd", "3rd"][i]} ${p}%`).join(", ");
+    return `the top places share the pool: ${places}. Ties share their places.`;
+  }
+  if (format === "goal") {
+    const n = config.target ?? 0;
+    return `everyone with ${n} ${goalUnit(config.metric, n)} splits the pool. If nobody makes it, everyone gets their fee back.`;
+  }
+  if (format === "teams") return "the team with the best average score splits the pool. Pick your side:";
+  return "first place wins the whole pool. Ties split it.";
+}
+
 const pts = (n: number) => `${n} pt${n === 1 ? "" : "s"}`;
 
 export default function JoinIntro(props: JoinIntroProps) {
   const [step, setStep] = useState(0);
+  const [team, setTeam] = useState<number | null>(null);
+  const teams = props.format === "teams" ? (props.formatConfig.teams ?? []) : [];
   const stats = props.scoring === "league_stats";
   const pool = props.buyIn * props.playersAfterJoin;
 
@@ -110,17 +129,34 @@ export default function JoinIntro(props: JoinIntroProps) {
       body: <p>Every point moves you up. Your group sees your points, and only your points.</p>,
     },
     {
-      art: <WinArt amount={usdc(pool)} />,
+      art: teams.length ? null : <WinArt amount={usdc(pool)} />,
       title: (
         <>
-          First place takes the <em className="serif">pool.</em>
+          {payoutTitle(props.format)} <em className="serif">pool.</em>
         </>
       ),
       body: (
         <>
           <p>
-            After {termLabel(props.lengthMs)}, first place wins the whole prize pool: <b>{usdc(pool)}</b>. Ties split it.
+            After {termLabel(props.lengthMs)}, {payoutLine(props.format, props.formatConfig)} Prize pool: <b>{usdc(pool)}</b>.
           </p>
+          {teams.length > 0 && (
+            <div className="team-pick" role="radiogroup" aria-label="Pick your team">
+              {teams.map((name, i) => (
+                <button
+                  key={name}
+                  type="button"
+                  role="radio"
+                  aria-checked={team === i}
+                  className={team === i ? "chip on" : "chip"}
+                  onClick={() => setTeam(i)}
+                >
+                  {team === i && <FORMAT_INFO.teams.Icon size={14} aria-hidden />}
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="fine">Joining shares your points (never your activities) with this group.</p>
         </>
       ),
@@ -136,7 +172,7 @@ export default function JoinIntro(props: JoinIntroProps) {
           <X size={16} aria-hidden />
         </button>
         <div className="modal-step" key={step}>
-          <div className="modal-art">{screen.art}</div>
+          {screen.art && <div className="modal-art">{screen.art}</div>}
           <h2 id="intro-title" className="modal-title">
             {screen.title}
           </h2>
@@ -149,11 +185,17 @@ export default function JoinIntro(props: JoinIntroProps) {
         </div>
         <button
           className="btn btn-primary btn-block btn-lg"
-          onClick={() => (last ? props.onReady() : setStep(step + 1))}
-          disabled={props.busy}
+          onClick={() => (last ? props.onReady(teams.length ? team : null) : setStep(step + 1))}
+          disabled={props.busy || (last && teams.length > 0 && team === null)}
           autoFocus
         >
-          {last ? (props.busy ? "Joining..." : `I'm ready · Join for ${usdc(props.buyIn)}`) : "Next"}
+          {last
+            ? props.busy
+              ? "Joining..."
+              : teams.length && team === null
+                ? "Pick a team"
+                : `I'm ready · Join for ${usdc(props.buyIn)}`
+            : "Next"}
         </button>
       </div>
     </div>

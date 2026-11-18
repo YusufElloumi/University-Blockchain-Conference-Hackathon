@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 import db
 import fitness
+import formats
 import leaguestats
 import pickrounds
 import scoring
@@ -94,7 +95,7 @@ def leaderboard(session: Session, challenge: db.Challenge, now: datetime | None 
         .join(db.Participant, db.Participant.user_id == db.User.id)
         .where(db.Participant.challenge_id == challenge.id)
     )
-    for user, _participant in players:
+    for user, participant in players:
         days = entries.get(user.id, {})
         base = stats.get(user.id, 0) if stats is not None else sum(e.points for e in days.values())
         pick_points = picks.get(user.id, 0.0)
@@ -106,6 +107,8 @@ def leaderboard(session: Session, challenge: db.Challenge, now: datetime | None 
                 "points": _tidy(base + pick_points),
                 "base_points": _tidy(base),
                 "pick_points": _tidy(pick_points),
+                "active_days": sum(1 for e in days.values() if e.active),
+                "team": participant.team,
                 # League stats have no daily ticks.
                 "ticks": [] if stats is not None else
                 [bool(days[d].active) if d in days else False for d in range(days_so_far)],
@@ -116,6 +119,37 @@ def leaderboard(session: Session, challenge: db.Challenge, now: datetime | None 
         tied_with_previous = i > 0 and rows[i - 1]["points"] == row["points"]
         row["rank"] = rows[i - 1]["rank"] if tied_with_previous else i + 1
     return rows
+
+
+def entries(board: list[dict]) -> list[formats.Entry]:
+    """Leaderboard rows in the shape the payout rules take."""
+    return [formats.Entry(r["wallet"], r["points"], r["active_days"], r["team"]) for r in board if r["wallet"]]
+
+
+def format_view(challenge: db.Challenge, board: list[dict]) -> dict:
+    """The format, its settings, and what each player would win if the event ended right now.
+
+    `projected` maps user_id -> share of the pool in percent. Teams also get a team table; goal
+    events get each player's progress towards the goal.
+    """
+    fmt, config = formats.of(challenge)
+    view: dict = {"format": fmt, "config": config, "summary": formats.describe(fmt, config), "projected": {}}
+    found = entries(board)
+    if found:
+        by_wallet = {r["wallet"]: r["user_id"] for r in board}
+        result = formats.payout(fmt, config, found)
+        view["projected"] = {by_wallet[w]: bps / 100 for w, bps in result.shares}
+        view["goal_missed"] = result.goal_missed
+    if fmt == "teams":
+        view["teams"] = formats.team_scores(found, config["teams"])
+        # Teams nobody has joined yet still show, with no score.
+        listed = {t["team"] for t in view["teams"]}
+        view["teams"] += [{"team": i, "name": n, "average": None, "members": 0, "rank": None}
+                          for i, n in enumerate(config["teams"]) if i not in listed]
+    if fmt == "goal":
+        view["progress"] = {r["user_id"]: formats.goal_progress(formats.Entry(r["wallet"], r["points"], r["active_days"]), config)
+                            for r in board}
+    return view
 
 
 def _tidy(points: float) -> float | int:
