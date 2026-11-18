@@ -159,6 +159,7 @@ Fitness data lives off the blockchain, so something has to report who won. That 
 | What can it not do? | Pay anyone outside the player list, take a cut, end a challenge without a visible `end_early` event, or trap the funds |
 | What if the oracle disappears? | 72 hours after the end, anyone can call `refund` and every buy-in is returned |
 | What makes cheating detectable? | `settle` stores the SHA-256 hash of the final score sheet. Players can fetch the sheet (`GET /challenges/{address}/score-sheet`) and check it against the chain, so published scores cannot be changed quietly afterwards |
+| How can a player check a result? | Every result comes with a signed **Proof of Sweat** (below) that the app checks in the browser |
 
 Other measures:
 
@@ -168,7 +169,28 @@ Other measures:
 - Login tokens from Privy are verified on every request (signature, expiry, issuer, audience).
 - Anti-cheat in scoring: activities outside the challenge dates, duplicates, overlapping activities, and impossible speeds earn nothing, and points are capped per day.
 
+### Proof of Sweat: results anyone in the group can check
+
+(Called "Proof of Effort" in the code: `api/attest.py`, `challenges.attestation`.)
+
+When a challenge settles, a **verifier key** signs a short record of the result. A signature is a stamp only the holder of a private key can make, and anyone with the matching public key can check it. Rival uses Ed25519, the same kind of signature Solana wallets use.
+
+- **Verifier public key:** `5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway` (also in `api/config.py` and `web/src/proofCheck.ts`, and served at `GET /verifier`). It is separate from the oracle key.
+- **What is signed:** the challenge address, program ID, network (`devnet`), a fixed label (`rival.proof-of-effort`), the scoring rules' version and fingerprint, the SHA-256 of the score sheet, the payout shares, the time, and a random nonce. Naming the challenge, program and network stops a proof being reused anywhere else.
+- **What is not in it:** any workout detail. The proof stays offchain. Onchain there are still only winner addresses and the salted score-sheet hash.
+- **How to check it:** players of a settled challenge tap **Check result**. The browser checks the signature against the published key, re-hashes the score sheet, and compares that hash with the one `settle` stored on Solana. **Download proof** saves a file; `python attest.py verify <file>` (in `api/`) runs the same checks from a terminal and reads the hash from devnet.
+- **What it proves, and what it does not:** it proves our verifier approved this exact result and that the scores were not changed after payout. It does **not** prove a workout really happened.
+
+Each workout also gets a state in each challenge, shown only to its owner: **Passed checks**, **Counts · unverified** (typed in by hand), or **Not counted**, with the reason (outside the dates, overlapping, impossibly fast, and so on).
+
 What we would add before real money: a dispute window before payout, more than one signer on results, verified activity data, and an audit of the program.
+
+## What is real and what is simulated
+
+- **Real (devnet):** entry fees, the prize pool and every payout are real devnet USDC transactions handled by our Anchor program. Every result is signed by the verifier key, and its score-sheet hash is stored onchain, so players can check the scores were not changed after payout.
+- **Simulated:** the workouts. They are sample data (`mock`, made to look like a watch recording) or typed in by hand (`manual`, labelled unverified). Both go through the same checks.
+- **Not built yet:** live fitness sync. The app shows "Connect a fitness app · Coming soon" and says so. We do not show Strava's button or logo, because their brand rules reserve it for a working Strava sign-in.
+- **Trust:** a signature shows our verifier approved a result. It does not prove a workout happened. Checking the signature inside the Solana program, and running scoring in hardware-isolated computers (TEEs), are planned, not built.
 
 ## Fitness data and privacy
 
@@ -240,7 +262,7 @@ wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh join <challenge address>
 
 | What | Command | Where |
 |---|---|---|
-| API (113 tests: login, webhook, scoring, anti-cheat, settlement, prediction rounds, league stats) | Windows: `.venv\Scripts\python.exe -m pytest`<br/>macOS / Linux: `.venv/bin/python -m pytest` | `api/` |
+| API (163 tests: login, webhook, scoring, anti-cheat, settlement, formats, Proof of Effort, prediction rounds, league stats) | Windows: `.venv\Scripts\python.exe -m pytest`<br/>macOS / Linux: `.venv/bin/python -m pytest` | `api/` |
 | Program (11 tests on a local validator) | `anchor test --validator legacy` | `onchain/` |
 | Program from Windows | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh test --validator legacy` | repo root |
 | Stream filter | `node streams/test_filter.js` | repo root |

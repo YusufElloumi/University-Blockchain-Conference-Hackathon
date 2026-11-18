@@ -18,6 +18,7 @@ if (!RPC_URL.includes("devnet")) throw new Error("Devnet only. Refusing to use "
 export const connection = new Connection(RPC_URL, "confirmed");
 // Read-only program client: it builds transactions, the user's embedded wallet signs them.
 const program = new Program<LoserBuys>(idl as LoserBuys, { connection });
+export const PROGRAM_ID = program.programId;
 
 const USDC_DECIMALS = 6;
 const toDollars = (units: bigint | number | string) => Number(units) / 10 ** USDC_DECIMALS;
@@ -35,6 +36,7 @@ export type ChallengeInfo = {
   status: "open" | "settled" | "refunded";
   mint: PublicKey;
   vault: PublicKey;
+  scoreHash: number[]; // SHA-256 of the final score sheet, set by `settle`; all zeros before
 };
 
 /** A wallet's balance of the given token in dollars; 0 when it has never held any. */
@@ -62,6 +64,7 @@ export async function fetchChallenge(address: string): Promise<ChallengeInfo> {
     status: Object.keys(c.status)[0] as ChallengeInfo["status"],
     mint: c.mint,
     vault: c.vault,
+    scoreHash: Array.from(c.scoreHash),
   };
 }
 

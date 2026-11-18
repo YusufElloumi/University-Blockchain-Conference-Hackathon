@@ -32,6 +32,8 @@ services:
         sync: false
       - key: TREASURY_KEYPAIR # contents of treasury.json
         sync: false
+      - key: VERIFIER_KEYPAIR # contents of verifier.json (signs Proof of Effort results)
+        sync: false
       - key: ADMIN_EMAILS
         sync: false
       - key: TICK_SECRET

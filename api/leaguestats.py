@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 import db
 import pickrounds
 
+RULES_VERSION = "league-stats-v1"  # named in the score sheet; the weights themselves are hashed there
 COLUMNS = ["game_date", "player_name", "jersey_number", "team", "goals", "assists", "points"]
 TEMPLATE = (
     ",".join(COLUMNS) + "\n"

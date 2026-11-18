@@ -75,7 +75,7 @@ def test_the_hash_sent_onchain_matches_the_published_score_sheet(client, challen
     published = client.get(f"/challenges/{CHALLENGE}/score-sheet", headers=make_token("sam")).json()
     sheet = published["sheet"]
     assert sheet["scores"] == [{"wallet": WALLETS["maya"], "points": 0}, {"wallet": WALLETS["sam"], "points": 2}]
-    assert len(sheet["salt"]) == 32 and set(sheet) == {"challenge", "rules", "format", "scores", "salt"}  # no fitness details
+    assert len(sheet["salt"]) == 32 and set(sheet) == {"challenge", "rules", "rules_version", "rules_sha256", "format", "scores", "salt"}  # no fitness details
     assert sheet["format"] == {"name": "winner_takes_all"}
     recomputed = hashlib.sha256(json.dumps(sheet, sort_keys=True, separators=(",", ":")).encode()).digest()
     assert fake_chain[-1][2] == recomputed and published["sha256"] == recomputed.hex()

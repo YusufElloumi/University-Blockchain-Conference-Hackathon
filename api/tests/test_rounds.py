@@ -348,3 +348,15 @@ def test_score_sheet_records_a_hash_of_the_stats(client, fake_chain):
     assert client.post(f"/admin/challenges/{CHALLENGE}/end-now", headers=make_token("maya")).status_code == 200
     sheet = client.get(f"/challenges/{CHALLENGE}/score-sheet", headers=make_token("maya")).json()["sheet"]
     assert sheet["rules"] == "league_stats" and len(sheet["league_stats"]["sha256"]) == 64
+
+
+def test_feed_shows_player_names_when_the_event_has_prediction_rounds(client):
+    """Regression (Nov 18): the rounds code reused the feed's name lookup, so names fell back to "Player abcd"."""
+    from test_stage4 import add_event
+
+    create(client)
+    add_event("ChallengeSettled", {"winners": [WALLETS["sam"]], "pool_total": 2_000_000,
+                                   "payout_each": 2_000_000, "score_hash": "00"}, "s-names")
+    body = state(client, "maya")
+    assert body["rounds"] is not None
+    assert body["feed"][-1]["text"] == "Settled - sam won 2 USDC"

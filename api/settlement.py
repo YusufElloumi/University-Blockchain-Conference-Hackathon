@@ -6,11 +6,13 @@ stored onchain so published scores cannot be changed later, and every settlement
 transaction.
 
 No fitness data goes onchain: only winner addresses and the salted hash.
+
+Proof of Effort (`attest.py`): before paying out, the verifier key signs the result. The proof is
+kept with the challenge and shown to its players, so anyone of them can check it independently.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import secrets
@@ -23,6 +25,7 @@ from solders.pubkey import Pubkey
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import attest
 import chain
 import config
 import db
@@ -31,6 +34,7 @@ import formats
 import leaguestats
 import pickrounds
 import scores
+import scoring
 
 log = logging.getLogger("loser_buys")
 _busy: set[str] = set()  # challenges being finished right now, so two requests cannot both pay out
@@ -43,7 +47,7 @@ class NotYet(Exception):
 
 def sheet_hash(sheet: dict) -> bytes:
     """SHA-256 of the score sheet written as compact JSON with sorted keys. This is what goes onchain."""
-    return hashlib.sha256(json.dumps(sheet, sort_keys=True, separators=(",", ":")).encode()).digest()
+    return attest.sheet_sha256(sheet)
 
 
 def build_sheet(session: Session, challenge: db.Challenge, players: list[str]) -> dict:
@@ -66,12 +70,15 @@ def build_sheet(session: Session, challenge: db.Challenge, players: list[str]) -
     sheet = {
         "challenge": challenge.address,
         "rules": challenge.template,
+        "rules_version": scoring.RULES_VERSION,  # the exact scoring numbers used, by name and by hash
+        "rules_sha256": scoring.rules_fingerprint(),
         "format": {"name": fmt, **settings},  # fixed at creation; part of the hash
         "scores": [entry(wallet) for wallet in players],
         "salt": secrets.token_hex(16),  # stops anyone guessing the sheet from the hash alone
     }
     if scores.uses_league_stats(challenge):
         sheet["rules"] = "league_stats"
+        sheet["rules_version"], sheet["rules_sha256"] = leaguestats.RULES_VERSION, None  # weights are hashed below
         sheet["league_stats"] = {"weights": leaguestats.weights(challenge),
                                  "sha256": leaguestats.stats_hash(session, challenge)}
     rounds = pickrounds.rounds_of(session, challenge)
@@ -154,12 +161,17 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
         sheet = build_sheet(session, challenge, [str(p) for p in state.players])
         payout = payout_of(sheet)  # follows from the sheet alone, so anyone holding it can check the payout
         keys = [Pubkey.from_string(w) for w in payout.wallets]
+        verifier = attest.load_verifier()
+        proof = attest.issue(challenge.address, sheet, payout, verifier) if verifier else None
+        if proof is None:
+            log.warning("VERIFIER_KEYPAIR is not set: settling %s without a Proof of Effort", challenge.address)
         if payout.equal:
             signature = chain.settle(client, oracle, address, keys, sheet_hash(sheet))
         else:
             signature = chain.settle_split(client, oracle, address, keys, [bps for _, bps in payout.shares],
                                            sheet_hash(sheet))
         challenge.status, challenge.settle_tx, challenge.score_sheet = "settled", signature, json.dumps(sheet)
+        challenge.attestation = json.dumps(proof) if proof else None
         result.update(action="settled", status="settled", signature=signature, winners=payout.wallets,
                       note=payout.note)
     session.commit()

@@ -61,6 +61,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import attest
 import config
 import auth
 import chain
@@ -71,6 +72,7 @@ import fitness
 import leaguestats
 import pickrounds
 import scores
+import scoring
 import settlement
 import treasury
 
@@ -545,12 +547,25 @@ def add_activity(
 
 
 @app.get("/me/activities")
-def my_activities(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> list[dict]:
-    """The caller's own activities from the last 30 days, newest first. Only ever their own."""
+def my_activities(
+    challenge: str | None = None, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> list[dict]:
+    """The caller's own activities from the last 30 days, newest first. Only ever their own.
+
+    With `?challenge=<address>` (a challenge the caller plays in), each activity also gets its
+    state there: verified, flagged (typed in by hand) or rejected, with the reason.
+    """
     provider = _provider()
     now = datetime.now(timezone.utc)
     activities = provider.fetch_activities(session, user.id, now - timedelta(days=30), now + timedelta(days=1))
-    return [_activity_view(a, provider) for a in reversed(activities)]
+    views = [_activity_view(a, provider) for a in reversed(activities)]
+    if challenge:
+        found = _visible_challenge(session, challenge, user)
+        if _is_player(session, found, user) and not scores.uses_league_stats(found):
+            sheet = scores.sheet_for(session, found, user.id)
+            for view in views:
+                view["status"], view["reason"] = sheet.verdict(view["id"])
+    return views
 
 
 # ---------- Stage 5: what the screens need ----------
@@ -575,6 +590,21 @@ def app_config() -> dict:
         },
         "pick_themes": [{"id": k, "label": v["label"]} for k, v in pickrounds.THEMES.items()],
         "max_pick_points": pickrounds.MAX_PICK_POINTS,
+    }
+
+
+@app.get("/verifier")
+def verifier() -> dict:
+    """Public: who signs Proof of Effort records, and the scoring rules they vouch for."""
+    return {
+        "public_key": config.VERIFIER_PUBLIC_KEY,
+        "domain": attest.DOMAIN,
+        "schema": attest.SCHEMA,
+        "cluster": attest.CLUSTER,
+        "program": str(chain.PROGRAM_ID),
+        "rules": {"version": scoring.RULES_VERSION, "sha256": scoring.rules_fingerprint()},
+        "trust": "A proof shows our verifier approved this result and that the score sheet was not changed "
+                 "afterwards. It does not prove a workout happened.",
     }
 
 
@@ -710,13 +740,14 @@ def challenge_state(
         ]
         format_state = {k: v for k, v in fmt.items() if k not in ("projected", "progress")}
         if has_rounds:
-            names = {r["user_id"]: r["name"] for r in board}
+            # Its own name: `names` (wallet -> name) is still needed for the feed below.
+            round_names = {r["user_id"]: r["name"] for r in board}
             all_rounds = pickrounds.rounds_of(session, challenge)
             rounds = {
                 "total": pickrounds.round_count(challenge),
                 "max_points": pickrounds.MAX_PICK_POINTS,
                 # Live odds only for the newest round; older ones show the odds when they opened.
-                "list": [pickrounds.round_view(session, r, user.id, names, live=(r is all_rounds[-1]))
+                "list": [pickrounds.round_view(session, r, user.id, round_names, live=(r is all_rounds[-1]))
                          for r in all_rounds],
             }
     return {
@@ -806,7 +837,17 @@ def score_sheet(address: str, user: db.User = Depends(current_user), session: Se
         raise HTTPException(404, "This challenge has not been settled.")
     sheet = json.loads(challenge.score_sheet)
     payout = settlement.payout_of(sheet)
-    return {"sheet": sheet, "payout": {"note": payout.note, "shares_bps": dict(payout.shares)}, "sha256": settlement.sheet_hash(sheet).hex(), "transaction": challenge.settle_tx}
+    proof = json.loads(challenge.attestation) if challenge.attestation else None
+    return {
+        "sheet": sheet,
+        # The exact text that was hashed, so a browser can hash it without re-creating Python's JSON.
+        "canonical": attest.canonical(sheet),
+        "payout": {"note": payout.note, "shares_bps": dict(payout.shares)},
+        "sha256": settlement.sheet_hash(sheet).hex(),
+        "transaction": challenge.settle_tx,
+        "proof": proof,
+        "proof_problems": attest.check(proof, challenge=challenge.address, sheet=sheet) if proof else None,
+    }
 
 
 # ---------- Prediction rounds (Gemini Prediction Markets) ----------

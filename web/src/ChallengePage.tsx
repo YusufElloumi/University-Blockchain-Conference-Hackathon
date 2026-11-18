@@ -17,6 +17,7 @@ import { InviteCodeBox } from "./events";
 import Leaderboard from "./Leaderboard";
 import { FORMAT_INFO, type Format } from "./formats";
 import { MODE_INFO, ModeBadge } from "./modes";
+import { ConnectFitness, ProofCard } from "./Proof";
 import { EmptyState, Eyebrow, Skeleton } from "./ui";
 import {
   Activity,
@@ -44,6 +45,9 @@ import {
 } from "lucide-react";
 
 type Tab = "table" | "feed" | "me";
+
+// A workout's state in this challenge (api/scoring.py). "Passed checks", not "verified": demo data is not proof.
+const STATE_LABEL = { verified: "Passed checks", flagged: "Counts · unverified", rejected: "Not counted" } as const;
 type Phase = "joining" | "live" | "ended" | "settled" | "refunded";
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -437,6 +441,7 @@ export default function ChallengePage(props: { address: string; session: Session
 
         {/* ----- Side column: picks, invites, organizer tools ----- */}
         <div className="ch-rail">
+          {phase === "settled" && inOnchain && <ProofCard call={call} info={info} />}
           {state?.rounds && (
             <PickRounds
               session={session}
@@ -964,10 +969,10 @@ function MyWorkouts(props: { session: Session; canAdd: boolean; address: string;
   const [outcome, setOutcome] = useState<{ good: boolean; text: string } | null>(null);
 
   const load = useCallback(() => {
-    call<ActivityView[]>("GET", "/me/activities")
+    call<ActivityView[]>("GET", `/me/activities?challenge=${props.address}`)
       .then(setList)
       .catch(() => setList([]));
-  }, [call]);
+  }, [call, props.address]);
   useEffect(load, [load]);
 
   async function onAdd() {
@@ -1034,6 +1039,7 @@ function MyWorkouts(props: { session: Session; canAdd: boolean; address: string;
           {outcome && <div className={`message ${outcome.good ? "ok" : "error"}`}>{outcome.text}</div>}
         </section>
       )}
+      <ConnectFitness />
       <div className="section-head">
         <h2>Your workouts</h2>
         <span className="count with-icon">
@@ -1053,14 +1059,16 @@ function MyWorkouts(props: { session: Session; canAdd: boolean; address: string;
                 <span className="icon-tile icon-tile-sm">
                   <Icon size={15} strokeWidth={1.75} aria-hidden />
                 </span>
-                <div>
+                <div className="workout-main">
                   <div>
                     <b className="cap">{a.type}</b> · {a.minutes} min{a.distance_km ? ` · ${a.distance_km} km` : ""}
                   </div>
                   <div className="fine">
                     {when(new Date(a.start))} · {a.verified ? a.device : "unverified"}
+                    {a.status === "rejected" && a.reason ? ` · ${a.reason}` : ""}
                   </div>
                 </div>
+                {a.status && <span className={`tag workout-state ${a.status}`}>{STATE_LABEL[a.status]}</span>}
               </div>
             );
           })}

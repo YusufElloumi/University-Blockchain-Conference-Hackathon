@@ -128,6 +128,9 @@ export type ActivityView = {
   verified: boolean;
   source: string;
   source_label: string;
+  // Only when asked for one challenge: did it count there, and why not.
+  status?: "verified" | "flagged" | "rejected";
+  reason?: string | null;
 };
 
 export type ActivityResult = {
