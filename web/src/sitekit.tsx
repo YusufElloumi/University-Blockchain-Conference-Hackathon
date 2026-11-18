@@ -12,8 +12,8 @@ import { prefersReducedMotion, Reveal } from "./ui";
 /** The three chapters of the hero loop and when each one ends (seconds). Six shots: hand wraps and
  *  shoes; a runner, a barbell and a basketball; then two people running side by side. */
 const CHAPTERS = [
-  { label: "Lace up", end: 4.4 },
-  { label: "Show up", end: 11.6 },
+  { label: "Lace up", end: 3.6 },
+  { label: "Show up", end: 11.2 },
   { label: "Find your rival", end: 14.6 },
 ];
 

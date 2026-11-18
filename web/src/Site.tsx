@@ -36,7 +36,6 @@ export default function Site({ onLogin }: { onLogin: () => void }) {
   const [page, setPage] = useState<SitePage>(readPage);
   const [menu, setMenu] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [tucked, setTucked] = useState(false);
 
   const go = useCallback((next: SitePage) => {
     const url = window.location.pathname + (next === "home" ? "" : `?page=${next}`);
@@ -54,14 +53,8 @@ export default function Site({ onLogin }: { onLogin: () => void }) {
 
   useEffect(() => {
     const onBack = () => setPage(readPage());
-    let lastY = window.scrollY;
-    const onScroll = () => {
-      const y = window.scrollY;
-      setScrolled(y > 24);
-      // The header steps aside while reading down the page and returns on the way back up.
-      if (Math.abs(y - lastY) > 6) setTucked(y > lastY && y > 480);
-      lastY = y;
-    };
+    // The header stays put at all times; it only gains a solid backing once the page has scrolled.
+    const onScroll = () => setScrolled(window.scrollY > 24);
     onScroll();
     window.addEventListener("popstate", onBack);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -103,7 +96,7 @@ export default function Site({ onLogin }: { onLogin: () => void }) {
   return (
     <div className={`site${page === "home" ? " site-home" : ""}`}>
       <DemoBanner />
-      <header className={`site-nav${scrolled || menu ? " solid" : ""}${tucked && !menu ? " tucked" : ""}`}>
+      <header className={`site-nav${scrolled || menu ? " solid" : ""}`}>
         <i className="scroll-progress" aria-hidden />
         <div className="site-nav-inner">
           <a {...link("home")} className="site-brand" aria-label="Rival home">
@@ -283,7 +276,7 @@ function HomePage({ go, onLogin }: Nav) {
 function Finale({ onLogin, children }: { onLogin: () => void; children?: ReactNode }) {
   return (
     <section className="bleed finale">
-      <Photo photo={PHOTOS.silhouette} />
+      <Photo photo={PHOTOS.summit} />
       <Reveal className="bleed-copy">
         <h2 className="mega">
           {children ?? (

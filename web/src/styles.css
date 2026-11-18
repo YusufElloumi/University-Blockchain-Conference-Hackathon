@@ -1090,7 +1090,9 @@ input[type="checkbox"] {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: grayscale(1) contrast(1.12) brightness(0.82);
+  /* The files are already black and white with one object left in a brand colour (see CREDITS.md),
+     so the page only deepens the contrast. A grayscale filter here would remove that colour. */
+  filter: contrast(1.12) brightness(0.82);
 }
 
 .photo::after,
@@ -7392,4 +7394,192 @@ input[type="checkbox"] {
   .demo-rules b {
     font-size: 48px;
   }
+}
+
+/* ---------- 19. Type scale ceiling ----------
+   Big type grows with the screen up to a point, then stops. These are the final sizes; the
+   earlier fluid values let headlines get far too large on a full-screen laptop or desktop. */
+.mega {
+  font-size: clamp(42px, 6.2vw, 108px);
+}
+
+.display {
+  font-size: clamp(36px, 4.3vw, 76px);
+}
+
+.headline {
+  font-size: clamp(28px, 3.2vw, 46px);
+}
+
+.lede {
+  font-size: clamp(15px, 1.1vw, 18px);
+}
+
+.play-demo-copy .display,
+.versus-copy blockquote {
+  font-size: clamp(34px, 3.7vw, 64px);
+}
+
+.race-day b {
+  font-size: clamp(64px, 7.4vw, 124px);
+}
+
+.race-scene {
+  font-size: clamp(19px, 1.8vw, 30px);
+}
+
+.ways-tab-name {
+  font-size: clamp(25px, 2.6vw, 42px);
+}
+
+.way-name {
+  font-size: clamp(26px, 3.4vw, 48px);
+}
+
+.matchup-side b {
+  font-size: clamp(72px, 8.5vw, 112px);
+}
+
+.rule-cell b {
+  font-size: clamp(44px, 5vw, 64px);
+}
+
+.site-foot .wordmark {
+  font-size: clamp(34px, 3.4vw, 52px);
+}
+
+.essay-lead p {
+  font-size: clamp(24px, 2.8vw, 40px);
+}
+
+.welcome .display {
+  font-size: clamp(32px, 3.6vw, 56px);
+}
+
+.ch-title {
+  font-size: clamp(26px, 3vw, 40px);
+}
+
+@media (min-width: 1400px) {
+  .chapter-copy .headline,
+  .split-copy .headline,
+  .principles .headline {
+    font-size: clamp(38px, 3vw, 56px);
+  }
+}
+
+@media (max-width: 1099px) {
+  .race-day b {
+    font-size: clamp(52px, 14vw, 96px);
+  }
+
+  .race-scene {
+    font-size: clamp(18px, 4.4vw, 26px);
+  }
+}
+
+/* ---------- 20. Closing banner: the summit ----------
+   The peak sits to the right of the photograph, so on wide screens the words go on the left,
+   over open sky, instead of across the mountain. */
+.finale > .photo img {
+  object-position: 72% 40%;
+}
+
+.finale > .photo::before {
+  background:
+    linear-gradient(180deg, var(--bg) 0%, rgba(7, 8, 9, 0.2) 24%, rgba(7, 8, 9, 0.15) 62%, var(--bg) 100%),
+    linear-gradient(90deg, rgba(7, 8, 9, 0.72) 0%, rgba(7, 8, 9, 0.25) 46%, transparent 70%);
+}
+
+@media (min-width: 960px) {
+  .finale {
+    text-align: left;
+  }
+
+  .finale .bleed-copy {
+    justify-items: start;
+  }
+
+  .finale .mega {
+    max-width: 9ch;
+  }
+}
+
+@media (max-width: 959px) {
+  .finale {
+    align-items: start;
+  }
+
+  .finale .bleed-copy {
+    padding-top: 72px;
+  }
+
+  .finale > .photo::before {
+    background: linear-gradient(180deg, var(--bg) 0%, rgba(7, 8, 9, 0.72) 22%, rgba(7, 8, 9, 0.1) 58%, var(--bg) 100%);
+  }
+}
+
+/* ---------- 21. Header: always visible, page links in the competition caps ---------- */
+.site-nav.tucked {
+  transform: none;
+}
+
+.site-links {
+  gap: clamp(28px, 3vw, 52px);
+}
+
+.site-links a {
+  padding: 8px 0;
+  color: rgba(245, 246, 244, 0.82);
+  font-family: var(--caps);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.site-links a:hover,
+.site-links a.on {
+  color: var(--text);
+}
+
+.site-links a::after {
+  height: 2px;
+  background: var(--green);
+}
+
+.site-nav-inner {
+  height: 72px;
+}
+
+.site-menu {
+  inset: calc(var(--banner-h) + 72px) 0 0 0;
+}
+
+.site:not(.site-home) .site-main {
+  padding-top: 72px;
+}
+
+.site-foot nav a,
+.site-foot nav button {
+  font-family: var(--caps);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* The header is always on screen now, so the pinned race scene starts below it. */
+.race-pin {
+  padding-top: calc(var(--banner-h) + 72px + 20px);
+}
+
+@media (max-width: 1099px) {
+  .race-pin {
+    padding-top: calc(var(--banner-h) + 72px + 12px);
+  }
+}
+
+.race-still .race-pin {
+  padding-top: 96px;
 }
