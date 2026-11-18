@@ -8,6 +8,7 @@ Command line (from api/):
     python chain.py show <challenge>
     python chain.py end-early <challenge>
     python chain.py settle <challenge> <winner> [<winner> ...]
+    python chain.py settle-split <challenge> <winner>:<basis points> [...]   (shares add up to 10000)
 
 Devnet only. The oracle key is read from the file named by ORACLE_KEYPAIR_PATH.
 """
@@ -276,6 +277,13 @@ def _main(argv: list[str]) -> None:
         winners = [Pubkey.from_string(w) for w in argv[3:]]
         score_hash = hashlib.sha256(b"command-line-settle").digest()
         print("settle:", explorer.format(settle(client, load_oracle(), challenge, winners, score_hash)))
+        print("status now:", fetch_challenge(client, challenge).status)
+    elif command == "settle-split":
+        pairs = [arg.split(":") for arg in argv[3:]]  # <winner>:<basis points>
+        winners = [Pubkey.from_string(w) for w, _ in pairs]
+        score_hash = hashlib.sha256(b"command-line-settle-split").digest()
+        signature = settle_split(client, load_oracle(), challenge, winners, [int(b) for _, b in pairs], score_hash)
+        print("settle_split:", explorer.format(signature))
         print("status now:", fetch_challenge(client, challenge).status)
     else:
         print(__doc__)

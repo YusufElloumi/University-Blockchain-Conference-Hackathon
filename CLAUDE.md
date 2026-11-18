@@ -80,6 +80,8 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Deploy to devnet | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh deploy --provider.cluster devnet` | repo root (verified Nov 14) |
 | Devnet smoke test | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh smoke` | repo root (verified Nov 14) |
 | Oracle from Python | `python chain.py show\|end-early\|settle <challenge> [winners]` with `ORACLE_KEYPAIR_PATH` set | `api/`, venv (verified Nov 14) |
+| Oracle split payout | `python chain.py settle-split <challenge> <wallet>:<basis points> ...` (shares add up to 10000) | `api/`, venv (verified Nov 18) |
+| Short test challenge | `wsl -d Ubuntu -- env START_IN_HOURS=0.06 LENGTH_HOURS=0.05 bash -l scripts/wsl_anchor.sh create-challenge`, then `join <address> 1` and `join <address> 2` | repo root (verified Nov 18) |
 | Devnet SOL | https://faucet.solana.com (`solana airdrop 2` is rate-limited) | browser |
 | Run API | `.venv\Scripts\python.exe -m uvicorn main:app --reload` | `api/` (verified Nov 14) |
 | Test API | `.venv\Scripts\python.exe -m pytest` (macOS: `.venv/bin/python -m pytest`) | `api/` (verified Nov 16 on macOS, 103 passing) |
@@ -121,7 +123,7 @@ Fill in as they are created. Public addresses only - never keys.
 
 | Item | Value |
 |---|---|
-| Program ID (`loser_buys`, devnet) | `FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC` (deployed Nov 14) |
+| Program ID (`loser_buys`, devnet) | `FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC` (deployed Nov 14; upgraded Nov 18 with `settle_split`) |
 | Deploy wallet public key (pays for deploys, upgrade authority) | `AYvBmTfVifruj1XMCGu5pJShLWqo9wYEa1gJFd6pT9re` |
 | Oracle public key | `6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD` |
 | Treasury public key | `J73KdqANTzJ7P1TMTnd37xNCdXvc3LChG7J8X1XX4XY9` |
