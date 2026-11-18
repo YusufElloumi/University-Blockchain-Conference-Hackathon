@@ -283,7 +283,7 @@ function HomePage({ go, onLogin }: Nav) {
 function Finale({ onLogin, children }: { onLogin: () => void; children?: ReactNode }) {
   return (
     <section className="bleed finale">
-      <Photo photo={PHOTOS.silhouette} />
+      <Photo photo={PHOTOS.summit} />
       <Reveal className="bleed-copy">
         <h2 className="mega">
           {children ?? (

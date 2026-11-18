@@ -2,8 +2,8 @@
 // was 4K, a 3840px file that only large or high-density screens download.
 // Sources and licence: assets/media/CREDITS.md.
 
-import silhouette from "./assets/media/silhouette.jpg";
-import silhouette4k from "./assets/media/silhouette-4k.jpg";
+import summit from "./assets/media/summit.jpg";
+import summit4k from "./assets/media/summit-4k.jpg";
 import tennisFeet from "./assets/media/tennis-feet.jpg";
 import tennisFeet4k from "./assets/media/tennis-feet-4k.jpg";
 import wraps from "./assets/media/wraps.jpg";
@@ -12,9 +12,9 @@ import wraps4k from "./assets/media/wraps-4k.jpg";
 export type Picture = { src: string; src4k?: string; alt: string };
 
 export const PHOTOS = {
-  silhouette: { src: silhouette, src4k: silhouette4k, alt: "The silhouette of a runner at sunrise" },
-  tennisFeet: { src: tennisFeet, src4k: tennisFeet4k, alt: "A tennis player's feet and long shadow on the court" },
-  wraps: { src: wraps, src4k: wraps4k, alt: "An athlete wrapping their hands before training" },
+  summit: { src: summit, src4k: summit4k, alt: "A lone mountain summit against a dark sky, its snow picked out in blue" },
+  tennisFeet: { src: tennisFeet, src4k: tennisFeet4k, alt: "A tennis player's feet and long shadow on the court, the shoes picked out in green" },
+  wraps: { src: wraps, src4k: wraps4k, alt: "An athlete wrapping their hands before training, the wraps picked out in blue" },
 } satisfies Record<string, Picture>;
 
 export { default as heroPoster } from "./assets/media/hero-poster.jpg";

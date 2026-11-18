@@ -7477,3 +7477,44 @@ input[type="checkbox"] {
     font-size: clamp(18px, 4.4vw, 26px);
   }
 }
+
+/* ---------- 20. Closing banner: the summit ----------
+   The peak sits to the right of the photograph, so on wide screens the words go on the left,
+   over open sky, instead of across the mountain. */
+.finale > .photo img {
+  object-position: 72% 40%;
+}
+
+.finale > .photo::before {
+  background:
+    linear-gradient(180deg, var(--bg) 0%, rgba(7, 8, 9, 0.2) 24%, rgba(7, 8, 9, 0.15) 62%, var(--bg) 100%),
+    linear-gradient(90deg, rgba(7, 8, 9, 0.72) 0%, rgba(7, 8, 9, 0.25) 46%, transparent 70%);
+}
+
+@media (min-width: 960px) {
+  .finale {
+    text-align: left;
+  }
+
+  .finale .bleed-copy {
+    justify-items: start;
+  }
+
+  .finale .mega {
+    max-width: 9ch;
+  }
+}
+
+@media (max-width: 959px) {
+  .finale {
+    align-items: start;
+  }
+
+  .finale .bleed-copy {
+    padding-top: 72px;
+  }
+
+  .finale > .photo::before {
+    background: linear-gradient(180deg, var(--bg) 0%, rgba(7, 8, 9, 0.72) 22%, rgba(7, 8, 9, 0.1) 58%, var(--bg) 100%);
+  }
+}
