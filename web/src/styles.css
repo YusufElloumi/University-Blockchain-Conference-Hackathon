@@ -7393,3 +7393,85 @@ input[type="checkbox"] {
     font-size: 48px;
   }
 }
+
+/* ---------- 19. Type scale ceiling ----------
+   Big type grows with the screen up to a point, then stops. These are the final sizes; the
+   earlier fluid values let headlines get far too large on a full-screen laptop or desktop. */
+.mega {
+  font-size: clamp(42px, 6.2vw, 108px);
+}
+
+.display {
+  font-size: clamp(36px, 4.3vw, 76px);
+}
+
+.headline {
+  font-size: clamp(28px, 3.2vw, 46px);
+}
+
+.lede {
+  font-size: clamp(15px, 1.1vw, 18px);
+}
+
+.play-demo-copy .display,
+.versus-copy blockquote {
+  font-size: clamp(34px, 3.7vw, 64px);
+}
+
+.race-day b {
+  font-size: clamp(64px, 7.4vw, 124px);
+}
+
+.race-scene {
+  font-size: clamp(19px, 1.8vw, 30px);
+}
+
+.ways-tab-name {
+  font-size: clamp(25px, 2.6vw, 42px);
+}
+
+.way-name {
+  font-size: clamp(26px, 3.4vw, 48px);
+}
+
+.matchup-side b {
+  font-size: clamp(72px, 8.5vw, 112px);
+}
+
+.rule-cell b {
+  font-size: clamp(44px, 5vw, 64px);
+}
+
+.site-foot .wordmark {
+  font-size: clamp(52px, 8.5vw, 136px);
+}
+
+.essay-lead p {
+  font-size: clamp(24px, 2.8vw, 40px);
+}
+
+.welcome .display {
+  font-size: clamp(32px, 3.6vw, 56px);
+}
+
+.ch-title {
+  font-size: clamp(26px, 3vw, 40px);
+}
+
+@media (min-width: 1400px) {
+  .chapter-copy .headline,
+  .split-copy .headline,
+  .principles .headline {
+    font-size: clamp(38px, 3vw, 56px);
+  }
+}
+
+@media (max-width: 1099px) {
+  .race-day b {
+    font-size: clamp(52px, 14vw, 96px);
+  }
+
+  .race-scene {
+    font-size: clamp(18px, 4.4vw, 26px);
+  }
+}
