@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CircleHelp, House, LogOut, type LucideIcon } from "lucide-react";
+import { CircleHelp, FlaskConical, House, LogOut, type LucideIcon } from "lucide-react";
 import type { Session } from "./App";
 import { money } from "./format";
 import { MODE_INFO, MODES, type Mode } from "./modes";
@@ -41,6 +41,12 @@ export default function Shell(props: {
           ))}
           <div className="side-nav-label">Learn</div>
           <NavItem on={section === "help"} onClick={() => go({ view: "help" })} Icon={CircleHelp} label="How it works" />
+          {session.me.is_admin && (
+            // Admins only, out of the player flow: the SIMULATED treasury yield demo.
+            <button className="side-admin-link" onClick={() => go({ view: "treasury" })}>
+              <FlaskConical size={13} aria-hidden /> Treasury (simulated)
+            </button>
+          )}
         </nav>
         <div className="side-foot">
           <div className="side-balance" title="Your balance (devnet USDC)">

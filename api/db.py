@@ -7,6 +7,7 @@ the invite code of a league or private event),
 league's stat sheet, uploaded by the organizer), and `oauth_states` (attempts to connect an outside
 account such as Oura, each bound to one user, short-lived and single-use), `imported_activities`
 (workouts imported from Oura, minimal fields) and `sweat_receipts` (final Proof of Sweat receipts).
+`sim_position` and `sim_log` hold the SIMULATED treasury (yieldsim.py): pretend lending, no real funds.
 
 A database made before Nov 17 may still hold an unused `picks` table from the old pick'em tiebreaker
 (removed: Gemini is only used through prediction rounds, and ties always split). It is left alone.
@@ -339,6 +340,38 @@ class LoggedActivity(Base):
     distance_km: Mapped[float]
     device: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class SimPosition(Base):
+    """The one SIMULATED lending position (yieldsim.py). Bookkeeping only: no real funds are ever lent.
+
+    Interest is kept apart from principal and never reaches any event's pool or payout.
+    """
+
+    __tablename__ = "sim_position"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    principal: Mapped[float] = mapped_column(default=0.0)  # USDC "lent" right now
+    interest: Mapped[float] = mapped_column(default=0.0)  # USDC "earned" to date, never paid to anyone
+    updated_at: Mapped[datetime | None]  # simulated time of the last run
+    clock_offset_seconds: Mapped[int] = mapped_column(default=0)  # demo time control; the simulation only
+    counted: Mapped[str | None] = mapped_column(Text)  # JSON list of challenge addresses counted last run
+
+
+class SimLog(Base):
+    """One run of the simulated rebalance job."""
+
+    __tablename__ = "sim_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sim_time: Mapped[datetime]  # the simulated time of the run
+    created_at: Mapped[datetime] = mapped_column(default=_now)  # the real time
+    action: Mapped[str]  # deposit, withdraw, hold, reset
+    amount: Mapped[float]
+    principal: Mapped[float]  # after the action
+    interest_added: Mapped[float] = mapped_column(default=0.0)
+    reason: Mapped[str] = mapped_column(Text)
+    warning: Mapped[str | None] = mapped_column(Text)
 
 
 def init_db() -> None:

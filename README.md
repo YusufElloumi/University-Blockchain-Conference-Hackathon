@@ -232,9 +232,74 @@ Each workout also gets a state in each challenge, shown only to its owner: **Pas
 ## What is real and what is simulated
 
 - **Real (devnet):** entry fees, the prize pool and every payout are real devnet USDC transactions handled by our Anchor program. Every result is signed by the verifier key, and its score-sheet hash is stored onchain, so players can check the scores were not changed after payout.
+- **Simulated:** treasury yield (see [Treasury and yield (simulated)](#treasury-and-yield-simulated)); no real funds are lent.
 - **Simulated:** the workouts. They are sample data (`mock`, made to look like a watch recording) or typed in by hand (`manual`, labelled unverified). Both go through the same checks.
 - **Not built yet:** live fitness sync. The app shows "Connect a fitness app · Coming soon" and says so. We do not show Strava's button or logo, because their brand rules reserve it for a working Strava sign-in.
 - **Trust:** the program checks the verifier's signature and the locked rules and split at payout. That shows our verifier approved the result; it does not prove a workout happened. Independent verifier hardware and a dispute window are planned, not built.
+
+## Treasury and yield (simulated)
+
+**Simulated: no real funds are lent.** This shows how Rival could earn yield by lending escrowed entry fees while events run, then pulling the money back before payouts. There is no USDC lending market on devnet, so the lending is pretend bookkeeping in our backend and database. The Solana program was not changed. Deposits, scoring, settlement and payouts work exactly as before, and simulated interest is never added to any prize pool. Admins see it on the Treasury panel (`?treasury`, a small link in the sidebar shown only to admins).
+
+### The formula (`api/liquidity.py`, pure functions)
+
+For each event *i*:
+
+| Symbol | Meaning |
+|---|---|
+| `P_i` | Pool size: all the entry fees in the event. |
+| `D_i` | Start time. Joining closes here. Before it, players can still be refunded, so the money is never lent. |
+| `E_i` | End time. |
+| `S_i = E_i + GRACE_HOURS` | The latest a payout could be due (we wait for late fitness syncs). |
+| `U_i = S_i - WITHDRAW_HOURS - SAFETY_HOURS` | The money must be back from the lender by here. |
+
+An event is **eligible to lend** at time `t` when `D_i <= t < U_i` and it is still running normally: not settled, not refunded, and not about to be refunded (fewer than 2 players after the start).
+
+```
+Target(t) = (1 - BUFFER_PCT) x sum of P_i over eligible events
+Target(t) = min(Target(t), LIQUIDITY_CAP_PCT x protocol's available USDC)    (skipped if that is unknown)
+Yield_i   = P_i x (1 - BUFFER_PCT) x APY x (U_i - D_i, in days) / 365        (zero if U_i <= D_i)
+```
+
+| Setting (env var) | Default | Why |
+|---|---|---|
+| `GRACE_HOURS` | 12 | Time after the end for late fitness syncs. |
+| `WITHDRAW_HOURS` | 0 | How long the protocol takes to return money. |
+| `SAFETY_HOURS` | 24 | Extra margin, so a slow withdrawal never delays a payout. |
+| `BUFFER_PCT` | 0.15 | Share of eligible money that is never lent. |
+| `LIQUIDITY_CAP_PCT` | 0.02 | We never hold more than 2% of the protocol's available USDC. |
+| `APY` | 0.05 | Fallback rate when the live rate cannot be read. |
+
+Worked example: a $100 pool in a 7-day event. `U_i - D_i` = 7 days + 12 h - 24 h = 6.5 days, so the yield is 100 x 0.85 x 0.05 x 6.5 / 365, about **$0.076**.
+
+**Why pull the money back before `U_i`?** Winners are paid by the program from its vault. If the money were still with a lender when the payout came due, a slow or stalled withdrawal would delay winners. Bringing it back a full safety margin early means payouts never wait on a third party.
+
+**Why a buffer?** It keeps some money liquid at all times, for refunds, rounding and surprises.
+
+**Why a liquidity cap?** A big depositor in a small market can be stuck when many people withdraw at once. Staying under 2% of what the market has available keeps exits easy.
+
+### The simulated position (`api/yieldsim.py`)
+
+One pooled pretend position for all events (tables `sim_position` and `sim_log`). Every 15 minutes (from `/internal/tick`) or on demand (the panel's "Run rebalance now"), the job:
+1. accrues interest on the position since the last run, at the current APY (compounding per run);
+2. works out `Target(t)`;
+3. "deposits" or "withdraws" the difference;
+4. writes a log row.
+
+An event's money comes back at the last run *before* its `U_i`. If an event is still counted at or after its `U_i`, the run logs a warning. The panel's time control (+6h, +1d, +3d, reset) moves only the simulation's clock, running the job every 15 simulated minutes on the way; real events never see it.
+
+**Rate.** The APY is the USDC supply rate from Jupiter Lend Earn's public token list, `GET https://api.jup.ag/lend/v1/earn/tokens` (mainnet, read only, cached 15 minutes; `supplyRate` is in hundredths of a percent, so `475` = 4.75%). Its `liquiditySupplyData.withdrawable` is the protocol liquidity used for the cap. If the request fails, the panel says "using fallback rate" and uses `APY`. An optional `JUPITER_API_KEY` raises Jupiter's rate limit.
+
+### Production design (not built)
+
+The escrow program itself would deposit its vault into [Jupiter Lend Earn by CPI](https://developers.jup.ag/docs/lend/earn/cpi) (a program calling another program) and hold the jlUSDC receipt token in a program-owned account. The money never leaves program control: no server key could take it. The program would withdraw by CPI before `U_i` (a permissionless "unstake" instruction anyone can call, so payouts never depend on our server), and `settle` would refuse to pay until the vault is liquid again.
+
+### Risks
+
+- **Loss of principal.** A bug or exploit in the lending protocol or its smart contracts could lose players' money.
+- **Withdrawals stalling.** When a market is heavily borrowed (high utilization), withdrawals can be limited or delayed. The safety margin, buffer and cap reduce this risk but do not remove it.
+- **Disclosure.** Players must be told, before they join, that their escrowed entry fees earn yield while the event runs, and who keeps that yield.
+- **Reserve rule.** Earned yield first funds a reserve that guarantees payouts. Only yield above what the reserve needs could ever be used for anything else.
 
 ## Fitness data and privacy
 
@@ -327,6 +392,8 @@ api/                FastAPI server
   pickrounds.py     prediction rounds on Gemini Prediction Markets data
   leaguestats.py    league stats scoring from an uploaded CSV
   chain.py          talks to the program as the oracle
+  liquidity.py      SIMULATED treasury: how much could be lent, and when (pure functions)
+  yieldsim.py       SIMULATED treasury: the pretend lending position and its rebalance job
 streams/filter.js   the QuickNode Stream filter
 scripts/            WSL helper for Anchor, plan PDF builder
 docs/               SETUP.md (teammate setup, macOS and Windows), ARCHITECTURE.md, STRAVA_FLOW.md, HACKATHON_GUIDE.md

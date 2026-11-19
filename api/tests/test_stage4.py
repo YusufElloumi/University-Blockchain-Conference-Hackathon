@@ -207,7 +207,7 @@ def test_all_tables_exist():
     assert set(db.Base.metadata.tables) == {
         "users", "fitness_connections", "challenges", "participants", "score_entries", "chain_events",
         "logged_activities", "invites", "pick_rounds", "round_picks", "league_stats", "oauth_states",
-        "imported_activities", "sweat_receipts",
+        "imported_activities", "sweat_receipts", "sim_position", "sim_log",
     }
 
 

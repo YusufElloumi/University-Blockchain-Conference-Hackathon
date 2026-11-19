@@ -10429,3 +10429,51 @@ input[type="checkbox"] {
 .explain-result b {
   font-size: 38px;
 }
+
+/* ---------- Treasury (SIMULATED yield, admin demo only: Treasury.tsx) ---------- */
+.side-admin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 18px 12px 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.side-admin-link:hover { color: var(--text-2); }
+.treasury { display: grid; gap: 18px; min-width: 0; }
+.sim-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.sim-banner svg { flex: none; margin-top: 2px; color: var(--accent); }
+.sim-banner strong { color: var(--text); }
+.sim-controls { display: grid; gap: 12px; }
+.sim-clock { display: grid; gap: 4px; }
+.sim-clock strong { font-size: 18px; }
+.sim-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.sim-stat { display: grid; gap: 6px; align-content: start; }
+.sim-stat strong { font-family: var(--caps); font-size: 30px; letter-spacing: 0.01em; }
+.sim-stat span:last-child { font-size: 12px; }
+.sim-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+.sim-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sim-table th, .sim-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sim-table th { color: var(--text-3); font-weight: 500; white-space: nowrap; background: var(--surface); }
+.sim-table td { color: var(--text-2); }
+.sim-table td:not(:last-child) { white-space: nowrap; }
+.sim-table tr:last-child td { border-bottom: 0; }
+.sim-status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--surface-2); color: var(--text-2); }
+.sim-status.sim-lending { background: var(--green-soft); color: var(--green); }
+.sim-status.sim-returned { background: var(--accent-soft); color: var(--accent); }
+.sim-warning { color: var(--danger); font-size: 12px; }

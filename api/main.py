@@ -26,6 +26,9 @@ Stage 6 endpoints:
     POST /challenges/{address}/finish          pay the winner or refund, whichever is due (players)
     POST /admin/challenges/{address}/end-now   "End week now" (admin emails from ADMIN_EMAILS)
     POST /internal/tick                        finish everything that is due (scheduler, X-Tick-Secret header)
+    GET  /admin/treasury                       SIMULATED treasury yield panel (admins; no real funds are lent)
+    POST /admin/treasury/rebalance             run the simulated rebalance now
+    POST /admin/treasury/clock                 move the simulation's clock forward, or reset it (simulation only)
     GET  /challenges/{address}/score-sheet     final points and the hash stored onchain (players)
 
 Prediction rounds (one Gemini market per round; a right pick earns 1 / probability points, max 5):
@@ -91,6 +94,7 @@ import sweat
 import sweat2
 import sweat3
 import treasury
+import yieldsim
 
 log = logging.getLogger("loser_buys")
 
@@ -1002,7 +1006,53 @@ def tick(request: Request, session: Session = Depends(db.get_session)) -> dict:
         raise HTTPException(503, "TICK_SECRET is not set on the server")
     if not secrets.compare_digest(request.headers.get("x-tick-secret", ""), config.TICK_SECRET):
         raise HTTPException(401, "Wrong secret")
-    return {"finished": settlement.finish_all_due(session)}
+    finished = settlement.finish_all_due(session)
+    try:  # the SIMULATED treasury; it must never get in the way of real settlement
+        yieldsim.rebalance_if_due(session)
+    except Exception:
+        session.rollback()
+        log.exception("Simulated treasury rebalance failed")
+    return {"finished": finished}
+
+
+# ---------- SIMULATED treasury yield (yieldsim.py): admins only, no real funds are lent ----------
+
+
+def _require_admin(user: db.User) -> None:
+    if not _is_admin(user):
+        raise HTTPException(403, "Only an admin can open the treasury panel.")
+
+
+@app.get("/admin/treasury")
+def treasury_view(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    _require_admin(user)
+    return yieldsim.view(session)
+
+
+@app.post("/admin/treasury/rebalance")
+def treasury_rebalance(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    _require_admin(user)
+    yieldsim.rebalance(session)
+    return yieldsim.view(session)
+
+
+class ClockBody(BaseModel):
+    advance_hours: float | None = Field(default=None, gt=0, le=24 * 60)
+    reset: bool = False
+
+
+@app.post("/admin/treasury/clock")
+def treasury_clock(body: ClockBody, user: db.User = Depends(current_user),
+                   session: Session = Depends(db.get_session)) -> dict:
+    """Moves only the simulation's clock. Real events, scoring and settlement keep using real time."""
+    _require_admin(user)
+    if body.reset:
+        yieldsim.reset(session)
+    elif body.advance_hours:
+        yieldsim.advance(session, body.advance_hours)
+    else:
+        raise HTTPException(422, "Send advance_hours or reset.")
+    return yieldsim.view(session)
 
 
 @app.get("/challenges/{address}/score-sheet")

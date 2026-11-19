@@ -19,6 +19,7 @@ import Dashboard from "./Dashboard";
 import HowItWorks from "./HowItWorks";
 import Site from "./Site";
 import ModeScreen from "./ModeScreen";
+import Treasury from "./Treasury";
 import WithdrawNote from "./WithdrawNote";
 import { isMode, type Mode } from "./modes";
 import Shell, { type Section } from "./Shell";
@@ -30,7 +31,8 @@ export type Route =
   | { view: "create"; mode: Mode }
   | { view: "challenge"; address: string }
   | { view: "invite"; code: string }
-  | { view: "help" };
+  | { view: "help" }
+  | { view: "treasury" }; // admin demo: SIMULATED treasury yield
 
 function readRoute(): Route {
   const params = new URLSearchParams(window.location.search);
@@ -39,6 +41,7 @@ function readRoute(): Route {
   const code = params.get("invite");
   if (code) return { view: "invite", code };
   if (params.has("help")) return { view: "help" };
+  if (params.has("treasury")) return { view: "treasury" };
   const mode = params.get("mode");
   if (params.has("new")) return { view: "create", mode: isMode(params.get("new")) ? (params.get("new") as Mode) : "private" };
   return isMode(mode) ? { view: "mode", mode } : { view: "home" };
@@ -56,6 +59,8 @@ function routeQuery(route: Route): string {
       return `?new=${route.mode}`;
     case "help":
       return "?help";
+    case "treasury":
+      return "?treasury";
     default:
       return "";
   }
@@ -198,7 +203,9 @@ export default function App() {
       ? "home"
       : route.view === "help"
         ? "help"
-        : route.view === "challenge"
+        : route.view === "treasury"
+          ? null
+          : route.view === "challenge"
           ? challengeMode
           : route.mode;
   const routeKey = route.view === "challenge" ? route.address : route.view + ("mode" in route ? route.mode : "");
@@ -245,6 +252,8 @@ export default function App() {
             <RedeemInvite code={route.code} session={session} />
           ) : route.view === "help" ? (
             <HowItWorks session={session} />
+          ) : route.view === "treasury" ? (
+            <Treasury session={session} />
           ) : (
             <Dashboard
               session={session}
