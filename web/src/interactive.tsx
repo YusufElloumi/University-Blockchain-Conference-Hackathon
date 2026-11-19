@@ -7,6 +7,7 @@ import { ArrowRight, Bike, Footprints, PersonStanding, RotateCcw, type LucideIco
 import type { PlayerRow } from "./api";
 import { LaneRow, ModeGraphic, WEEK } from "./graphics";
 import Leaderboard from "./Leaderboard";
+import { RULES, scoreSample } from "./sweatMath";
 import { prefersReducedMotion, useFlip } from "./ui";
 
 /* ---------- 1. Playable scoring demo ---------- */
@@ -18,11 +19,13 @@ const ACTIVITIES: { id: string; label: string; Icon: LucideIcon }[] = [
 ];
 const MINUTES = [20, 40, 90];
 const INTENSITIES = [
-  { id: "easy", label: "Easy", factor: 0.9 },
-  { id: "moderate", label: "Moderate", factor: 1.0 },
-  { id: "hard", label: "Hard", factor: 1.12 },
+  { id: "easy", label: "Easy" },
+  { id: "moderate", label: "Moderate" },
+  { id: "hard", label: "Hard" },
 ];
-const DAY_MINUTES = 180; // past three hours in a day, nothing more is added
+// The app's real daily taper, read from the scoring rules: [minutes, weight] per band, nothing past the last.
+const BANDS = (RULES.bands as (number | string)[][]).map(([size, weight]) => [size as number, Number(weight)]);
+const DAY_MINUTES = BANDS.reduce((sum, [size]) => sum + size, 0);
 const START_SCORES = [
   { name: "Maya", points: 190, ticks: [true, true, false, true, true, true, false] },
   { name: "Jordan", points: 172, ticks: [true, false, true, true, true, false, false] },
@@ -31,14 +34,27 @@ const START_SCORES = [
   { name: "Priya", points: 84, ticks: [true, false, false, true, false, true, false] },
 ];
 
-/** The app's real daily taper (Proof of Sweat v2): the first hour in full, the second at 0.6, the third at 0.25. */
-const effective = (minutes: number) =>
-  Math.min(minutes, 60) + 0.6 * Math.max(0, Math.min(minutes, 120) - 60) + 0.25 * Math.max(0, Math.min(minutes, 180) - 120);
+/** Base points for a day's first `minutes`: the first hour in full, then less. */
+const effective = (minutes: number) => {
+  let left = minutes;
+  let total = 0;
+  for (const [size, weight] of BANDS) {
+    const used = Math.min(left, size);
+    total += used * weight;
+    left -= used;
+  }
+  return total;
+};
 
-/** Points for a workout added after `before` minutes already done today. With no heart rate or distance in this
- *  demo, those two signals are neutral, so effort is 0.4 x Oura's intensity + 0.6, exactly as in the app. */
-const workoutPoints = (before: number, minutes: number, factor: number) =>
-  (effective(before + minutes) - effective(before)) * (0.4 * factor + 0.6);
+/** How far effort moves a workout, from the app's real scoring (sweatMath.ts). This demo has no heart rate
+ *  or distance, so those two signals are neutral and the evidence behind the bonus is limited. */
+const effortOf = (activity: string, minutes: number, intensity: string) => {
+  const { score } = scoreSample({ activity, minutes, intensity, heartPct: null, distanceKm: null, hrMinutes: 0, quarters: 0 });
+  return Number(score.contribution) / Number(score.base_points);
+};
+
+/** Points for a workout added after `before` minutes already done today. */
+const workoutPoints = (before: number, minutes: number, effort: number) => (effective(before + minutes) - effective(before)) * effort;
 
 /** Log a pretend workout and watch the sample leaderboard react. */
 export function WorkoutDemo() {
@@ -49,7 +65,7 @@ export function WorkoutDemo() {
   const [exact, setExact] = useState(0); // today's points before rounding
   const [note, setNote] = useState("");
 
-  const factor = INTENSITIES.find((i) => i.id === intensity)!.factor;
+  const factor = effortOf(activity, minutes, intensity);
   const worth = Math.round(workoutPoints(done, minutes, factor) * 10) / 10;
   const earned = Math.round(exact);
   const players: PlayerRow[] = START_SCORES.map((p) => ({
@@ -125,7 +141,7 @@ export function WorkoutDemo() {
           <span>
             Sweat Points for this workout
             <small>
-              about 1 per minute × effort {(0.4 * factor + 0.6).toFixed(3)} · in the app, workouts come from your Oura Ring
+              about 1 per minute × effort {factor.toFixed(3)} · in the app, heart rate and pace from your Oura Ring can lift this further
             </small>
           </span>
         </div>

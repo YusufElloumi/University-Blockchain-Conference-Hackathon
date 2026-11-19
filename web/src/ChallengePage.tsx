@@ -894,7 +894,7 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
         <p className="fine board-note">
           {phase === "joining" ? "Scoring starts when the challenge does." : `Form shows active days${days > 7 ? " (last 7)" : ""}.`}
           {sweat &&
-            (state.challenge?.rules?.generation === 2
+            ((state.challenge?.rules?.generation ?? 0) >= 2
               ? " Sweat Points come only from Oura-verified workouts: about 1 per minute, weighted by effort."
               : " Fitness points come only from Oura-verified workouts: 1 per 10 minutes, up to 6 a day.")}
           {sweat && state.sweat?.awaiting_final_sync && " Final scores are pending while workouts finish syncing."}

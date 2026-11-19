@@ -396,10 +396,10 @@ function HowPage({ go, onLogin }: Nav) {
                 <b>+1</b> about a point per verified minute
               </li>
               <li>
-                <b>×</b> weighted by effort, 0.85 to 1.25
+                <b>×1.5</b> at most, for harder sessions the data backs up
               </li>
               <li>
-                <b>Oura</b> workouts only, checked by Proof of Sweat
+                <b>Oura</b> workouts only, verified by Proof of Sweat
               </li>
             </ul>
           </div>

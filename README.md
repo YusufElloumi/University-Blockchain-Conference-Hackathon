@@ -186,7 +186,7 @@ Other measures:
 
 ### Proof of Sweat: results anyone in the group can check
 
-Since Nov 19, new fitness challenges only score workouts imported from a player's own connected Oura account, checked by a versioned rules engine, with one salted receipt commitment per workout inside the score sheet. Full explanation, trust model and live-testing steps: [docs/PROOF_OF_SWEAT.md](docs/PROOF_OF_SWEAT.md).
+Since Nov 19, new fitness challenges only score workouts imported from a player's own connected Oura account, checked by a versioned rules engine, with one salted receipt commitment per workout inside the score sheet. Full explanation, trust model and live-testing steps: [docs/PROOF_OF_SWEAT.md](docs/PROOF_OF_SWEAT.md). The current scoring (effort-weighted Sweat Points, rule set v3) is in [docs/PROOF_OF_SWEAT_V3.md](docs/PROOF_OF_SWEAT_V3.md), which builds on [docs/PROOF_OF_SWEAT_V2.md](docs/PROOF_OF_SWEAT_V2.md).
 
 (Called "Proof of Effort" in the code: `api/attest.py`, `challenges.attestation`.)
 

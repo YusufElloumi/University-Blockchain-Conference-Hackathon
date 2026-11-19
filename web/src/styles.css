@@ -9480,3 +9480,612 @@ input[type="checkbox"] {
   top: -20px;
   color: var(--text-2);
 }
+
+/* =========================================================================================
+   28. Proof of Sweat, refined: the receipt leads with its result and reads as four numbered
+   parts (Activity, Verification, Effort analysis, Final score); secondary working sits in
+   closed "more" rows. The explainer gains the five-step flow and simpler cards.
+   Blue = verification and evidence, green = points. Overrides parts of sections 26 and 27.
+   ========================================================================================= */
+
+.sweat-receipt.v2 {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sweat-receipt.v2 > * {
+  padding-inline: clamp(16px, 2.4vw, 24px);
+}
+
+.sweat-receipt.v2 .sweat-receipt-head {
+  padding-block: 16px 14px;
+}
+
+.sweat-badge.sample {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+/* The result, before anything else: what it was, whether it passed, evidence, points. */
+.sweat-hero {
+  display: grid;
+  gap: 18px;
+  padding-block: 22px;
+  background: linear-gradient(180deg, var(--accent-soft), transparent);
+}
+
+.sweat-hero.limited {
+  background: linear-gradient(180deg, var(--amber-soft), transparent);
+}
+
+.sweat-hero.rejected,
+.sweat-hero.pending {
+  background: none;
+}
+
+.sweat-hero-what {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.sweat-hero-what strong {
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  color: var(--text);
+}
+
+.sweat-hero-what small {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.sweat-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 9px;
+  border-radius: 999px;
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+
+.sweat-verdict.strong {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+.sweat-verdict.limited {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.sweat-verdict.rejected {
+  color: #ff9c8f;
+  background: rgba(255, 120, 100, 0.12);
+}
+
+.sweat-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.sweat-hero-stats > div {
+  display: grid;
+  gap: 6px;
+  align-content: space-between;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.sweat-hero-stats dt {
+  font-family: var(--caps);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-hero-stats dd {
+  margin: 0;
+  font-family: var(--caps);
+  font-size: clamp(34px, 4vw, 46px);
+  font-weight: 600;
+  line-height: 0.95;
+  color: var(--text);
+}
+
+.sweat-hero-stats dd small {
+  margin-left: 3px;
+  font-size: 15px;
+  color: var(--text-3);
+}
+
+.sweat-hero-stats .pts {
+  border-color: var(--green-line);
+  background: var(--green-soft);
+}
+
+.sweat-hero-stats .pts dt,
+.sweat-hero-stats .pts dd {
+  color: var(--green);
+}
+
+@media (min-width: 620px) {
+  .sweat-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+    align-items: center;
+  }
+}
+
+/* A numbered part. Its header carries the part's own result, so the receipt scans top to bottom. */
+.sweat-part {
+  display: grid;
+  gap: 14px;
+  padding-block: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.sweat-part > header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.sweat-part-n {
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-3);
+}
+
+.sweat-part h4 {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 0;
+  font-family: var(--caps);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.sweat-part h4 span {
+  font-family: "Instrument Serif", serif;
+  font-style: italic;
+  font-size: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-3);
+}
+
+.sweat-part-result {
+  font-family: var(--caps);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.sweat-part-result small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.sweat-part.strong .sweat-part-result {
+  color: var(--accent);
+}
+
+.sweat-part.limited .sweat-part-result {
+  color: var(--amber);
+}
+
+.sweat-part:last-of-type .sweat-part-result {
+  color: var(--green);
+}
+
+.sweat-part .fine {
+  margin: 0;
+  max-width: 68ch;
+}
+
+.sweat-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 0;
+}
+
+.sweat-facts dt {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.sweat-facts dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.sweat-facts dd.word {
+  text-transform: capitalize;
+}
+
+/* Secondary working: one quiet row that opens. */
+.sweat-more {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.sweat-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  color: var(--text-2);
+  cursor: pointer;
+  list-style: none;
+  border-radius: 10px;
+}
+
+.sweat-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sweat-more > summary:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sweat-more > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sweat-more > summary svg {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.18s ease;
+}
+
+.sweat-more[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.sweat-more > summary em {
+  margin-left: auto;
+  font-family: var(--caps);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-more > summary em.ok {
+  color: var(--accent);
+}
+
+.sweat-more > summary em.warn {
+  color: var(--amber);
+}
+
+.sweat-more > div {
+  display: grid;
+  gap: 12px;
+  padding: 4px 12px 14px;
+}
+
+.sweat-more .sweat-checks {
+  border-top: 0;
+}
+
+.sweat-more .sweat-checks li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.sweat-receipt.v2 .sweat-bands {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 420px;
+}
+
+.sweat-receipt.v2 .sweat-gauges {
+  padding: 0;
+  border: 0;
+  gap: 18px;
+}
+
+.sweat-gauge-head > span small {
+  margin-left: 6px;
+  font-family: var(--caps);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-gauge.down .sweat-gauge-head b {
+  color: var(--text-2);
+}
+
+.sweat-steps.small > div {
+  padding-block: 7px;
+}
+
+.sweat-steps.small dt {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.sweat-steps.small dd {
+  font-size: 15px;
+}
+
+.sweat-receipt.v2 .sweat-foot {
+  margin: 0;
+  padding-block: 16px 18px;
+  border-top: 1px dashed var(--line);
+}
+
+/* ---- the explainer: flow, simpler cards ---- */
+
+.explain-flow {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.explain-flow li {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 14px;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.explain-flow li:last-child {
+  border-bottom: 0;
+}
+
+.explain-flow-icon {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+
+.explain-flow b {
+  font-family: var(--caps);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.explain-flow b span {
+  color: var(--text-3);
+}
+
+.explain-flow small {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.explain-flow li.key {
+  background: var(--accent-soft);
+}
+
+.explain-flow li.key .explain-flow-icon {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+.explain-flow li.key b span {
+  color: var(--accent);
+}
+
+.explain-flow-next {
+  display: none;
+}
+
+@media (min-width: 980px) {
+  .explain-flow {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .explain-flow li {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    align-content: start;
+    padding: 20px 22px;
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+  }
+
+  .explain-flow li:last-child {
+    border-right: 0;
+  }
+
+  .explain-flow-icon {
+    grid-row: auto;
+    margin-bottom: 4px;
+  }
+
+  .explain-flow b span {
+    display: block;
+  }
+
+  .explain-flow-next {
+    display: block;
+    position: absolute;
+    top: 31px;
+    right: -9px;
+    z-index: 1;
+    padding: 1px;
+    border-radius: 50%;
+    color: var(--text-3);
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--line);
+  }
+}
+
+.explain-steps li {
+  gap: 14px;
+}
+
+.explain-steps .explain-art {
+  height: auto;
+  min-height: 92px;
+  padding: 14px;
+}
+
+.explain-art.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-content: center;
+}
+
+.explain-art.checks span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.explain-art.checks i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.explain-art.split {
+  display: grid;
+  gap: 12px;
+  align-content: center;
+}
+
+.explain-weightbar {
+  display: flex;
+  gap: 3px;
+  height: 12px;
+}
+
+.explain-weightbar i {
+  flex-basis: 0;
+  border-radius: 4px;
+  background: var(--green);
+}
+
+.explain-weightbar i.movement,
+.explain-weightkey .movement b {
+  opacity: 0.68;
+}
+
+.explain-weightbar i.provider,
+.explain-weightkey .provider b {
+  opacity: 0.42;
+}
+
+.explain-weightkey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.explain-weightkey b {
+  margin-right: 3px;
+  font-family: var(--caps);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--green);
+}
+
+.explain-art.sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  gap: 6px 10px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.explain-art.sum span {
+  display: grid;
+  gap: 1px;
+}
+
+.explain-art.sum b {
+  font-family: "Instrument Serif", serif;
+  font-style: italic;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.explain-art.sum span:first-child b {
+  color: var(--green);
+}
+
+.explain-art.sum em {
+  font-style: normal;
+  font-size: 20px;
+  color: var(--text-3);
+}
+
+.explain-honest {
+  margin: 0;
+  max-width: 86ch;
+}
+
+.explain-sample {
+  line-height: 1.5;
+}

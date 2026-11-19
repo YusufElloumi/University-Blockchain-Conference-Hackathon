@@ -89,6 +89,7 @@ import secretbox
 import settlement
 import sweat
 import sweat2
+import sweat3
 import treasury
 
 log = logging.getLogger("loser_buys")
@@ -637,7 +638,7 @@ def add_activity(
     start = db.utc(body.start) if body.start else now
     if start > now:
         raise HTTPException(400, "An activity cannot start in the future.")
-    if config.NEW_CHALLENGE_RULES in (sweat.TEMPLATE, sweat2.TEMPLATE) and now - start > timedelta(minutes=10):
+    if config.NEW_CHALLENGE_RULES in scores.GENERATION and now - start > timedelta(minutes=10):
         # Hand-entered workouts are personal notes here and can never be dated back into a challenge.
         raise HTTPException(400, "A workout logged by hand counts from now. It can't be dated in the past.")
     try:
@@ -715,9 +716,10 @@ def app_config() -> dict:
         "usdc_mint": config.USDC_MINT,
         # Rules a challenge created now will use (fixed at creation).
         "new_challenge_rules": {
-            "proof_of_sweat": config.NEW_CHALLENGE_RULES in (sweat.TEMPLATE, sweat2.TEMPLATE),
-            "generation": {sweat.TEMPLATE: 1, sweat2.TEMPLATE: 2}.get(config.NEW_CHALLENGE_RULES),
-            "summary": {sweat.TEMPLATE: sweat.SUMMARY, sweat2.TEMPLATE: sweat2.SUMMARY}.get(config.NEW_CHALLENGE_RULES),
+            "proof_of_sweat": config.NEW_CHALLENGE_RULES in scores.GENERATION,
+            "generation": scores.GENERATION.get(config.NEW_CHALLENGE_RULES),
+            "summary": {sweat.TEMPLATE: sweat.SUMMARY, sweat2.TEMPLATE: sweat2.SUMMARY,
+                        sweat3.TEMPLATE: sweat3.SUMMARY}.get(config.NEW_CHALLENGE_RULES),
         },
         "fitness": {
             "source": provider.name,
@@ -1300,7 +1302,7 @@ def my_sweat(
 
             def view(row: db.ImportedActivity) -> dict:
                 line = sheet.lines.get(oura_sync.as_workout(row).ref)
-                return _row_view(row, line, scores.sweat2_detail(row, line, reference) if scores.is_sweat2(found) else None)
+                return _row_view(row, line, scores.sweat2_detail(row, line, reference, scores.engine_of(found)) if scores.is_sweat2(found) else None)
 
             reply["workouts"] = [view(row) for row in reversed(rows)]
             reply["points"], reply["eligible_minutes"] = sheet.total, sheet.eligible_minutes

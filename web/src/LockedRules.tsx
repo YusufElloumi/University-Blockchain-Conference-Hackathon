@@ -67,7 +67,7 @@ export function LockedRulesCard({ info, ruleset }: { info: ChallengeInfo; rulese
   const matches = hash === null ? null : hash === info.rules.rulesHash;
   const lockedLine = payoutLockedLine(info);
   const sweat = !!r.scoring.name?.startsWith("proof_of_sweat");
-  const sweat2 = r.scoring.name === "proof_of_sweat_v2";
+  const sweat2 = r.scoring.name === "proof_of_sweat_v2" || r.scoring.name === "proof_of_sweat_v3";
   const rows: [string, string][] = [
     [
       "Scoring",

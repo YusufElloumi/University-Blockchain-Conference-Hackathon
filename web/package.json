@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:sweat": "node scripts/check-sweat.mjs"
   },
   "dependencies": {
     "@anchor-lang/core": "1.2.2",

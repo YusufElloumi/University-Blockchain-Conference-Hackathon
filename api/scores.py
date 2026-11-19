@@ -22,6 +22,7 @@ import pickrounds
 import scoring
 import sweat
 import sweat2
+import sweat3
 from fitness import oura, oura_sync
 
 FINAL_STATUSES = ("settled", "refunded")
@@ -29,12 +30,23 @@ FINAL_STATUSES = ("settled", "refunded")
 
 def is_sweat(challenge: db.Challenge) -> bool:
     """Proof of Sweat challenges score only workouts imported from each player's own Oura connection."""
-    return challenge.template in (sweat.TEMPLATE, sweat2.TEMPLATE) and not uses_league_stats(challenge)
+    return challenge.template in (sweat.TEMPLATE, *ENGINES) and not uses_league_stats(challenge)
+
+
+# The effort-weighted rule sets, by the name stored on challenges.template. v3 reuses v2's verification
+# and changes only the effort numbers; a challenge is always scored by the one it locked.
+ENGINES = {sweat2.TEMPLATE: sweat2, sweat3.TEMPLATE: sweat3}
+GENERATION = {sweat.TEMPLATE: 1, sweat2.TEMPLATE: 2, sweat3.TEMPLATE: 3}
 
 
 def is_sweat2(challenge: db.Challenge) -> bool:
-    """Proof of Sweat v2: effort-weighted Sweat Points and an Evidence Index (api/sweat2.py)."""
-    return challenge.template == sweat2.TEMPLATE and not uses_league_stats(challenge)
+    """Proof of Sweat v2 or later: effort-weighted Sweat Points and an Evidence Index."""
+    return challenge.template in ENGINES and not uses_league_stats(challenge)
+
+
+def engine_of(challenge: db.Challenge):
+    """The effort-weighted rules module this challenge locked (api/sweat2.py or api/sweat3.py)."""
+    return ENGINES[challenge.template]
 
 
 def rules_of(challenge: db.Challenge) -> dict:
@@ -43,8 +55,9 @@ def rules_of(challenge: db.Challenge) -> dict:
         return {"name": "league_stats", "version": leaguestats.RULES_VERSION, "sha256": None,
                 "proof_of_sweat": False, "summary": "Points come from the league's stat sheet."}
     if is_sweat2(challenge):
-        return {"name": sweat2.TEMPLATE, "version": sweat2.RULES_VERSION, "sha256": sweat2.rules_fingerprint(),
-                "proof_of_sweat": True, "generation": 2, "summary": sweat2.SUMMARY}
+        engine = engine_of(challenge)
+        return {"name": engine.TEMPLATE, "version": engine.RULES_VERSION, "sha256": engine.rules_fingerprint(),
+                "proof_of_sweat": True, "generation": GENERATION[engine.TEMPLATE], "summary": engine.SUMMARY}
     if is_sweat(challenge):
         return {"name": sweat.TEMPLATE, "version": sweat.RULES_VERSION, "sha256": sweat.rules_fingerprint(),
                 "proof_of_sweat": True, "generation": 1, "summary": sweat.SUMMARY}
@@ -73,13 +86,13 @@ def reference_of(session: Session, challenge: db.Challenge, user_id: int) -> tup
     return (json.loads(row[0]) if row[0] else None), True
 
 
-def effort_of(row: db.ImportedActivity, reference: dict | None) -> dict:
-    """The three effort factors of an imported workout and their weighted multiplier (v2)."""
-    provider = sweat2.provider_factor(row.intensity)
-    heart = sweat2.heart_factor(oura_sync.heart_of(row), reference)
-    movement = sweat2.movement_factor(row.activity_type, row.distance_km, row.minutes or 0)
+def effort_of(row: db.ImportedActivity, reference: dict | None, engine=sweat2) -> dict:
+    """The three effort factors of an imported workout and their weighted multiplier, under `engine`'s rules."""
+    provider = engine.provider_factor(row.intensity)
+    heart = engine.heart_factor(oura_sync.heart_of(row), reference)
+    movement = engine.movement_factor(row.activity_type, row.distance_km, row.minutes or 0)
     return {"provider": provider, "heart": heart, "movement": movement,
-            "multiplier": sweat2.effort_multiplier(provider, heart, movement)}
+            "multiplier": engine.effort_multiplier(provider, heart, movement)}
 
 
 def evidence_of(row: db.ImportedActivity, line, effort: dict) -> dict:
@@ -103,29 +116,36 @@ def sweat_sheet(session: Session, challenge: db.Challenge, user_id: int):
     if not is_sweat2(challenge):
         return sweat.score([sweat.Item(oura_sync.as_workout(row), row.status, row.reason) for row in rows], start, end)
     reference, _ = reference_of(session, challenge, user_id)
-    # Pass 1, effort left out: which workouts count here and whether any overlapped. That settles each
-    # workout's Evidence Index, which sets how much of its effort bonus counts. Pass 2 scores with it.
-    # Overlap and window results do not depend on multipliers, so the two passes always agree.
-    plain = sweat2.score([sweat2.Item(oura_sync.as_workout(row), row.status, row.reason) for row in rows], start, end)
+    return score_rows(rows, reference, start, end, engine_of(challenge))
+
+
+def score_rows(rows: list[db.ImportedActivity], reference: dict | None, start: datetime, end: datetime, engine):
+    """Effort-weighted score for one player's stored workouts over [start, end), under `engine`'s rules.
+
+    Pass 1, effort left out: which workouts count here and whether any overlapped. That settles each
+    workout's Evidence Index, which sets how much of its effort bonus counts. Pass 2 scores with it.
+    Overlap and window results do not depend on multipliers, so the two passes always agree.
+    """
+    plain = engine.score([engine.Item(oura_sync.as_workout(row), row.status, row.reason) for row in rows], start, end)
     items = []
     for row in rows:
         workout = oura_sync.as_workout(row)
-        multiplier = sweat2.D(1)
+        multiplier = engine.D(1)
         if row.status == sweat.VERIFIED:
-            effort = effort_of(row, reference)
-            share = sweat2.reliability(evidence_of(row, plain.lines.get(workout.ref), effort)["index"])
-            multiplier = sweat2.final_multiplier(effort["multiplier"], share)
-        items.append(sweat2.Item(workout, row.status, row.reason, multiplier))
-    return sweat2.score(items, start, end)
+            effort = effort_of(row, reference, engine)
+            share = engine.reliability(evidence_of(row, plain.lines.get(workout.ref), effort)["index"])
+            multiplier = engine.final_multiplier(effort["multiplier"], share)
+        items.append(engine.Item(workout, row.status, row.reason, multiplier))
+    return engine.score(items, start, end)
 
 
-def sweat2_detail(row: db.ImportedActivity, line: sweat2.Line | None, reference: dict | None) -> dict:
-    """Everything a v2 receipt shows for one workout in one challenge: Evidence Index and score breakdown.
+def sweat2_detail(row: db.ImportedActivity, line: sweat2.Line | None, reference: dict | None, engine=sweat2) -> dict:
+    """Everything a v2 or v3 receipt shows for one workout in one challenge: Evidence Index and score breakdown.
 
     Holds factor values, relative percentages and counts; never a heart-rate reading or the reference itself.
     """
     D = sweat2.D
-    effort = effort_of(row, reference)
+    effort = effort_of(row, reference, engine)
     verified = line is not None and line.status == sweat.VERIFIED
     evidence = evidence_of(row, line, effort)
     share = sweat2.reliability(evidence["index"])
@@ -136,7 +156,7 @@ def sweat2_detail(row: db.ImportedActivity, line: sweat2.Line | None, reference:
     def factor(key: str) -> dict:
         f = effort[key]
         # This signal's part of the potential bonus: base x its weight x how far it sits from neutral.
-        part = (base * sweat2.WEIGHTS[key] * (f.value - D(1))).quantize(cents, sweat2.ROUND_HALF_UP)
+        part = (base * engine.WEIGHTS[key] * (f.value - D(1))).quantize(cents, sweat2.ROUND_HALF_UP)
         return {"value": str(f.value), "state": f.state, "reason": f.reason, "bonus": str(part), **f.detail}
 
     return {
@@ -150,7 +170,8 @@ def sweat2_detail(row: db.ImportedActivity, line: sweat2.Line | None, reference:
             "effective_minutes": str(base.quantize(cents, sweat2.ROUND_HALF_UP)),
             "base_points": str(base.quantize(cents, sweat2.ROUND_HALF_UP)),
             "factors": {k: factor(k) for k in ("provider", "heart", "movement")},
-            "weights": {k: str(v) for k, v in sweat2.WEIGHTS.items()},
+            "weights": {k: str(v) for k, v in engine.WEIGHTS.items()},
+            "multiplier_range": [str(v) for v in engine.MULTIPLIER_RANGE],
             "multiplier": str(effort["multiplier"]),
             "potential_bonus": str(potential.quantize(cents, sweat2.ROUND_HALF_UP)),
             "reliability": str(share),

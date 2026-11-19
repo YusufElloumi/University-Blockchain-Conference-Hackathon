@@ -32,6 +32,7 @@ import leaguestats
 import scoring
 import sweat
 import sweat2
+import sweat3
 
 SCHEMA = "rival.ruleset.v1"
 PAYOUT_KINDS = ["winner_takes_all", "podium", "goal", "teams"]  # same order as the program's PayoutKind
@@ -47,7 +48,7 @@ class RulesError(ValueError):
 def fitness_template() -> str:
     """Which fitness rules a challenge created now uses (config.NEW_CHALLENGE_RULES). main._register
     stores the same choice on challenges.template, so the locked ruleset and the scoring always agree."""
-    if config.NEW_CHALLENGE_RULES in (sweat2.TEMPLATE, sweat.TEMPLATE):
+    if config.NEW_CHALLENGE_RULES in (sweat3.TEMPLATE, sweat2.TEMPLATE, sweat.TEMPLATE):
         return config.NEW_CHALLENGE_RULES
     return sweat.LEGACY_TEMPLATE
 
@@ -60,9 +61,10 @@ def scoring_rules(source: str, name: str | None = None) -> dict:
     """
     if source == "league_stats":
         return {"source": "league_stats", "version": leaguestats.RULES_VERSION, "sha256": None}
-    if (name or fitness_template()) == sweat2.TEMPLATE:
-        return {"source": "fitness", "name": sweat2.TEMPLATE, "version": sweat2.RULES_VERSION,
-                "sha256": sweat2.rules_fingerprint()}
+    for engine in (sweat3, sweat2):
+        if (name or fitness_template()) == engine.TEMPLATE:
+            return {"source": "fitness", "name": engine.TEMPLATE, "version": engine.RULES_VERSION,
+                    "sha256": engine.rules_fingerprint()}
     if (name or fitness_template()) == sweat.TEMPLATE:
         return {"source": "fitness", "name": sweat.TEMPLATE, "version": sweat.RULES_VERSION,
                 "sha256": sweat.rules_fingerprint()}
@@ -72,7 +74,7 @@ def scoring_rules(source: str, name: str | None = None) -> dict:
 
 def workouts_policy(scoring_rules_: dict) -> dict:
     """Which workout results count. Proof of Sweat counts only workouts synced from Oura that passed its checks."""
-    if scoring_rules_.get("name") in (sweat.TEMPLATE, sweat2.TEMPLATE):
+    if scoring_rules_.get("name") in (sweat.TEMPLATE, sweat2.TEMPLATE, sweat3.TEMPLATE):
         return {"count": ["verified"], "never_count": ["rejected", "pending", "entered_in_app"]}
     return WORKOUTS
 

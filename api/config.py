@@ -63,7 +63,7 @@ VERIFIER_PUBLIC_KEY = os.environ.get("VERIFIER_PUBLIC_KEY") or "5hapcEHu65LyQhqD
 # scored only from workouts imported from a player's own connected Oura account. "daily_mover" is the
 # old self-reported rule set, kept for the automated tests and for challenges created before Proof of Sweat.
 # "proof_of_sweat_v1" is the first Proof of Sweat (1 point per 10 minutes); challenges locked to it keep it.
-NEW_CHALLENGE_RULES = os.environ.get("NEW_CHALLENGE_RULES") or "proof_of_sweat_v2"
+NEW_CHALLENGE_RULES = os.environ.get("NEW_CHALLENGE_RULES") or "proof_of_sweat_v3"
 # Proof of Sweat settlement: wait this long after the end so rings can sync (not a guarantee that they will),
 # and stop waiting for a missing final sync this long after the end.
 SYNC_GRACE_SECONDS = int(os.environ.get("SYNC_GRACE_SECONDS") or 30 * 60)

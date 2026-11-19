@@ -447,12 +447,12 @@ const TERMS: Doc = {
               format (for example winner takes all, podium, goal or teams) is fixed when it is created.
             </li>
             <li>
-              Points follow the rules locked into each challenge when it is created. New fitness challenges use Proof of Sweat v2:
+              Points follow the rules locked into each challenge when it is created. New fitness challenges use Proof of Sweat v3:
               about one Sweat Point for each minute of exercise recorded by your connected Oura account that passes the checks.
               In each 24-hour block from the challenge start, the first hour counts in full, the second at 0.6, the third at 0.25
-              and nothing after that. Those are your base points. On top comes an effort adjustment, at most 25% up or 15% down,
-              built from Oura's intensity label, your heart rate relative to your own earlier workouts, and pace where the sport
-              has one; a signal that is unavailable counts as neutral. How much of that adjustment counts (100%, 85%, 65% or 40%)
+              and nothing after that. Those are your base points. On top comes an effort adjustment, at most 50% up or 15% down,
+              built from your heart rate relative to your own earlier workouts, pace where the sport has one, and Oura's
+              intensity label; a signal that is unavailable counts as neutral. How much of that adjustment counts (100%, 85%, 65% or 40%)
               depends on how complete the recording's evidence is. Base points never depend on it. A day's total is rounded to a
               whole number. These are game rules, not exercise
               advice. Challenges created earlier keep the rules they started with.
