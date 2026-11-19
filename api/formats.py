@@ -39,8 +39,12 @@ class FormatError(ValueError):
     """Settings that cannot be used (the message is safe to show)."""
 
 
-def clean_config(fmt: str, raw: dict | None, *, league_stats: bool = False) -> dict:
-    """Checks the creator's settings for a format and fills in defaults. Raises FormatError."""
+def clean_config(fmt: str, raw: dict | None, *, league_stats: bool = False, days: int | None = None) -> dict:
+    """Checks the creator's settings for a format and fills in defaults. Raises FormatError.
+
+    `days` is the number of scoring days in the event (see scoring.day_count); when given, an active-days
+    goal must be reachable within it.
+    """
     raw = raw or {}
     if fmt == "winner_takes_all":
         return {}
@@ -64,6 +68,8 @@ def clean_config(fmt: str, raw: dict | None, *, league_stats: bool = False) -> d
         target = raw.get("target", DEFAULT_GOAL["target"])
         if not isinstance(target, int) or isinstance(target, bool) or not 1 <= target <= 100:
             raise FormatError("The goal must be a whole number from 1 to 100.")
+        if metric == "active_days" and days is not None and target > days:
+            raise FormatError(f"This event has {days} day{'s' if days != 1 else ''}, so nobody can reach {target} active days.")
         return {"metric": metric, "target": target}
     if fmt == "teams":
         names = raw.get("teams", DEFAULT_TEAMS)

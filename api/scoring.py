@@ -37,6 +37,19 @@ MAX_SPEED_KMH = {"run": 25, "walk": 10, "hike": 10, "ride": 80, "swim": 8}  # fa
 DEFAULT_MAX_SPEED_KMH = 25
 DAY = timedelta(days=1)
 
+# How long a challenge may run. The program accepts any end after the start; this range is a typo
+# guard enforced by the API when a challenge is recorded (and by the create screen).
+MIN_LENGTH = timedelta(minutes=15)
+MAX_LENGTH = timedelta(days=365)
+
+
+def day_count(start: datetime, end: datetime) -> int:
+    """Scoring days in a challenge: 24-hour blocks from the start, a partial last block counting as a day.
+
+    A 36-hour challenge has 2 days (day 1 is 12 hours long); a 15-minute one has 1.
+    """
+    return max(1, -(-(end - start) // DAY))
+
 
 def rules_fingerprint() -> str:
     """SHA-256 (hex) of the scoring numbers, written as compact JSON with sorted keys."""

@@ -7951,3 +7951,19 @@ input[type="checkbox"] {
   color: var(--text);
   font-weight: 600;
 }
+
+/* Custom challenge length: a number next to an hours/days switch. */
+.length-input {
+  display: grid;
+  grid-template-columns: minmax(0, 120px) minmax(0, 200px);
+  gap: 8px;
+  align-items: center;
+}
+
+.length-input .segmented {
+  margin-top: 0;
+}
+
+.length-input input[aria-invalid="true"] {
+  border-color: var(--danger);
+}

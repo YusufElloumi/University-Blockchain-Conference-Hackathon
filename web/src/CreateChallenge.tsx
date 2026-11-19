@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ChallengeView, StatWeights } from "./api";
 import type { Session } from "./App";
 import { buildCreateTransaction, friendlyError } from "./chain";
-import { usdc } from "./format";
+import { dayCount, termLabel, usdc } from "./format";
 import { Check, ChevronLeft, Minus, Plus } from "lucide-react";
 import { FORMATS, FORMAT_INFO, PODIUM_PRESETS, goalUnit, type Format, type FormatConfig } from "./formats";
 import { MODE_INFO, ModeBadge, type Mode } from "./modes";
@@ -21,7 +21,13 @@ const LENGTHS = [
   { label: "1 day", seconds: 86400 },
   { label: "3 days", seconds: 3 * 86400 },
   { label: "1 week", seconds: 7 * 86400 },
+  { label: "Custom", seconds: 0 }, // shows a number and unit input
 ];
+const CUSTOM = LENGTHS[4];
+// The program accepts any end after the start; this is a typo guard. The API enforces the same range.
+const MIN_LENGTH = 15 * 60;
+const MAX_LENGTH = 365 * 86400;
+type Unit = "hours" | "days";
 
 function Chips<T>(props: { options: T[]; value: T; label: (o: T) => string; onPick: (o: T) => void }) {
   return (
@@ -89,7 +95,9 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const [organizer, setOrganizer] = useState("");
   const [buyIn, setBuyIn] = useState(1);
   const [joinWindow, setJoinWindow] = useState(JOIN_WINDOWS[1]);
-  const [length, setLength] = useState(LENGTHS[3]);
+  const [lengthChoice, setLengthChoice] = useState(LENGTHS[3]);
+  const [customAmount, setCustomAmount] = useState("36");
+  const [customUnit, setCustomUnit] = useState<Unit>("hours");
   const [source, setSource] = useState<Source>("fitness");
   const [weights, setWeights] = useState<StatWeights>({ goals: 2, assists: 1, points: 0 });
   const [picksOn, setPicksOn] = useState(true);
@@ -102,7 +110,17 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const [teamNames, setTeamNames] = useState(["Team A", "Team B"]);
   const usesStats = mode === "league" && source === "league_stats";
   const metric = usesStats ? "points" : goalMetric; // stat sheets have no active days
-  const lengthDays = Math.max(1, Math.round(length.seconds / 86400));
+  const custom = lengthChoice === CUSTOM;
+  const customNumber = Number(customAmount);
+  const lengthSeconds = custom
+    ? Number.isFinite(customNumber) && customAmount.trim() !== ""
+      ? Math.round(customNumber * (customUnit === "hours" ? 3600 : 86400))
+      : 0
+    : lengthChoice.seconds;
+  const lengthOk = lengthSeconds >= MIN_LENGTH && lengthSeconds <= MAX_LENGTH;
+  const lengthLabel = lengthOk ? termLabel(lengthSeconds * 1000) : "-";
+  const lengthDays = dayCount(lengthSeconds);
+  const goalOk = !(format === "goal" && metric === "active_days" && goalTarget > lengthDays);
   const sharesOk =
     shares.reduce((a, b) => a + b, 0) === 100 && shares.every((v, i) => v > 0 && (i === 0 || v <= shares[i - 1]));
   const teamsOk =
@@ -133,7 +151,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
       const { transaction, address } = await buildCreateTransaction(me.wallet, {
         buyIn,
         joinWindowSeconds: joinWindow.seconds,
-        lengthSeconds: length.seconds,
+        lengthSeconds,
         oracle: config.oracle,
         mint: config.usdc_mint,
       });
@@ -163,7 +181,9 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
     !!name.trim() &&
     (mode !== "league" || !!organizer.trim()) &&
     !(picksOn && themes.length === 0) &&
-    formatOk;
+    formatOk &&
+    lengthOk &&
+    goalOk;
 
   return (
     <div className="create">
@@ -219,8 +239,46 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
             </div>
             <div className="field">
               <span className="field-label">Then it runs for</span>
-              <Chips options={LENGTHS} value={length} label={(o) => o.label} onPick={setLength} />
+              <Chips options={LENGTHS} value={lengthChoice} label={(o) => o.label} onPick={setLengthChoice} />
             </div>
+            {custom && (
+              <div className="field">
+                <span className="field-label">Custom length</span>
+                <div className="length-input">
+                  <input
+                    inputMode="decimal"
+                    value={customAmount}
+                    aria-label="Custom length"
+                    aria-invalid={!lengthOk}
+                    onChange={(e) => setCustomAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                  />
+                  <div className="segmented" role="radiogroup" aria-label="Length unit">
+                    {(["hours", "days"] as Unit[]).map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        role="radio"
+                        aria-checked={customUnit === u}
+                        className={customUnit === u ? "on" : ""}
+                        onClick={() => setCustomUnit(u)}
+                      >
+                        {u === "hours" ? "Hours" : "Days"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {lengthOk ? (
+                  <p className="fine">
+                    Runs {lengthLabel} · {lengthDays} scoring day{lengthDays === 1 ? "" : "s"}
+                    {lengthSeconds % 86400 !== 0 && lengthSeconds > 86400 ? " (the last one is shorter)" : ""}
+                  </p>
+                ) : (
+                  <p className="fine warn" role="alert">
+                    A challenge runs for at least 15 minutes and at most 365 days.
+                  </p>
+                )}
+              </div>
+            )}
           </section>
 
           <section className="card">
@@ -325,9 +383,10 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
                     </button>
                   </div>
                 </div>
-                {metric === "active_days" && goalTarget > lengthDays && (
+                {!goalOk && lengthOk && (
                   <p className="fine warn">
-                    This event runs {length.label}, so nobody can reach {goalTarget} active days.
+                    This event has {lengthDays} scoring day{lengthDays === 1 ? "" : "s"}, so nobody can reach {goalTarget}{" "}
+                    active days.
                   </p>
                 )}
                 <p className="fine">Nobody reaches it? Everyone gets their entry fee back.</p>
@@ -451,7 +510,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
               </div>
               <div>
                 <dt>Runs for</dt>
-                <dd>{length.label}</dd>
+                <dd>{lengthLabel}</dd>
               </div>
               <div>
                 <dt>Format</dt>
