@@ -92,7 +92,13 @@ def test_an_easy_walk_earns_real_credit_but_less(client, challenge, v2):
     link(client, "maya")
     v2.workouts["tok-maya"] = [wk(minutes=40, activity="walking", intensity="easy", distance=3000.0)]  # 4.5 km/h
     sync(client)
-    assert only(client)["v2"]["score"]["multiplier"] == "0.960" and board(client)["maya"]["points"] == 38
+    workout = only(client)
+    score, evidence = workout["v2"]["score"], workout["v2"]["evidence"]
+    assert score["multiplier"] == "0.960" and evidence["index"] == 75 and score["reliability"] == "0.85"
+    # Base 40; the easy label would take 1.60 off; with 85% reliability it takes 1.36.
+    assert (score["base_points"], score["potential_bonus"], score["adjusted_bonus"], score["contribution"]) == (
+        "40.00", "-1.60", "-1.36", "38.64")
+    assert board(client)["maya"]["points"] == 39
 
 
 def test_long_days_taper_and_two_workouts_share_the_days_bands(client, challenge, v2):
@@ -119,6 +125,55 @@ def test_syncing_again_changes_nothing(client, challenge, v2):
     after = mine(client)
     assert after["workouts"] == before["workouts"] and after["points"] == before["points"] == 40
     assert len(rows()) == 6
+
+
+# ---------- evidence decides how much of the effort bonus counts ----------
+
+
+def test_a_hard_label_with_no_supporting_heart_rate_keeps_base_and_a_reduced_bonus(client, challenge, v2):
+    link(client, "maya")
+    v2.workouts["tok-maya"] = [wk(minutes=40, activity="strengthTraining", intensity="hard")]
+    sync(client)
+    detail = only(client)["v2"]
+    score = detail["score"]
+    assert detail["evidence"]["index"] == 67 and detail["evidence"]["reliability"] == "0.65"
+    assert (score["base_points"], score["potential_bonus"], score["adjusted_bonus"], score["contribution"]) == (
+        "40.00", "1.92", "1.25", "41.25")
+    assert {k: f["bonus"] for k, f in score["factors"].items()} == {"provider": "1.92", "heart": "0.00", "movement": "0.00"}
+    assert board(client)["maya"]["points"] == 41
+
+
+def test_the_same_effort_earns_more_bonus_when_the_evidence_is_stronger(client, challenge, v2):
+    """Two players, the same hard 40-minute session by Oura's label. One has full exercise heart rate
+    (but no history, so the heart factor itself is neutral for both); the other has none."""
+    link(client, "maya"), link(client, "sam")
+    recorded, bare = wk("m", minutes=40, intensity="hard"), wk("s", minutes=40, intensity="hard")
+    v2.workouts["tok-maya"], v2.heart["tok-maya"] = [recorded], beats(recorded, bpm=171.6)
+    v2.workouts["tok-sam"] = [bare]
+    sync(client, "maya"), sync(client, "sam")
+    strong, weak = only(client, "maya")["v2"], only(client, "sam")["v2"]
+    assert strong["score"]["potential_bonus"] == weak["score"]["potential_bonus"] == "1.92"  # same effort signals
+    assert strong["score"]["base_points"] == weak["score"]["base_points"] == "40.00"  # same base
+    assert (strong["evidence"]["index"], weak["evidence"]["index"]) == (92, 67)
+    assert (strong["score"]["adjusted_bonus"], weak["score"]["adjusted_bonus"]) == ("1.92", "1.25")
+    assert only(client, "maya")["v2"]["score"]["factors"]["heart"]["value"] == "1.00"  # a high pulse added nothing
+
+
+def test_points_agree_across_receipt_leaderboard_and_day_totals(client, challenge, v2):
+    link(client, "maya")
+    history(v2)
+    run = wk("run", ago=300, minutes=40, intensity="hard", distance=7400.0)
+    v2.workouts["tok-maya"] += [run, wk("walk", ago=150, minutes=30, activity="walking", intensity="easy", distance=2300.0)]
+    v2.heart["tok-maya"] += beats(run, bpm=154.3)
+    sync(client)
+    view = mine(client)
+    from decimal import ROUND_HALF_UP, Decimal
+    summed = sum(Decimal(w["v2"]["score"]["contribution"]) for w in view["workouts"])
+    for w in view["workouts"]:
+        score = w["v2"]["score"]
+        assert abs(Decimal(score["base_points"]) + Decimal(score["adjusted_bonus"]) - Decimal(score["contribution"])) <= Decimal("0.01")
+    rounded = int(summed.quantize(Decimal("1"), ROUND_HALF_UP))
+    assert rounded == view["points"] == view["days"][0]["points"] == board(client)["maya"]["points"]
 
 
 # ---------- the personal reference ----------
@@ -188,10 +243,10 @@ def test_an_intensity_edit_at_the_provider_changes_the_score(client, challenge, 
     link(client, "maya")
     v2.workouts["tok-maya"] = [wk(minutes=50, activity="yoga", intensity="hard")]
     sync(client)
-    assert board(client)["maya"]["points"] == 52  # 50 x (0.4 x 1.12 + 0.6) = 52.4
+    assert board(client)["maya"]["points"] == 52  # 50 + 2.40 potential x 65% (Evidence 67) = 51.56
     v2.workouts["tok-maya"] = [wk(minutes=50, activity="yoga", intensity="easy")]
     assert sync(client).json()["updated"] == 1
-    assert board(client)["maya"]["points"] == 48 and len(rows()) == 1
+    assert board(client)["maya"]["points"] == 49 and len(rows()) == 1  # 50 - 2.00 x 65% = 48.70
 
 
 def test_missing_intensity_is_unavailable_not_assumed_moderate(client, challenge, v2):
@@ -316,6 +371,10 @@ def test_owner_receipts_carry_the_breakdown_and_match_the_commitments(client, ch
     assert set(found) == {("verified", "strong"), ("verified", "limited"), ("rejected", None)}
     run = found["verified", "strong"]
     assert run["points"] == "44.32" and run["score"]["multiplier"] == "1.108" and run["evidence"]["index"] == 100
+    assert (run["score"]["base_points"], run["score"]["potential_bonus"], run["score"]["reliability"],
+            run["score"]["adjusted_bonus"]) == ("40.00", "4.32", "1.00", "4.32")
+    # The receipts, the sheet and the leaderboard carry the same numbers: 44.32 + 26.00 rounds to the sheet's 70.
+    assert published["sheet"]["scores"][0]["points"] == published["sheet"]["proof_of_sweat"]["participants"][0]["fitness_points"] == 70
     assert found["verified", "limited"]["points"] == "26.00" and found["verified", "limited"]["evidence"]["index"] == 67
     assert found["rejected", None]["evidence"]["label"] == "rejected"
     assert mine(client, "sam")["receipts"] == []

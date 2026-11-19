@@ -11,17 +11,41 @@ independent signals, calculates a transparent effort-weighted score, signs the r
 the final competition outcome to Solana, which controls escrow settlement. The wearable evidence and
 scoring are evaluated offchain; the blockchain makes the final committed settlement verifiable.*
 
-## Two outputs, kept apart
+## Two outputs and how they meet
+
+**Final points = base activity points + potential effort bonus x evidence reliability**
 
 | | Evidence Index (0-100) | Sweat Score |
 |---|---|---|
 | Answers | How complete and consistent is the recording? | How many competition points? |
-| Built from | provenance, timing, movement data present, heart-rate coverage | eligible minutes and effort |
+| Built from | provenance, timing, movement data present, heart-rate coverage | eligible minutes, then effort |
 | Is it a probability? | **No.** 88 does not mean "88% likely real" | n/a |
-| Affects the other? | Never changes points | Never changes the index |
+| Where they meet | Sets how much of the effort bonus counts | Base points never depend on the index |
 
-A perfectly recorded easy walk is not vigorous because its evidence is good, and a hard session with
-a patchy sensor is not easy because samples are missing.
+| Evidence Index | Share of the effort bonus that counts |
+|---|---:|
+| 90-100 | 100% |
+| 75-89 | 85% |
+| 50-74 | 65% |
+| below 50 | 40% |
+| any required check failed | the workout scores zero |
+
+- **Base activity points** are the workout's effective minutes (below). Missing heart rate never
+  reduces them.
+- **Potential effort bonus** is `base x (effort multiplier - 1)`: what Oura's intensity label,
+  relative heart rate and pace suggest on top. It is negative for an easy session.
+- **Reliability** scales that adjustment towards neutral, in both directions: with thin evidence the
+  score leans less on an uncorroborated "hard" (or "easy"). It never turns a bonus into a penalty.
+- **No double counting.** Heart rate answers two different questions from different inputs. Effort:
+  how does this session's median compare with your own reference? Evidence: how many minutes have
+  usable, exercise-tagged, well-spread, clean samples? More samples never raise the effort factor, a
+  higher pulse never raises the Evidence Index, and one high reading does nothing at all (tests
+  `test_more_samples_or_a_higher_pulse_do_not_buy_points_on_their_own`).
+- **Bounds.** The multiplier is clamped to 0.85-1.25 (the real factors reach 0.910-1.128), so a bonus
+  is at most 25% of base, and a day's base is capped at 111 by the minute bands.
+
+A perfectly recorded easy walk is not vigorous because its evidence is good; a hard-labelled session
+with no supporting heart rate keeps its full base and a reduced bonus.
 
 Required checks come first and are unchanged from v1 (recorded by Oura and not hand-entered, mapped
 activity, valid times, 10 minutes inside the challenge, no minute counted twice, believable speed).
@@ -76,22 +100,25 @@ needs exercise-tagged samples in at least half the workout's minutes and 10 minu
 session signal or a reference, the factor is neutral and the receipt says why. No within-session
 pattern is used as a substitute: with the data available it could not be defended.
 
-**Points.** A workout's contribution is its effective minutes times its multiplier, kept as an
-exact decimal. A day's score is the sum of its contributions, rounded half up once.
+**Points.** A workout's contribution is `base x (1 + (multiplier - 1) x reliability)`, kept as an
+exact decimal. A day's score is the sum of its contributions, rounded half up once. Scoring runs in
+two passes: the first finds which workouts count and whether any overlapped (which fixes each
+Evidence Index), the second applies the multipliers.
 
 ### Worked examples (synthetic)
 
-1. 40 min, moderate, no heart rate, no distance: `0.4x1.00 + 0.4x1.00 + 0.2x1.00 = 1.000`; 40 x 1.000 = **40**. Evidence 67, limited.
-2. 40 min hard run at 11.1 km/h, 10% above the personal reference: `0.4x1.12 + 0.4x1.125 + 0.2x1.05 = 1.108`; 40 x 1.108 = 44.32 -> **44**. Evidence 100, strong.
-3. 40 min easy walk at 4.5 km/h, no heart rate: `0.4x0.90 + 0.4x1.00 + 0.2x1.00 = 0.960`; **38**.
-4. 90 min neutral: 60 + 30 x 0.6 = **78**.
-5. Two 45-min neutral workouts in a day: the first earns 45; the second gets 15 full minutes and 30 at 0.6 = 33; **78**, not 90.
-6. Example 2 plus a 30-min neutral session later the same day: its last 10 minutes fall in the second hour, 20 + 6 = 26; day = 44.32 + 26 = 70.32 -> **70**.
+1. 40 min, moderate, no heart rate, no distance: multiplier 1.000, potential bonus 0; **40**. Evidence 67, limited.
+2. 40 min hard run at 11.1 km/h, 10% above the personal reference: `0.4x1.12 + 0.4x1.125 + 0.2x1.05 = 1.108`; base 40, potential +4.32 (intensity +1.92, heart +2.00, movement +0.40); Evidence 100 -> 100%; 44.32 -> **44**.
+3. The same session with patchier heart rate, Evidence 82 -> 85%: 40 + 4.32 x 0.85 = 43.67 -> **44**; at Evidence 67 -> 65%: 42.81 -> **43**.
+4. 40 min labelled hard, no heart rate, no distance: potential +1.92, Evidence 67 -> 65%: 40 + 1.25 = 41.25 -> **41**. The label alone earns a reduced bonus; the base is untouched.
+5. 40 min easy walk at 4.5 km/h, no heart rate: multiplier 0.960, potential -1.60, Evidence 75 -> 85%: 40 - 1.36 = 38.64 -> **39**.
+6. 90 min neutral: 60 + 30 x 0.6 = **78**. Two 45-min neutral workouts in a day: 45 + (15 + 30 x 0.6) = **78**, not 90.
+7. Example 2 plus a 30-min neutral session later the same day: its last 10 minutes fall in the second hour, 20 + 6 = 26; day = 44.32 + 26 = 70.32 -> **70**.
 
 ## Versioning and the locked ruleset
 
 - v2 is a separate rule set: `proof_of_sweat_v2`, version `proof-of-sweat-v2`, fingerprint
-  `de06dea706c74abd5db312efe97838e94da019694dad000ad2e68fd6ad3fc320` (SHA-256 of every constant,
+  `b9bd8375b87d6c704a54dc0fbd48121f31595c344ce853935b63eb7708c661a6` (SHA-256 of every constant,
   including v1's gates).
 - v1 is unchanged: `proof-of-sweat-v1`, `43143b257a0d5e734c25378000ce858aaeb9d53918d12cbfdb469674672ab180`.
   Both fingerprints are pinned in `api/tests/test_sweat2.py`.
@@ -142,7 +169,7 @@ reference is frozen; otherwise retention is as in v1. Deleted on disconnect.
 2. During the challenge, record a workout of 10+ minutes with the ring; let it sync to the Oura app.
 3. "Sync workouts". Open the workout: check the ribbon, the evidence bar, and which effort signals
    are measured and which are neutral fallbacks. With little history, expect the heart factor neutral.
-4. Recompute by hand: effective minutes x multiplier should equal the contribution shown.
+4. Recompute by hand: base + potential bonus x reliability should equal the points shown.
 5. Sync again after 30 seconds: nothing changes.
 6. Leaderboard shows the rounded daily total.
 7. After the end and the 30-minute grace: "Check result" passes, including "Your workout receipts

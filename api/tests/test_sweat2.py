@@ -302,5 +302,64 @@ def test_v2_rules_have_their_own_version_and_fingerprint_and_leave_v1_alone():
     # v1's fingerprint is locked onchain by existing challenges: it must never move.
     assert sweat.rules_fingerprint() == "43143b257a0d5e734c25378000ce858aaeb9d53918d12cbfdb469674672ab180"
     # v2's is locked by every v2 challenge: changing a constant must come with a new RULES_VERSION and this value.
-    assert sweat2.rules_fingerprint() == "de06dea706c74abd5db312efe97838e94da019694dad000ad2e68fd6ad3fc320"
+    assert sweat2.rules_fingerprint() == "b9bd8375b87d6c704a54dc0fbd48121f31595c344ce853935b63eb7708c661a6"
     assert sweat2.rules()["gates"] == sweat.rules()
+
+
+# ---------- evidence-adjusted effort bonus ----------
+
+
+@pytest.mark.parametrize("index_, share", [(100, "1.00"), (90, "1.00"), (89, "0.85"), (75, "0.85"), (74, "0.65"),
+                                           (67, "0.65"), (50, "0.65"), (49, "0.40"), (0, "0.40")])
+def test_reliability_steps(index_, share):
+    assert sweat2.reliability(index_) == D(share)
+
+
+def test_reliability_never_falls_as_the_index_rises():
+    shares = [sweat2.reliability(i) for i in range(0, 101)]
+    assert shares == sorted(shares)
+
+
+def final(base_minutes, multiplier, index_):
+    """Final points for one workout on its own day."""
+    m = sweat2.final_multiplier(D(multiplier), sweat2.reliability(index_))
+    return total(item(minutes=base_minutes, multiplier=str(m))).days[0].contribution
+
+
+def test_final_is_base_plus_the_bonus_the_evidence_supports():
+    # The message's shape: base 40, effort x1.108 -> potential bonus 4.32.
+    assert final(40, "1.108", 100) == D("44.32")  # all of it
+    assert final(40, "1.108", 82) == D("43.672")  # 85%: 40 + 3.672
+    assert final(40, "1.108", 67) == D("42.808")  # 65%
+    assert final(40, "1.108", 40) == D("41.728")  # 40%
+    assert final(40, "1.000", 40) == D("40")  # nothing to adjust: base is untouched
+
+
+def test_same_effort_different_evidence_gives_different_bonuses_but_the_same_base():
+    bonuses = [final(60, "1.128", i) - 60 for i in (95, 80, 60, 30)]
+    assert bonuses == sorted(bonuses, reverse=True) and len(set(bonuses)) == 4
+    assert all(b > 0 for b in bonuses)  # weak evidence trims the bonus; it never turns it into a penalty
+
+
+def test_weak_evidence_also_softens_an_easy_label():
+    assert final(40, "0.960", 100) == D("38.4") and final(40, "0.960", 67) == D("38.96")
+    assert final(40, "0.960", 67) < 40  # softened towards neutral, never past it
+
+
+def test_the_bonus_is_bounded_whatever_the_signals_say():
+    top = sweat2.effort_multiplier(F("9"), F("9"), F("9"))
+    assert top == D("1.250") and final(60, str(top), 100) == D("75")  # at most +25% of base, by the clamp
+    real = sweat2.effort_multiplier(sweat2.provider_factor("hard"), sweat2.heart_factor(summary(dense(250)), REFERENCE),
+                                    sweat2.movement_factor("run", 12, 30))
+    assert real == D("1.128")  # the most the real factors can reach: +12.8%
+    assert total(item(minutes=600, multiplier="1.250")).total == 139  # and a whole day is capped by the bands: 111 x 1.25
+
+
+def test_more_samples_or_a_higher_pulse_do_not_buy_points_on_their_own():
+    one_per_minute = summary([hr(60 * m + 5, 150) for m in range(30)])
+    ten_per_minute = summary([hr(60 * m + s, 150) for m in range(30) for s in range(0, 60, 6)])
+    assert sweat2.heart_factor(one_per_minute, REFERENCE).value == sweat2.heart_factor(ten_per_minute, REFERENCE).value
+    assert index(heart=one_per_minute)["index"] == index(heart=ten_per_minute)["index"]
+    low, high = summary(dense(110)), summary(dense(190))
+    assert index(heart=low)["index"] == index(heart=high)["index"]  # the index is blind to how fast the heart beat
+    assert sweat2.heart_factor(summary([hr(10, 200)]), REFERENCE).value == D("1.00")  # one high reading: neutral

@@ -9054,3 +9054,112 @@ input[type="checkbox"] {
     font-size: 24px;
   }
 }
+
+/* v2 receipt: base + evidence-adjusted effort bonus, step by step. */
+.sweat-gauge-head b small {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+
+.sweat-stack {
+  display: flex;
+  gap: 2px;
+  height: 16px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.sweat-stack i {
+  height: 100%;
+}
+
+.sweat-stack .base {
+  background: var(--green);
+  opacity: 0.55;
+}
+
+.sweat-stack .bonus {
+  background: var(--green);
+}
+
+.sweat-stack .held {
+  background: repeating-linear-gradient(135deg, var(--green-line) 0 4px, transparent 4px 8px);
+  outline: 1px dashed var(--green-line);
+  outline-offset: -1px;
+}
+
+.sweat-steps {
+  display: grid;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.sweat-steps > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sweat-steps > div:last-child {
+  border-bottom: 0;
+}
+
+.sweat-steps dt {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.sweat-steps dt small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.sweat-steps dd {
+  margin: 0;
+  font-family: var(--caps);
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.sweat-steps .sub {
+  padding-block: 6px;
+  padding-left: 28px;
+}
+
+.sweat-steps .sub dt {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.sweat-steps .sub dd {
+  font-size: 15px;
+  color: var(--text-2);
+}
+
+.sweat-steps .rel {
+  background: var(--accent-soft);
+}
+
+.sweat-steps .rel dd {
+  color: var(--accent);
+}
+
+.sweat-steps .final {
+  background: var(--green-soft);
+}
+
+.sweat-steps .final dd {
+  font-size: 24px;
+  color: var(--green);
+}

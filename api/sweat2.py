@@ -7,9 +7,22 @@ minimum, challenge window, overlap as union, speed ceilings) and adds two separa
                               heuristic. NOT a probability that the workout happened, and never an
                               admission rule on its own: a failed gate rejects whatever the index says,
                               and a workout with no heart rate at all is still eligible.
-  B. Sweat Score              Competition points: effective minutes x an effort multiplier.
+  B. Sweat Score              Competition points: base activity points + an evidence-adjusted effort bonus.
 
-The two do not feed each other. Confidence in a recording and effort in a session are different things.
+How the two interact, and how they do not:
+  - Base points come from eligible minutes alone. Evidence never reduces them: a workout with no
+    heart rate at all keeps its full base.
+  - The effort bonus is what the three effort signals suggest ON TOP of base (it can be negative for
+    an easy session). How much of it counts depends on the Evidence Index: weak evidence means we
+    lean less on an uncorroborated "hard" or "easy", in either direction.
+  - Heart rate is used twice, for two different questions, with different inputs:
+        effort    how this session's median compares with the player's own reference
+        evidence  how many minutes have usable, exercise-tagged samples, spread and clean
+    More samples never raise the effort factor, and a higher pulse never raises the Evidence Index.
+
+    final = base + potential bonus x reliability       (zero if any mandatory gate fails)
+    potential bonus = base x (effort multiplier - 1)
+    reliability     = 1.00 / 0.85 / 0.65 / 0.40 for an Evidence Index of 90+ / 75+ / 50+ / below 50
 
 Sweat Score, per 24-hour challenge day:
     effective minutes   the day's unique eligible minutes, in time order, weighted by band:
@@ -17,7 +30,8 @@ Sweat Score, per 24-hour challenge day:
     effort multiplier   clamp(0.85, 1.25, 0.40*provider + 0.40*heart + 0.20*movement)
                         each factor is centred on 1.00; an unavailable signal IS 1.00 (no renormalizing,
                         so a sensor gap is never an advantage)
-    contribution        a workout's effective minutes x its multiplier (kept as an exact decimal)
+    base points         a workout's effective minutes
+    contribution        base x (1 + (multiplier - 1) x reliability), kept as an exact decimal
     day points          round half up (sum of the day's contributions)
 
 Every constant below is a game-design or engineering heuristic, not exercise advice, a medical
@@ -39,8 +53,8 @@ import sweat
 
 RULES_VERSION = "proof-of-sweat-v2"
 TEMPLATE = "proof_of_sweat_v2"  # stored on challenges.template
-SUMMARY = ("About 1 Sweat Point per Oura-verified minute, weighted by effort (x0.85 to x1.25). "
-           "Each day's first hour counts in full, then less.")
+SUMMARY = ("About 1 Sweat Point per Oura-verified minute, plus an effort bonus that counts in proportion "
+           "to the evidence behind it. Each day's first hour counts in full, then less.")
 
 D = Decimal
 
@@ -72,6 +86,9 @@ MOVEMENT_BANDS: dict[str, tuple[tuple[float, Decimal], ...]] = {
 
 WEIGHTS = {"provider": D("0.40"), "heart": D("0.40"), "movement": D("0.20")}
 MULTIPLIER_RANGE = (D("0.85"), D("1.25"))
+
+# ---- B3. How much of the effort bonus counts, by Evidence Index: (minimum index, share), highest first ----
+RELIABILITY: tuple[tuple[int, Decimal], ...] = ((90, D("1.00")), (75, D("0.85")), (50, D("0.65")), (0, D("0.40")))
 
 # ---- A. Evidence Index weights (sum 100) ----
 EVIDENCE = {
@@ -106,6 +123,8 @@ def rules() -> dict:
         "multiplier_range": [str(v) for v in MULTIPLIER_RANGE],
         "unavailable_signal": "1.00, not renormalized",
         "rounding": "per-day total, round half up",
+        "final": "base + base * (multiplier - 1) * reliability",
+        "reliability": [[low, str(share)] for low, share in RELIABILITY],
         "evidence_index": EVIDENCE,
         "strong_evidence": {"min_index": STRONG_MIN_INDEX, "min_samples": STRONG_MIN_SAMPLES,
                             "min_bins": STRONG_MIN_BINS, "min_coverage": STRONG_COVERAGE},
@@ -261,12 +280,23 @@ def effort_multiplier(provider: Factor, heart: Factor, movement: Factor) -> Deci
     return min(MULTIPLIER_RANGE[1], max(MULTIPLIER_RANGE[0], raw)).quantize(D("0.001"), ROUND_HALF_UP)
 
 
+def reliability(index: int) -> Decimal:
+    """The share of the effort bonus the evidence supports. Steps, so it is easy to state and to check."""
+    return next(share for low, share in RELIABILITY if index >= low)
+
+
+def final_multiplier(multiplier: Decimal, share: Decimal) -> Decimal:
+    """Base x this = final points: the effort adjustment (either way) scaled by how well it is evidenced."""
+    return D(1) + (multiplier - D(1)) * share
+
+
 # ---------- A. Evidence Index ----------
 
 
 def evidence_index(*, gates_passed: bool, provider_source: str | None, overlap_resolved: bool,
                    movement_observed: bool, heart: HeartSummary | None, heart_pending: bool = False) -> dict:
-    """The four weighted parts, their sum, and a label. Explains itself; decides nothing by itself.
+    """The four weighted parts, their sum, and a label. It never admits or rejects a workout and never
+    touches base points; through `reliability` it sets how much of the effort bonus counts.
 
     Monotonic: more coverage, an exercise tag, better spread or cleaner samples never lower it.
     Missing signals score as "not observed" (0 of 25 for heart rate, 7 of 15 for movement), which is
@@ -338,7 +368,8 @@ def evidence_index(*, gates_passed: bool, provider_source: str | None, overlap_r
 
 @dataclass(frozen=True)
 class Item:
-    """A workout with the outcome of its own gates and, when verified, its effort multiplier."""
+    """A workout with the outcome of its own gates and, when verified, its final multiplier
+    (final_multiplier of its effort multiplier and its evidence reliability)."""
 
     workout: sweat.Workout
     status: str  # verified, rejected or pending

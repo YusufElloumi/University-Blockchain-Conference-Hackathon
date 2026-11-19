@@ -51,6 +51,7 @@ type FactorView = {
   value: string;
   state: "measured" | "provider_estimated" | "unavailable";
   reason: string | null;
+  bonus?: string; // this signal's part of the potential effort bonus, in points
   relative_percent?: number; // heart: this session against the player's own reference
   reference_workouts?: number;
   speed_kmh?: number;
@@ -69,7 +70,13 @@ type EvidencePart = {
 type V2Detail = {
   intensity: string | null;
   distance_km: number | null;
-  evidence: { index: number; parts: EvidencePart[]; label: "strong" | "limited" | "pending" | "rejected"; limits: string[] };
+  evidence: {
+    index: number;
+    parts: EvidencePart[];
+    label: "strong" | "limited" | "pending" | "rejected";
+    limits: string[];
+    reliability?: string; // share of the effort bonus this index supports, e.g. "0.85"
+  };
   score: {
     eligible_minutes: number;
     band_minutes: number[]; // this workout's minutes in each daily band; the last entry is past the cap
@@ -78,6 +85,10 @@ type V2Detail = {
     factors: { provider: FactorView; heart: FactorView; movement: FactorView };
     weights: { provider: string; heart: string; movement: string };
     multiplier: string;
+    base_points?: string; // effective minutes: what duration alone earns
+    potential_bonus?: string; // what the effort signals suggest on top (can be negative)
+    reliability?: string;
+    adjusted_bonus?: string; // potential bonus x reliability: what actually counts
     contribution: string;
   };
 };
@@ -336,7 +347,10 @@ function Gauge({ label, weight, f, line }: { label: string; weight: string; f: F
           {label} <small>weight {weight}</small>
         </span>
         <em>{STATE_WORD[f.state]}</em>
-        <b>×{f.value}</b>
+        <b>
+          ×{f.value}
+          {f.bonus != null && <small>{signed(f.bonus)} pts</small>}
+        </b>
       </div>
       <div className="sweat-gauge-track" role="img" aria-label={`${label} factor ${f.value}; 1.00 is neutral`}>
         <i className="fill" style={{ left: at(from), width: `calc(${at(to)} - ${at(from)})` }} />
@@ -347,6 +361,8 @@ function Gauge({ label, weight, f, line }: { label: string; weight: string; f: F
     </div>
   );
 }
+
+const signed = (text: string) => (Number(text) > 0 ? `+${text}` : Number(text) === 0 ? "0.00" : text.replace("-", "−"));
 
 const BAND_LABEL = ["Day's 1st hour", "2nd hour", "3rd hour", "Past 3 hours"];
 
@@ -363,7 +379,12 @@ function ReceiptV2(props: {
   const verified = w.result === "verified";
   const f = score.factors;
   const maxBand = Math.max(1, ...score.band_minutes);
-  const sum = `${score.weights.provider} × ${f.provider.value} + ${score.weights.heart} × ${f.heart.value} + ${score.weights.movement} × ${f.movement.value}`;
+  const base = score.base_points ?? score.effective_minutes;
+  const potential = score.potential_bonus ?? "0.00";
+  const adjusted = score.adjusted_bonus ?? "0.00";
+  const share = Math.round(Number(score.reliability ?? evidence.reliability ?? 1) * 100);
+  const withheld = Math.abs(Number(potential)) - Math.abs(Number(adjusted));
+  const scale = Math.max(1, Number(base) + Math.max(0, Number(potential)));
   const fallbacks = (["provider", "heart", "movement"] as const).filter((k) => f[k].state === "unavailable").length;
   return (
     <div className="sweat-receipt v2">
@@ -448,15 +469,16 @@ function ReceiptV2(props: {
           ))}
         </ul>
         <p className="fine">
-          The index adds up rule-based evidence. It is not a probability that the workout happened, it never changes your points, and
-          it can't rescue a workout that fails a required check.
+          The index adds up rule-based evidence. It is not a probability that the workout happened, and it can't rescue a workout
+          that fails a required check. It never touches your base points: it only sets how much of the effort bonus counts
+          {evidence.reliability ? ` (here ${Math.round(Number(evidence.reliability) * 100)}%)` : ""}.
         </p>
       </section>
 
       {verified && (
         <section className="sweat-block">
           <h4>
-            Sweat Score <span>minutes × effort</span>
+            Sweat Score <span>base + evidence-adjusted effort</span>
           </h4>
           <div className="sweat-bands">
             {score.band_minutes.map((m, i) => (
@@ -470,8 +492,8 @@ function ReceiptV2(props: {
               </div>
             ))}
             <div className="sweat-band-total">
-              <small>Effective minutes</small>
-              <b>{score.effective_minutes}</b>
+              <small>Base activity points</small>
+              <b>{base}</b>
             </div>
           </div>
           <p className="fine">
@@ -485,27 +507,59 @@ function ReceiptV2(props: {
             <Gauge label="Movement" weight={score.weights.movement} f={f.movement} line={factorLine("movement", f.movement)} />
           </div>
 
-          <div className="sweat-formula" aria-label="How the points were calculated">
-            <div>
-              <small>Effort multiplier</small>
-              <code>
-                {sum} = <b>{score.multiplier}</b>
-              </code>
-            </div>
-            <div>
-              <small>This workout</small>
-              <code>
-                {score.effective_minutes} × {score.multiplier} = <b>{score.contribution}</b>
-              </code>
-            </div>
+          <div className="sweat-stack" role="img" aria-label={`Base ${base}, effort bonus counted ${adjusted} of ${potential}`}>
+            <i className="base" style={{ width: `${(Number(base) / scale) * 100}%` }} />
+            {Number(adjusted) > 0 && <i className="bonus" style={{ width: `${(Number(adjusted) / scale) * 100}%` }} />}
+            {Number(potential) > 0 && withheld > 0.004 && <i className="held" style={{ width: `${(withheld / scale) * 100}%` }} />}
           </div>
+          <dl className="sweat-steps">
+            <div>
+              <dt>Base activity points</dt>
+              <dd>{base}</dd>
+            </div>
+            <div className="sub">
+              <dt>Oura intensity</dt>
+              <dd>{signed(f.provider.bonus ?? "0.00")}</dd>
+            </div>
+            <div className="sub">
+              <dt>Heart-rate exertion</dt>
+              <dd>{signed(f.heart.bonus ?? "0.00")}</dd>
+            </div>
+            <div className="sub">
+              <dt>Movement</dt>
+              <dd>{signed(f.movement.bonus ?? "0.00")}</dd>
+            </div>
+            <div>
+              <dt>Potential effort bonus</dt>
+              <dd>{signed(potential)}</dd>
+            </div>
+            <div className="rel">
+              <dt>
+                Evidence reliability <small>Evidence Index {evidence.index}/100</small>
+              </dt>
+              <dd>× {share}%</dd>
+            </div>
+            <div>
+              <dt>Evidence-adjusted bonus</dt>
+              <dd>{signed(adjusted)}</dd>
+            </div>
+            <div className="final">
+              <dt>Sweat Points from this workout</dt>
+              <dd>{score.contribution}</dd>
+            </div>
+          </dl>
           <p className="sweat-oneline">
-            {score.effective_minutes} effective minutes at ×{score.multiplier} effort add {score.contribution} to your day.
-            {fallbacks > 0 && ` ${fallbacks} of 3 signals had no usable data and count as neutral, never as a bonus or a penalty.`}
+            {Number(potential) === 0
+              ? `Nothing in the effort signals moved this workout off its base of ${base}.`
+              : share === 100
+                ? `The recording backs the effort signals fully, so the whole ${signed(potential)} counts.`
+                : `The evidence scored ${evidence.index}/100, so ${share}% of the ${signed(potential)} effort adjustment counts: ${signed(adjusted)}.`}
+            {fallbacks > 0 && ` ${fallbacks} of 3 signals had no usable data and sit at neutral.`}
           </p>
           <p className="fine">
-            Your day's total is rounded to a whole number of Sweat Points once, after adding its workouts. A scoring rule for a
-            friendly game, not a measure of fitness or calories.
+            Reliability steps: Evidence Index 90+ counts 100% of the effort bonus, 75+ counts 85%, 50+ counts 65%, below that 40%.
+            Base points never depend on the index. Your day's total is rounded to a whole number once, after adding its workouts.
+            Scoring rules for a friendly game, not a measure of fitness or calories.
           </p>
         </section>
       )}

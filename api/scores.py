@@ -82,28 +82,11 @@ def effort_of(row: db.ImportedActivity, reference: dict | None) -> dict:
             "multiplier": sweat2.effort_multiplier(provider, heart, movement)}
 
 
-def sweat_sheet(session: Session, challenge: db.Challenge, user_id: int):
-    """Proof of Sweat score for one player, from stored imported workouts only. Never calls Oura."""
-    rows = imported_rows(session, challenge, user_id)
-    start, end = db.utc(challenge.start_time), db.utc(challenge.end_time)
-    if is_sweat2(challenge):
-        reference, _ = reference_of(session, challenge, user_id)
-        return sweat2.score(
-            [sweat2.Item(oura_sync.as_workout(row), row.status, row.reason,
-                         effort_of(row, reference)["multiplier"] if row.status == sweat.VERIFIED else sweat2.D(1))
-             for row in rows], start, end)
-    return sweat.score([sweat.Item(oura_sync.as_workout(row), row.status, row.reason) for row in rows], start, end)
-
-
-def sweat2_detail(row: db.ImportedActivity, line: sweat2.Line | None, reference: dict | None) -> dict:
-    """Everything a v2 receipt shows for one workout in one challenge: Evidence Index and score breakdown.
-
-    Holds factor values, relative percentages and counts; never a heart-rate reading or the reference itself.
-    """
-    effort = effort_of(row, reference)
+def evidence_of(row: db.ImportedActivity, line, effort: dict) -> dict:
+    """A workout's Evidence Index in one challenge (`line` is its result there; None outside a challenge)."""
     verified = line is not None and line.status == sweat.VERIFIED
     gates_passed = verified if line is not None else row.status == sweat.VERIFIED
-    evidence = sweat2.evidence_index(
+    return sweat2.evidence_index(
         gates_passed=gates_passed or row.status == sweat.PENDING,
         provider_source=row.provider_source,
         overlap_resolved=line is not None and line.overlap == sweat.LIMITED,
@@ -112,21 +95,66 @@ def sweat2_detail(row: db.ImportedActivity, line: sweat2.Line | None, reference:
         heart_pending=row.status == sweat.PENDING,
     )
 
-    def factor(f: sweat2.Factor) -> dict:
-        return {"value": str(f.value), "state": f.state, "reason": f.reason, **f.detail}
+
+def sweat_sheet(session: Session, challenge: db.Challenge, user_id: int):
+    """Proof of Sweat score for one player, from stored imported workouts only. Never calls Oura."""
+    rows = imported_rows(session, challenge, user_id)
+    start, end = db.utc(challenge.start_time), db.utc(challenge.end_time)
+    if not is_sweat2(challenge):
+        return sweat.score([sweat.Item(oura_sync.as_workout(row), row.status, row.reason) for row in rows], start, end)
+    reference, _ = reference_of(session, challenge, user_id)
+    # Pass 1, effort left out: which workouts count here and whether any overlapped. That settles each
+    # workout's Evidence Index, which sets how much of its effort bonus counts. Pass 2 scores with it.
+    # Overlap and window results do not depend on multipliers, so the two passes always agree.
+    plain = sweat2.score([sweat2.Item(oura_sync.as_workout(row), row.status, row.reason) for row in rows], start, end)
+    items = []
+    for row in rows:
+        workout = oura_sync.as_workout(row)
+        multiplier = sweat2.D(1)
+        if row.status == sweat.VERIFIED:
+            effort = effort_of(row, reference)
+            share = sweat2.reliability(evidence_of(row, plain.lines.get(workout.ref), effort)["index"])
+            multiplier = sweat2.final_multiplier(effort["multiplier"], share)
+        items.append(sweat2.Item(workout, row.status, row.reason, multiplier))
+    return sweat2.score(items, start, end)
+
+
+def sweat2_detail(row: db.ImportedActivity, line: sweat2.Line | None, reference: dict | None) -> dict:
+    """Everything a v2 receipt shows for one workout in one challenge: Evidence Index and score breakdown.
+
+    Holds factor values, relative percentages and counts; never a heart-rate reading or the reference itself.
+    """
+    D = sweat2.D
+    effort = effort_of(row, reference)
+    verified = line is not None and line.status == sweat.VERIFIED
+    evidence = evidence_of(row, line, effort)
+    share = sweat2.reliability(evidence["index"])
+    base = line.effective_minutes if verified else D(0)
+    potential = base * (effort["multiplier"] - D(1))
+    cents = D("0.01")
+
+    def factor(key: str) -> dict:
+        f = effort[key]
+        # This signal's part of the potential bonus: base x its weight x how far it sits from neutral.
+        part = (base * sweat2.WEIGHTS[key] * (f.value - D(1))).quantize(cents, sweat2.ROUND_HALF_UP)
+        return {"value": str(f.value), "state": f.state, "reason": f.reason, "bonus": str(part), **f.detail}
 
     return {
         "intensity": row.intensity,
         "distance_km": row.distance_km,
-        "evidence": evidence,
+        "evidence": {**evidence, "reliability": str(share)},
         "score": {
             "eligible_minutes": line.eligible_minutes if verified else 0,
             "band_minutes": [round(s / 60, 2) for s in line.bands] if verified else [0, 0, 0, 0],
             "band_weights": [str(w) for _, w in sweat2.BANDS] + ["0"],
-            "effective_minutes": str(line.effective_minutes.quantize(sweat2.D("0.01"))) if verified else "0",
-            "factors": {k: factor(effort[k]) for k in ("provider", "heart", "movement")},
+            "effective_minutes": str(base.quantize(cents, sweat2.ROUND_HALF_UP)),
+            "base_points": str(base.quantize(cents, sweat2.ROUND_HALF_UP)),
+            "factors": {k: factor(k) for k in ("provider", "heart", "movement")},
             "weights": {k: str(v) for k, v in sweat2.WEIGHTS.items()},
             "multiplier": str(effort["multiplier"]),
+            "potential_bonus": str(potential.quantize(cents, sweat2.ROUND_HALF_UP)),
+            "reliability": str(share),
+            "adjusted_bonus": str((line.contribution - base).quantize(cents, sweat2.ROUND_HALF_UP)) if verified else "0.00",
             "contribution": str(line.points) if verified else "0",
         },
     }
