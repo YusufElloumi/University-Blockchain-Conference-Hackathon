@@ -69,5 +69,14 @@ GAS_DRIP_LAMPORTS = int(float(os.environ.get("GAS_DRIP_SOL") or 0.02) * 1_000_00
 GAS_LOW_LAMPORTS = 5_000_000  # top up when a wallet holds less than 0.005 SOL
 GAS_DRIP_MAX_PER_USER = 3
 
+# Oura Ring connection (api/fitness/oura.py). All four must be set, or "Connect Oura" says it is unavailable.
+# The redirect URI must match the one registered in the Oura developer portal exactly.
+OURA_CLIENT_ID = os.environ.get("OURA_CLIENT_ID", "").strip()
+OURA_CLIENT_SECRET = os.environ.get("OURA_CLIENT_SECRET", "").strip()
+OURA_REDIRECT_URI = os.environ.get("OURA_REDIRECT_URI", "").strip()
+# Encrypts outside services' tokens in the database (api/secretbox.py). One or more Fernet keys,
+# comma-separated, newest first: to rotate, put a new key in front and keep the old one until re-saved.
+TOKEN_ENCRYPTION_KEY = os.environ.get("TOKEN_ENCRYPTION_KEY", "").strip()
+
 # "Add test funds": devnet USDC the server sends once per user (stands in for a card payment).
 TEST_FUNDS_UNITS = int(float(os.environ.get("TEST_FUNDS_USDC") or 5) * 10**USDC_DECIMALS)

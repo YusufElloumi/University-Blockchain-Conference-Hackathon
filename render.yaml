@@ -38,6 +38,15 @@ services:
         sync: false
       - key: TICK_SECRET
         sync: false
+      # Oura connection (api/fitness/oura.py). The redirect URI must match the Oura developer portal exactly.
+      - key: OURA_CLIENT_ID
+        sync: false
+      - key: OURA_CLIENT_SECRET
+        sync: false
+      - key: OURA_REDIRECT_URI # https://loser-buys-api.onrender.com/integrations/oura/callback
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY # Fernet key that encrypts Oura tokens in the database (api/secretbox.py)
+        sync: false
 
   # The web app: a static build of web/, served by Render (free).
   - type: web

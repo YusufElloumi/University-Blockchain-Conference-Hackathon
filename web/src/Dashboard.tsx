@@ -6,6 +6,7 @@ import { EventRow, eventStatus, InviteCodeBox } from "./events";
 import { money } from "./format";
 import { PHOTOS } from "./media";
 import { MODE_INFO, ModeBadge, MODES } from "./modes";
+import OuraCard from "./Oura";
 import { Avatar, Eyebrow, Skeleton } from "./ui";
 
 function greeting(): string {
@@ -244,6 +245,8 @@ export default function Dashboard(props: {
             )}
             <p className="fine">This is what other players see on the leaderboard.</p>
           </section>
+
+          <OuraCard session={session} />
 
           <div className="rail-links">
             <button className="rail-link" onClick={() => go({ view: "help" })}>
