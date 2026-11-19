@@ -50,6 +50,7 @@ class FakeOura:
         self.token_status = 200
         self.revoke_status = 200
         self.serial = 1
+        self.scope = None  # what Oura's token reply says was granted (None: no "scope" field)
 
     def post(self, url, data=None, headers=None, timeout=None):
         assert url == oura.TOKEN_URL and headers.get("User-Agent")
@@ -57,8 +58,11 @@ class FakeOura:
         if self.token_status != 200:
             return Reply(self.token_status, {"error": "invalid_grant"})
         n, self.serial = self.serial, self.serial + 1
-        return Reply(200, {"token_type": "bearer", "access_token": f"oura-access-SECRET-{n}",
-                           "refresh_token": f"oura-refresh-SECRET-{n}", "expires_in": 86400})
+        body = {"token_type": "bearer", "access_token": f"oura-access-SECRET-{n}",
+                "refresh_token": f"oura-refresh-SECRET-{n}", "expires_in": 86400}
+        if self.scope is not None:
+            body["scope"] = self.scope
+        return Reply(200, body)
 
     def get(self, url, params=None, headers=None, timeout=None):
         assert url == oura.REVOKE_URL
@@ -310,3 +314,21 @@ def test_request_log_hides_the_callback_code():
                                ("1.2.3.4:5", "GET", "/integrations/oura/callback?code=abc&state=xyz", "1.1", 303), None)
     main._HideOAuthQuery().filter(record)
     assert "abc" not in record.getMessage() and "xyz" not in record.getMessage()
+
+
+# ---------- granted permissions ----------
+
+
+@pytest.mark.parametrize("granted, missing", [
+    ("extapi:workout extapi:heartrate", []),  # Oura's newer sign-in server (seen on the live app)
+    ("workout heartrate", []),  # the older format
+    ("openid extapi:heartrate extapi:workout email", []),  # extras and any order
+    ("extapi:workout,extapi:heartrate", []),  # comma-separated
+    ("extapi:workout", ["heartrate"]),  # really missing one
+    ("extapi:daily", ["workout", "heartrate"]),
+    ("heartrate_extra xworkout", ["workout", "heartrate"]),  # near-misses don't count
+])
+def test_permissions_are_compared_by_plain_name(client, setup, granted, missing):
+    setup.scope = granted
+    assert connect(client).json()["missing_permissions"] == missing
+    assert stored().scopes == granted  # stored exactly as Oura sent it
