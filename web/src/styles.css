@@ -4628,8 +4628,14 @@ input[type="checkbox"] {
   gap: 12px;
 }
 
-.stepper b {
-  min-width: 120px;
+.stepper-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepper-value input {
+  width: 64px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -8429,19 +8435,24 @@ input[type="checkbox"] {
   }
 }
 
-/* Custom challenge length: a number next to an hours/days switch. */
-.length-input {
+/* Picked dates: first-day and last-day calendars side by side. */
+.date-range {
   display: grid;
-  grid-template-columns: minmax(0, 120px) minmax(0, 200px);
-  gap: 8px;
-  align-items: center;
+  grid-template-columns: repeat(2, minmax(0, 200px));
+  gap: 12px;
 }
 
-.length-input .segmented {
-  margin-top: 0;
+.date-range label {
+  display: grid;
+  gap: 6px;
 }
 
-.length-input input[aria-invalid="true"] {
+.date-range input {
+  width: 100%;
+}
+
+.date-range input[aria-invalid="true"],
+.stepper-value input[aria-invalid="true"] {
   border-color: var(--danger);
 }
 
