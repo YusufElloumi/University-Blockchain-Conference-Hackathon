@@ -14,12 +14,16 @@ Flow:
     2. It creates the challenge onchain with that hash, payout terms and our verifier key.
     3. POST /challenges reads the chain, rebuilds the ruleset from the same settings and the onchain
        length and player cap, and refuses the challenge unless the hashes and terms match.
+
+Command line (from api/), used by `scripts/wsl_anchor.sh create-challenge`:
+    python rules.py default <length in hours>    the default public ruleset, as POST /rules returns it
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import sys
 
 import attest
 import chain
@@ -127,3 +131,18 @@ def describe_payout(terms: dict) -> str:
     return {"winner_takes_all": "winner takes all", "goal": "equal split among everyone who reaches the goal",
             "teams": "equal split across the winning team"}[terms["kind"]]
 
+
+
+def preview(ruleset: dict) -> dict:
+    """What POST /rules returns for a ruleset."""
+    terms = ruleset["payout"]
+    return {"ruleset": canonical(ruleset), "rules_hash": rules_hash(ruleset).hex(),
+            "payout": {**terms, "kind_index": kind_index(terms["kind"])}, "verifier": ruleset["verifier"]}
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3 or sys.argv[1] != "default":
+        sys.exit(__doc__)
+    length = round(float(sys.argv[2]) * 3600)
+    print(json.dumps(preview(build(mode="public", length_seconds=length, max_players=8,
+                                   fmt="winner_takes_all", format_config={}))))

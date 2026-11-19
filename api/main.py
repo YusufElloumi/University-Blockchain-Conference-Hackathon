@@ -513,13 +513,7 @@ def preview_rules(body: RulesPreview) -> dict:
     verifier key to the program. POST /challenges checks the chain against the same ruleset.
     """
     ruleset, _config, _themes = _ruleset_for(body, body.length_seconds, body.max_players)
-    terms = ruleset["payout"]
-    return {
-        "ruleset": rules.canonical(ruleset),
-        "rules_hash": rules.rules_hash(ruleset).hex(),
-        "payout": {**terms, "kind_index": rules.kind_index(terms["kind"])},
-        "verifier": ruleset["verifier"],
-    }
+    return rules.preview(ruleset)
 
 
 def _register(
