@@ -171,6 +171,8 @@ Other measures:
 
 ### Proof of Sweat: results anyone in the group can check
 
+Since Nov 19, new fitness challenges only score workouts imported from a player's own connected Oura account, checked by a versioned rules engine, with one salted receipt commitment per workout inside the score sheet. Full explanation, trust model and live-testing steps: [docs/PROOF_OF_SWEAT.md](docs/PROOF_OF_SWEAT.md).
+
 (Called "Proof of Effort" in the code: `api/attest.py`, `challenges.attestation`.)
 
 When a challenge settles, a **verifier key** signs a short record of the result. A signature is a stamp only the holder of a private key can make, and anyone with the matching public key can check it. Rival uses Ed25519, the same kind of signature Solana wallets use.

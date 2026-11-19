@@ -7844,7 +7844,7 @@ input[type="checkbox"] {
 }
 
 /* =========================================================================================
-   24. TEMPORARY Oura diagnostic panel inside the Oura card (remove with OuraDiagnostic).
+   24. Oura developer diagnostic panel inside the Oura card (admins only).
    ========================================================================================= */
 
 .oura-diag {
@@ -7869,7 +7869,7 @@ input[type="checkbox"] {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #f2c879;
+  color: var(--amber);
 }
 
 .oura-diag .fine {
@@ -7950,4 +7950,482 @@ input[type="checkbox"] {
 .oura-diag-row b {
   color: var(--text);
   font-weight: 600;
+}
+
+/* =========================================================================================
+   25. Proof of Sweat: the workouts tab, receipts, leaderboard indicator.
+   Blue = verified with strong evidence, green = points, amber = limited evidence.
+   ========================================================================================= */
+
+:root {
+  --amber: #f2c879;
+  --amber-soft: rgba(242, 200, 121, 0.12);
+}
+
+.spin {
+  animation: sweat-spin 0.9s linear infinite;
+}
+
+@keyframes sweat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+.sweat-summary {
+  display: grid;
+  gap: 16px;
+}
+
+.sweat-summary-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sweat-rule {
+  margin: 6px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.sweat-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.sweat-totals > div {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+}
+
+.sweat-totals > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.sweat-totals b {
+  font-family: var(--caps);
+  font-size: clamp(30px, 4vw, 40px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.sweat-totals > div:first-child b {
+  color: var(--green);
+}
+
+.sweat-totals span {
+  font-family: var(--caps);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-sync,
+.sweat-connect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.sweat-connect {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+}
+
+.sweat-connect p {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.sweat-connect b {
+  color: var(--text);
+}
+
+.sweat-sync .fine,
+.sweat-summary > .fine {
+  margin: 0;
+}
+
+.sweat-sync .btn,
+.oura-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sweat-ok {
+  color: var(--green);
+}
+
+.sweat-list {
+  padding: 0;
+  overflow: hidden;
+}
+
+.sweat-item + .sweat-item {
+  border-top: 1px solid var(--line);
+}
+
+.sweat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.sweat-row:hover,
+.sweat-item.open .sweat-row {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.sweat-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sweat-row-main {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sweat-row-title {
+  font-size: 15px;
+  color: var(--text-2);
+}
+
+.sweat-row-title b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sweat-row .fine {
+  margin: 0;
+}
+
+.sweat-item.strong .sweat-row .fine {
+  color: var(--accent);
+}
+
+.sweat-item.limited .sweat-row .fine {
+  color: var(--amber);
+}
+
+.sweat-row-points {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--caps);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.sweat-row-points b {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--green);
+}
+
+.sweat-row-points small {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.sweat-chevron {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.2s ease;
+}
+
+.sweat-item.open .sweat-chevron {
+  transform: rotate(180deg);
+}
+
+.sweat-receipt {
+  display: grid;
+  gap: 14px;
+  margin: 0 16px 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(120, 175, 255, 0.05), transparent 120px),
+    var(--bg-raised, var(--surface));
+  animation: sweat-open 0.22s ease;
+}
+
+@keyframes sweat-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweat-receipt {
+    animation: none;
+  }
+}
+
+.sweat-receipt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.sweat-receipt-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--caps);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.sweat-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--caps);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+
+.sweat-badge.strong {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sweat-badge.limited {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.sweat-badge.rejected {
+  color: #ff9c8f;
+  background: rgba(255, 120, 100, 0.12);
+}
+
+.sweat-receipt-line {
+  margin: 0;
+  font-family: "Instrument Serif", serif;
+  font-style: italic;
+  font-size: 22px;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.sweat-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.sweat-stats dt {
+  font-family: var(--caps);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-stats dd {
+  margin: 3px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.sweat-stats dd.pts {
+  font-family: var(--caps);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--green);
+}
+
+.sweat-checks {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.sweat-checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.sweat-checks li > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+
+.sweat-checks li.passed > svg {
+  color: var(--green);
+}
+
+.sweat-checks li.limited > svg {
+  color: var(--amber);
+}
+
+.sweat-checks li.failed > svg {
+  color: #ff9c8f;
+}
+
+.sweat-checks details {
+  flex: 1;
+  min-width: 0;
+}
+
+.sweat-checks summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+}
+
+.sweat-checks summary::-webkit-details-marker {
+  display: none;
+}
+
+.sweat-checks summary em {
+  flex: none;
+  font-family: var(--caps);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-checks li.passed summary em {
+  color: var(--green);
+}
+
+.sweat-checks li.limited summary em {
+  color: var(--amber);
+}
+
+.sweat-checks li.failed summary em {
+  color: #ff9c8f;
+}
+
+.sweat-checks details p {
+  margin: 6px 0 2px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.sweat-foot {
+  margin: 0;
+}
+
+.sweat-foot code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.board-oura {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.board-oura.synced {
+  color: var(--accent);
+}
+
+.board-oura.none {
+  color: var(--text-3);
+}
+
+.oura-synced {
+  color: var(--text-3);
+}
+
+.proof-layers {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.proof-layers b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (max-width: 520px) {
+  .sweat-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sweat-totals > div {
+    padding: 12px 10px;
+  }
+
+  .sweat-receipt {
+    margin: 0 10px 12px;
+    padding: 14px;
+  }
 }

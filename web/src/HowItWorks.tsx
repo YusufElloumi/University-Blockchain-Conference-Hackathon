@@ -60,8 +60,11 @@ export default function HowItWorks({ session }: { session: Session }) {
             <ShieldCheck size={18} strokeWidth={1.75} aria-hidden />
           </span>
           <div>
-            <h3>Your workouts stay yours</h3>
-            <p>Other players see your points and nothing else. Your activities are only ever visible to you.</p>
+            <h3>Proof of Sweat</h3>
+            <p>
+              Points come from workouts your Oura Ring records, not from anything typed in. Each one is checked against
+              published rules, and you can open its receipt. Other players see your points and nothing else.
+            </p>
           </div>
         </div>
         <div className="fact">

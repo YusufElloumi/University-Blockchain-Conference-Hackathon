@@ -16,9 +16,8 @@ const ACTIVITIES: { id: string; label: string; Icon: LucideIcon }[] = [
   { id: "ride", label: "Ride", Icon: Bike },
   { id: "walk", label: "Walk", Icon: PersonStanding },
 ];
-const MINUTES = [10, 20, 45];
-const DISTANCES = [0, 5, 10];
-const DAILY_CAP = 3;
+const MINUTES = [10, 30, 60];
+const DAILY_CAP = 6;
 const START_SCORES = [
   { name: "Maya", points: 11, ticks: [true, true, false, true, true, true, false] },
   { name: "Jordan", points: 10, ticks: [true, false, true, true, true, false, false] },
@@ -27,18 +26,17 @@ const START_SCORES = [
   { name: "Priya", points: 5, ticks: [true, false, false, true, false, true, false] },
 ];
 
-/** The app's real fitness rule: 20 active minutes is a point, every 5 km is a point. */
-const workoutPoints = (minutes: number, km: number) => (minutes >= 20 ? 1 : 0) + Math.floor(km / 5);
+/** The app's real fitness rule (Proof of Sweat v1): one point for every 10 verified minutes. Distance adds nothing. */
+const workoutPoints = (minutes: number) => Math.floor(minutes / 10);
 
 /** Log a pretend workout and watch the sample leaderboard react. */
 export function WorkoutDemo() {
   const [activity, setActivity] = useState("run");
-  const [minutes, setMinutes] = useState(20);
-  const [km, setKm] = useState(5);
+  const [minutes, setMinutes] = useState(30);
   const [earned, setEarned] = useState(0); // points you have logged "today" in the demo
   const [note, setNote] = useState("");
 
-  const worth = workoutPoints(minutes, km);
+  const worth = workoutPoints(minutes);
   const room = DAILY_CAP - earned;
   const players: PlayerRow[] = START_SCORES.map((p) => ({
     ...p,
@@ -62,10 +60,10 @@ export function WorkoutDemo() {
 
   function log() {
     const gained = Math.min(worth, room);
-    if (worth === 0) return setNote("Under 20 minutes and under 5 km doesn't score. Go a little longer.");
-    if (gained === 0) return setNote("That's today's 3-point cap. The rest of the week is still open.");
+    if (worth === 0) return setNote("Under 10 minutes doesn't score. Go a little longer.");
+    if (gained === 0) return setNote("That's today's 6-point cap. The rest of the week is still open.");
     setEarned(earned + gained);
-    const capped = gained < worth ? " (capped at 3 a day)" : "";
+    const capped = gained < worth ? " (capped at 6 a day)" : "";
     const yours = players.find((p) => p.is_you)!.points + gained;
     const ahead = players.filter((p) => !p.is_you && p.points > yours).length;
     const standing = ahead === 0 ? "You take the lead." : ahead === 1 ? "One more and you're level with the leader." : "You're closing in.";
@@ -98,22 +96,12 @@ export function WorkoutDemo() {
             ))}
           </div>
         </div>
-        <div className="demo-field">
-          <span>Distance</span>
-          <div className="chips">
-            {DISTANCES.map((d) => (
-              <button key={d} type="button" className={km === d ? "chip on" : "chip"} aria-pressed={km === d} onClick={() => setKm(d)}>
-                {d === 0 ? "None" : `${d} km`}
-              </button>
-            ))}
-          </div>
-        </div>
         <div className="demo-worth">
           <b>{worth}</b>
           <span>
             point{worth === 1 ? "" : "s"} for this workout
             <small>
-              {minutes >= 20 ? "20+ active minutes: 1" : "Under 20 minutes: 0"} · {km >= 5 ? `${km} km: ${Math.floor(km / 5)}` : "Under 5 km: 0"}
+              1 point per 10 minutes · in the app, workouts come from your Oura Ring
             </small>
           </span>
         </div>
@@ -152,10 +140,10 @@ export function WorkoutDemo() {
         <Leaderboard players={players} form picks={false} />
         <div className="demo-cap" aria-label={`${earned} of ${DAILY_CAP} points earned today`}>
           <span>Today</span>
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2, 3, 4, 5].map((i) => (
             <i key={i} className={i < earned ? "on" : ""} />
           ))}
-          <span>{earned}/3 pts</span>
+          <span>{earned}/6 pts</span>
         </div>
       </div>
     </div>
@@ -169,7 +157,7 @@ const STORY = [
   { title: "Day one.", text: "You and Maya both bank two points. Game on." },
   { title: "Day two.", text: "Maya edges ahead by one." },
   { title: "Day three.", text: "She takes a rest day. You don't, and the lead is yours." },
-  { title: "Day four.", text: "You skip one. She maxes out the day and takes it straight back." },
+  { title: "Day four.", text: "You skip one. She has a big day and takes it straight back." },
   { title: "Day five.", text: "The gap holds at two. Jordan is closing." },
   { title: "Day six.", text: "One point in it, with a day to go." },
   { title: "Final day.", text: "Maya wins the week by a single point. Rematch?" },
