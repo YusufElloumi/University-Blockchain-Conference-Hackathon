@@ -74,13 +74,28 @@ All the money logic is onchain. The server never holds player funds.
 
 | Instruction | Who can call | What it does |
 |---|---|---|
-| `create_challenge` | Anyone | Creates a challenge and its empty vault. Stores the buy-in, token, start and end times, and the oracle's address |
-| `join_challenge` | Any player, before the start time | Moves the buy-in from the player's token account into the vault and adds the player (up to 8) |
+| `create_challenge` | Anyone | Creates a challenge, its empty vault and its **Rules** account. Stores the buy-in, token, start and end times, the oracle's address, and locks the rules hash, payout terms and verifier key |
+| `join_challenge(expected_rules_hash)` | Any player, before the start time | Fails unless `expected_rules_hash` equals the locked hash. Moves the buy-in into the vault and adds the player (up to 8) |
 | `end_early` | Oracle only | Ends the challenge now. Used by the admin "End week now" button |
-| `settle` | Oracle only, after the end time | Pays the vault to the winners, split equally, in the same transaction. Winners must be players. Records a hash of the score sheet |
-| `refund` | Anyone | Returns every buy-in if fewer than 2 players joined by the start, or if the oracle has not settled within 72 hours of the end |
+| `settle` | Oracle only, after the end time | Equal split (winner takes all, goal, teams, ties). Requires the verifier's Ed25519-signed result as the instruction just before it; pays exactly the winners and shares in that result |
+| `settle_split(tie_groups)` | Oracle only, after the end time | Podium payouts. The oracle only orders the winners; the program works out each share from the locked split and refuses anything else |
+| `refund` | Anyone | Returns every buy-in if fewer than 2 players joined by the start, or if nobody settled within 72 hours of the end |
 
-Each instruction emits an event (`ChallengeCreated`, `PlayerJoined`, `ChallengeEnded`, `ChallengeSettled`, `ChallengeRefunded`). Those events are what the QuickNode Stream delivers to our server.
+Each instruction emits an event (`RulesLocked`, `ChallengeCreated`, `PlayerJoined`, `ChallengeEnded`, `ChallengeSettled`, `ChallengeRefunded`). Those events are what the QuickNode Stream delivers to our server.
+
+### Locked rules: what Solana enforces, not just records
+
+Once anyone has paid, the rules and the payout split cannot change, and the program enforces them.
+
+1. **Rules locked at creation.** The server turns the creator's choices into a canonical JSON ruleset (`api/rules.py`: scoring rules version and fingerprint, length, player cap, which workouts count, consent, format, payout terms, prediction rounds, verifier). Its SHA-256 goes into a `Rules` account (a PDA at seeds `["rules", challenge]`) that no instruction can write again. The payout terms are stored as values: a kind (winner takes all, podium, goal, teams) and, for a podium, the split in basis points (10,000 = 100%), checked at creation to be 2-3 places, highest first, adding to 100%.
+2. **Joining quotes the rules.** The browser hashes the ruleset text it shows the player (WebCrypto, not the server's word) and passes that hash to `join_challenge`. Any other hash fails with `RulesMismatch` before money moves. If our scoring code changes version later, the server refuses to settle under the new rules; the challenge is refunded instead.
+3. **Result signed → signature checked by Solana at payout.** A separate verifier key signs the result. The payout transaction carries two instructions: Solana's built-in Ed25519 program checks the signature, then our `settle`/`settle_split` reads that check through the instructions sysvar and refuses unless it was the instruction right before it, signed by the locked verifier key, over a message naming this program, this challenge and the locked rules hash. Winners, shares and the score-sheet hash are read from the signed message itself. For a podium the program also recomputes every share from the locked split; for equal formats it requires equal shares.
+
+Message layout (v2): `"rival.proof-of-effort.v2"` (24 bytes) | program ID | challenge | rules hash | score-sheet hash (32 bytes each) | winner count (1 byte) | winners (32 bytes each) | shares (u16 little-endian basis points each). Details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#4-results-settlement-and-trust). One byte fixture (`onchain/shared/proof_v2_fixture.json`) is checked by the Python tests, the program tests and the TypeScript builder.
+
+On screen: "Payout locked onchain: 60 / 30 / 10. Not even Rival can change it." and, after payout, "Rules locked at creation → result signed → signature checked by Solana at payout", with a link to the payout on Solana Explorer.
+
+Challenges created before Nov 19 have no `Rules` account. The upgraded program cannot settle them; they are refund-only (anyone can refund 72 hours after the end).
 
 **How crypto stays invisible.** Privy creates a Solana wallet when someone signs in with their email. Wallet popups are turned off; our own button says what will happen ("Join for 1 USDC"). The server quietly sends each new wallet a little devnet SOL for fees, so players never see a fee. Amounts are shown in dollars, and addresses appear only behind "details" links to Solana Explorer.
 
@@ -154,9 +169,9 @@ Fitness data lives off the blockchain, so something has to report who won. That 
 
 | Question | Answer |
 |---|---|
-| Who can report results? | Only the oracle key stored in the challenge |
-| What could a dishonest or hacked oracle do? | Name the wrong player as the winner |
-| What can it not do? | Pay anyone outside the player list, take a cut, end a challenge without a visible `end_early` event, or trap the funds |
+| Who can report results? | Only the oracle key stored in the challenge, and only with a result signed by the verifier key locked in the challenge's rules |
+| What could a dishonest or hacked server do? | With both keys, name the wrong player as the winner |
+| What can it not do? | Change the rules or the payout split after creation, pay anyone outside the player list, pay shares other than the locked split, take a cut, end a challenge without a visible `end_early` event, or trap the funds |
 | What if the oracle disappears? | 72 hours after the end, anyone can call `refund` and every buy-in is returned |
 | What makes cheating detectable? | `settle` stores the SHA-256 hash of the final score sheet. Players can fetch the sheet (`GET /challenges/{address}/score-sheet`) and check it against the chain, so published scores cannot be changed quietly afterwards |
 | How can a player check a result? | Every result comes with a signed **Proof of Sweat** (below) that the app checks in the browser |
@@ -175,22 +190,27 @@ Other measures:
 
 When a challenge settles, a **verifier key** signs a short record of the result. A signature is a stamp only the holder of a private key can make, and anyone with the matching public key can check it. Rival uses Ed25519, the same kind of signature Solana wallets use.
 
-- **Verifier public key:** `5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway` (also in `api/config.py` and `web/src/proofCheck.ts`, and served at `GET /verifier`). It is separate from the oracle key.
-- **What is signed:** the challenge address, program ID, network (`devnet`), a fixed label (`rival.proof-of-effort`), the scoring rules' version and fingerprint, the SHA-256 of the score sheet, the payout shares, the time, and a random nonce. Naming the challenge, program and network stops a proof being reused anywhere else.
-- **What is not in it:** any workout detail. The proof stays offchain. Onchain there are still only winner addresses and the salted score-sheet hash.
-- **How to check it:** players of a settled challenge tap **Check result**. The browser checks the signature against the published key, re-hashes the score sheet, and compares that hash with the one `settle` stored on Solana. **Download proof** saves a file; `python attest.py verify <file>` (in `api/`) runs the same checks from a terminal and reads the hash from devnet.
-- **What it proves, and what it does not:** it proves our verifier approved this exact result and that the scores were not changed after payout. It does **not** prove a workout really happened.
+- **Verifier public key:** `5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway` (also in `api/config.py` and `web/src/proofCheck.ts`, served at `GET /verifier`, and locked into each challenge's `Rules` account). Payouts and result signatures use separate keys; both are run by our server.
+- **What is signed (v2):** the binary message above: program, challenge, locked rules hash, score-sheet hash, winners and shares. The program checks this signature onchain before paying (see "Locked rules").
+- **What is not in it:** any workout detail. Onchain there are only wallet addresses, shares and hashes.
+- **The proof file** holds the readable fields, the exact signed message (base64), the signature, and the payout transaction signature.
+- **How to check it:** players of a settled challenge tap **Check result**. The browser rebuilds the signed bytes from the readable fields, checks the signature against the published key, compares the rules hash and score-sheet hash with the ones on Solana, and reads the payout transaction to confirm Solana's Ed25519 check ran on exactly this message. **Download proof** saves a file; `python attest.py verify <file>` (in `api/`) runs the same checks from a terminal. Results from before Nov 19 carry v1 proofs, labelled "Signed, not checked onchain".
+- **What it proves, and what it does not:** it proves our verifier approved this exact result under the rules locked at creation, that Solana checked the signature at payout, and that the scores were not changed afterwards. It does **not** prove a workout really happened.
 
 Each workout also gets a state in each challenge, shown only to its owner: **Passed checks**, **Counts · unverified** (typed in by hand), or **Not counted**, with the reason (outside the dates, overlapping, impossibly fast, and so on).
 
-What we would add before real money: a dispute window before payout, more than one signer on results, verified activity data, and an audit of the program.
+### What we'd build next
+
+- **Independent verifier hardware:** run the verifier key and scoring in hardware-isolated computers (TEEs), so the signing key is not held by the same server as the payout key.
+- **A dispute window:** a set time between the signed result and the payout in which players can challenge it.
+- Verified activity data, more than one signer on results, and an audit of the program before any real money.
 
 ## What is real and what is simulated
 
 - **Real (devnet):** entry fees, the prize pool and every payout are real devnet USDC transactions handled by our Anchor program. Every result is signed by the verifier key, and its score-sheet hash is stored onchain, so players can check the scores were not changed after payout.
 - **Simulated:** the workouts. They are sample data (`mock`, made to look like a watch recording) or typed in by hand (`manual`, labelled unverified). Both go through the same checks.
 - **Not built yet:** live fitness sync. The app shows "Connect a fitness app · Coming soon" and says so. We do not show Strava's button or logo, because their brand rules reserve it for a working Strava sign-in.
-- **Trust:** a signature shows our verifier approved a result. It does not prove a workout happened. Checking the signature inside the Solana program, and running scoring in hardware-isolated computers (TEEs), are planned, not built.
+- **Trust:** the program checks the verifier's signature and the locked rules and split at payout. That shows our verifier approved the result; it does not prove a workout happened. Independent verifier hardware and a dispute window are planned, not built.
 
 ## Fitness data and privacy
 
@@ -294,6 +314,6 @@ docs/               SETUP.md (teammate setup, macOS and Windows), ARCHITECTURE.m
 - Workouts are demo data or self-reported until a verified source such as Strava is connected.
 - One scoring template.
 - The 72-hour refund timeout is in the program but is not covered by an automated test, because the local test validator's clock cannot be moved forward.
-- Results depend on one oracle key (see "Trust and security").
+- Results depend on our server's oracle and verifier keys (see "Trust and security"). The program limits what they can do but cannot check workouts.
 
 Built during the hackathon (started Nov 12, 2026), with AI coding tools.
