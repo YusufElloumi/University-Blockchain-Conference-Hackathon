@@ -11,6 +11,7 @@ export type Me = {
   name: string;
   test_funds_used: boolean;
   test_funds_amount: number;
+  is_admin?: boolean;
   usdc: number | null;
   ready?: boolean;
   signature?: string;
@@ -20,6 +21,8 @@ export type AppConfig = {
   oracle: string;
   usdc_mint: string;
   fitness: { source: string; label: string; can_add: boolean; types: string[] };
+  /** Rules a challenge created now will use. Proof of Sweat: points come only from Oura-verified workouts. */
+  new_challenge_rules?: { proof_of_sweat: boolean; summary: string | null };
   pick_themes: { id: string; label: string }[];
   max_pick_points: number;
 };
@@ -45,6 +48,8 @@ export type ChallengeView = {
   format: Format; // how the pool is paid; fixed when the event was created
   format_config: FormatConfig;
   format_summary: string; // one plain sentence
+  /** Which fitness rules apply, fixed at creation. */
+  rules?: { name: string; version: string; sha256: string | null; proof_of_sweat: boolean; summary: string };
   // The ruleset locked onchain at creation (api/rules.py). The browser hashes `ruleset` itself.
   ruleset: string | null; // canonical JSON text; null for challenges from before rules were locked
   rules_hash: string | null;
@@ -76,6 +81,8 @@ export type PlayerRow = {
   projected_share: number; // percent of the pool this player would win if it ended now
   goal_progress: number | null; // goal format: active days or points so far
   is_you: boolean;
+  /** Proof of Sweat challenges: is this player's Oura linked and synced? Nothing about their workouts. */
+  oura?: "none" | "waiting" | "synced" | null;
 };
 
 /** One prediction round: a Gemini market, its sides, and (after kick-off) everyone's picks. */
@@ -127,6 +134,8 @@ export type ChallengeState = {
     teams?: { team: number; name: string; average: number | null; members: number; rank: number | null }[];
   } | null;
   rounds: { total: number; max_points: number; list: PickRound[] } | null;
+  /** Proof of Sweat challenges: when the scores get fixed (the end plus a sync grace period). */
+  sweat?: { grace_seconds: number; scores_final_after: string; awaiting_final_sync: boolean } | null;
   feed: FeedItem[];
 };
 

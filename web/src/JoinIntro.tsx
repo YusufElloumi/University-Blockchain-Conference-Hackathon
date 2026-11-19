@@ -8,6 +8,7 @@ import {
   Footprints,
   Goal,
   Handshake,
+  ShieldCheck,
   Target,
   Timer,
   Trophy,
@@ -20,6 +21,7 @@ import {
  * Next, Next, then "I'm ready" starts the deposit. The wording follows the event's own settings.
  */
 export type JoinIntroProps = {
+  sweat?: boolean; // Proof of Sweat: points only from Oura-verified workouts
   scoring: "fitness" | "league_stats";
   weights: StatWeights | null;
   hasPicks: boolean;
@@ -73,7 +75,13 @@ export default function JoinIntro(props: JoinIntroProps) {
         Icon,
         text: `1 ${one} = ${pts(props.weights![key])}`,
       }))
-    : [
+    : props.sweat
+      ? [
+          { Icon: Timer, text: "10 verified min = 1 pt" },
+          { Icon: ChevronsUp, text: "Up to 6 pts a day" },
+          { Icon: ShieldCheck, text: "Oura Ring workouts only" },
+        ]
+      : [
         { Icon: Timer, text: "20 active min = 1 pt" },
         { Icon: Footprints, text: "Every 5 km = 1 pt" },
         { Icon: ChevronsUp, text: "Up to 3 pts a day" },
@@ -113,7 +121,18 @@ export default function JoinIntro(props: JoinIntroProps) {
           Climb the <em className="serif">leaderboard.</em>
         </>
       ),
-      body: <p>Every point moves you up. Your group sees your points, and only your points.</p>,
+      body: props.sweat ? (
+        <>
+          <p>Every point moves you up. Your group sees your points, and only your points.</p>
+          <p className="fine">
+            Rival reads workouts and heart rate from your connected Oura account to check and score them. Workout details stay
+            private to you. Only the final scores' fingerprint goes on Solana. You can disconnect Oura on your dashboard at any
+            time, which deletes your imported workouts.
+          </p>
+        </>
+      ) : (
+        <p>Every point moves you up. Your group sees your points, and only your points.</p>
+      ),
     },
     {
       art: teams.length ? null : <WinArt amount={usdc(pool)} />,

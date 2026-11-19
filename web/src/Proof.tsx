@@ -10,6 +10,7 @@ import {
   payloadOf,
   VERIFIER_PUBLIC_KEY,
   type Check,
+  type OwnReceipt,
   type Proof,
   type ScoreSheetReply,
 } from "./proofCheck";
@@ -37,10 +38,17 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
         setError("This challenge was paid out before signed results existed, so there is nothing to check.");
         return;
       }
+      // Proof of Sweat results: also fetch this player's own final receipts, to check them against the sheet.
+      let own: OwnReceipt[] = [];
+      if (found.sheet.proof_of_sweat) {
+        own = await call<{ receipts: OwnReceipt[] }>("GET", `/me/sweat?challenge=${info.address}`)
+          .then((r) => r.receipts)
+          .catch(() => []);
+      }
       setChecks(
         isV2(found.proof)
-          ? await checkProofV2(info.address, found, info)
-          : await checkProof(info.address, found, info.scoreHash),
+          ? await checkProofV2(info.address, found, info, own)
+          : await checkProof(info.address, found, info.scoreHash, own),
       );
     } catch (e) {
       setError((e as Error).message);
@@ -119,6 +127,18 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
                   <dd>v1, signed, not checked onchain</dd>
                   <dt>Rules</dt>
                   <dd>{payload?.rules.version ?? "unknown"}</dd>
+                  {payload?.rules.sha256 && (
+                    <>
+                      <dt>Rules SHA-256</dt>
+                      <dd className="mono">{payload.rules.sha256}</dd>
+                    </>
+                  )}
+                </>
+              )}
+              {(proofV2?.proof_of_sweat ?? payload?.proof_of_sweat) && (
+                <>
+                  <dt>Workout receipts</dt>
+                  <dd>{(proofV2?.proof_of_sweat ?? payload?.proof_of_sweat)!.receipts} committed by fingerprint</dd>
                 </>
               )}
               <dt>Score sheet SHA-256</dt>
@@ -132,11 +152,25 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
               <dt>Signed</dt>
               <dd>{new Date((proofV2?.issued_at ?? payload?.issued_at ?? 0) * 1000).toLocaleString()}</dd>
             </dl>
+            <ol className="proof-layers">
+              <li>
+                <b>Offchain workout checks.</b> Rival's server compares each workout Oura recorded with the published rules.
+                Solana does not see or check workouts.
+              </li>
+              <li>
+                <b>Signed attestation.</b> Rival's verifier key signs the final result, so it can't be altered without the
+                signature breaking. You are still trusting Rival's verifier to have read the Oura records honestly.
+              </li>
+              <li>
+                <b>Onchain settlement.</b> The Solana program stores the result's fingerprint and pays the prize pool only on
+                its own conditions: after the end, to players, once. For challenges with rules locked at creation it also
+                checks the verifier's signature on this exact result and pays only the split that was locked.
+              </li>
+            </ol>
             <p className="fine">
-              The program pays only the winners and shares in a result signed by this key, under the rules locked at
-              creation. That shows Rival's verifier approved the result; it does not prove a workout happened. Payouts and
-              signatures use separate keys, both run by Rival's server. No workout details are in the proof or on
-              Solana.
+              None of this proves a workout happened. It shows which recorded evidence was checked, that the result wasn't
+              changed afterwards, and that the payout followed it. Payouts and result signatures use separate keys, both
+              run by Rival's server. No workout details are in the proof or on Solana.
             </p>
           </details>
           <div className="btn-row">

@@ -309,6 +309,8 @@ def status(session: Session, user_id: int) -> dict:
         "connected": connection is not None,
         "connected_at": db.utc(connection.connected_at).isoformat() if connection else None,
         "missing_permissions": [s for s in SCOPES if s not in granted] if connection and connection.scopes else [],
+        "last_sync_at": db.utc(connection.last_sync_at).isoformat() if connection and connection.last_sync_at else None,
+        "last_sync_error": connection.last_sync_error if connection else None,
     }
 
 
@@ -335,5 +337,8 @@ def disconnect(session: Session, user_id: int) -> bool:
         delete(db.FitnessConnection).where(db.FitnessConnection.user_id == user_id, db.FitnessConnection.provider == PROVIDER)
     )
     session.execute(delete(db.OAuthState).where(db.OAuthState.user_id == user_id, db.OAuthState.provider == PROVIDER))
+    # Imported workouts go with the link: no connection, no Oura-derived records.
+    session.execute(delete(db.ImportedActivity).where(db.ImportedActivity.user_id == user_id,
+                                                      db.ImportedActivity.provider == PROVIDER))
     session.commit()
     return revoked

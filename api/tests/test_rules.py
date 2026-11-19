@@ -8,8 +8,10 @@ from solders.keypair import Keypair
 from solders.pubkey import Pubkey
 
 import chain
+import config
 import rules
 import scoring
+import sweat
 from test_stage4 import CHALLENGE, VERIFIER, WALLETS, client, fakes, make_token  # noqa: F401
 
 PODIUM = {"mode": "private", "format": "podium", "format_config": {"shares": [60, 30, 10]}}
@@ -44,7 +46,8 @@ def test_the_preview_gives_the_canonical_text_its_hash_and_the_payout_terms(clie
     assert body["verifier"] == str(VERIFIER.pubkey())
     ruleset = json.loads(body["ruleset"])
     assert rules.canonical(ruleset) == body["ruleset"]  # canonical: re-encoding gives the same text
-    assert ruleset["scoring"] == {"source": "fitness", "version": scoring.RULES_VERSION,
+    # The ruleset names the fitness rules new challenges use now (tests run with the Daily Mover rules).
+    assert ruleset["scoring"] == {"source": "fitness", "name": "daily_mover", "version": scoring.RULES_VERSION,
                                   "sha256": scoring.rules_fingerprint(), "stat_weights": None}
     assert ruleset["workouts"] == {"count": ["verified", "flagged"], "never_count": ["rejected"]}
     assert ruleset["consent_required"] is True and ruleset["length_seconds"] == 7 * 86400
@@ -135,3 +138,18 @@ def test_payout_labels():
     assert rules.describe_payout({"kind": "podium", "split_bps": [6000, 3000, 1000]}) == "60 / 30 / 10"
     assert rules.describe_payout({"kind": "winner_takes_all", "split_bps": []}) == "winner takes all"
     assert WALLETS  # (imported for the shared fixtures)
+
+
+def test_the_ruleset_names_the_fitness_rules_the_challenge_is_scored_by(monkeypatch):
+    monkeypatch.setattr(config, "NEW_CHALLENGE_RULES", "daily_mover")
+    legacy = rules.build(mode="public", length_seconds=86400, max_players=8, fmt="winner_takes_all", format_config={})
+    assert legacy["scoring"]["name"] == "daily_mover" and legacy["scoring"]["version"] == scoring.RULES_VERSION
+    assert legacy["workouts"] == {"count": ["verified", "flagged"], "never_count": ["rejected"]}
+    monkeypatch.setattr(config, "NEW_CHALLENGE_RULES", sweat.TEMPLATE)
+    current = rules.build(mode="public", length_seconds=86400, max_players=8, fmt="winner_takes_all", format_config={})
+    assert current["scoring"]["name"] == sweat.TEMPLATE and rules.rules_hash(current) != rules.rules_hash(legacy)
+    rules.check_current(legacy)  # each keeps its own rules, whatever new challenges use now
+    rules.check_current(current)
+    unnamed = json.loads(json.dumps(legacy))
+    del unnamed["scoring"]["name"]  # locked before Proof of Sweat existed: Daily Mover
+    rules.check_current(unnamed)

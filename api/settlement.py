@@ -45,6 +45,8 @@ import pickrounds
 import rules
 import scores
 import scoring
+import sweat
+from fitness import oura_sync
 
 log = logging.getLogger("loser_buys")
 _busy: set[str] = set()  # challenges being finished right now, so two requests cannot both pay out
@@ -63,11 +65,92 @@ def sheet_hash(sheet: dict) -> bytes:
     return attest.sheet_sha256(sheet)
 
 
-def build_sheet(session: Session, challenge: db.Challenge, players: list[str]) -> dict:
-    """Final points for every onchain player, after pulling each player's activities one last time."""
+RECEIPT_DOMAIN = "rival.proof-of-sweat.receipt"
+RECEIPT_SCHEMA = 1
+
+
+def receipt_commitment(payload: dict) -> str:
+    """SHA-256 (hex) of a receipt in canonical form. The receipt carries a random salt, so the
+    commitment reveals nothing about the workout and cannot be guessed from the few possible values."""
+    return attest.sheet_sha256(payload).hex()
+
+
+def sweat_section(session: Session, challenge: db.Challenge, players: list[str], sync: dict[int, str] | None,
+                  store: bool) -> dict:
+    """The Proof of Sweat part of a score sheet: per player, verified minutes, points, and one salted
+    commitment per assessed workout. No workout times, provider IDs or heart-rate data.
+
+    With `store`, each receipt's full text is saved for its owner (sweat_receipts); not committed here.
+    """
+    users = {u.wallet_address: u for u in session.scalars(
+        select(db.User).join(db.Participant, db.Participant.user_id == db.User.id)
+        .where(db.Participant.challenge_id == challenge.id))}
+    fingerprint = sweat.rules_fingerprint()
+    listed = []
+    for wallet in players:
+        user = users.get(wallet)
+        entry = {"wallet": wallet, "eligible_minutes": 0, "fitness_points": 0, "receipts": [],
+                 "sync": (sync or {}).get(user.id, "not_recorded") if user else "not_a_rival_player"}
+        if user is not None:
+            sheet = scores.sweat_sheet(session, challenge, user.id)
+            entry["eligible_minutes"], entry["fitness_points"] = sheet.eligible_minutes, sheet.total
+            for row in scores.imported_rows(session, challenge, user.id):
+                line = sheet.lines.get(oura_sync.as_workout(row).ref)
+                if line is None:
+                    continue
+                payload = receipt_payload(challenge.address, wallet, fingerprint, row, line)
+                commitment = receipt_commitment(payload)
+                entry["receipts"].append(commitment)
+                if store:
+                    session.add(db.SweatReceipt(challenge_id=challenge.id, user_id=user.id, commitment=commitment,
+                                                payload=attest.canonical(payload)))
+            entry["receipts"].sort()
+        listed.append(entry)
+    return {"schema": RECEIPT_SCHEMA, "receipt_domain": RECEIPT_DOMAIN, "provider": oura_sync.PROVIDER,
+            "participants": listed}
+
+
+def receipt_payload(challenge: str, wallet: str, fingerprint: str, row: db.ImportedActivity, line: sweat.Line,
+                    salt: str | None = None) -> dict:
+    """One workout's result in one challenge, bound to that challenge, wallet, program and rule set."""
+    checks = [{"code": c.code, "result": c.result, "reason": c.reason} for c in oura_sync.checks_of(row)]
+    checks += [
+        {"code": "window", "result": line.window, "reason": line.reason if line.window == sweat.FAILED else None},
+        {"code": "duplicate", "result": line.overlap, "reason": line.reason if line.overlap != sweat.PASSED else None},
+        {"code": "scoring", "result": sweat.PASSED if line.status == sweat.VERIFIED else line.status
+         if line.status == sweat.PENDING else sweat.FAILED, "reason": None},
+    ]
+    return {
+        "schema": RECEIPT_SCHEMA,
+        "domain": RECEIPT_DOMAIN,
+        "cluster": attest.CLUSTER,
+        "program": str(chain.PROGRAM_ID),
+        "challenge": challenge,
+        "wallet": wallet,
+        "rules_version": sweat.RULES_VERSION,
+        "rules_sha256": fingerprint,
+        "activity": row.activity_type,
+        "duration_minutes": int(row.minutes or 0),
+        "eligible_minutes": line.eligible_minutes,
+        "points": line.points,
+        "days": {str(day): seconds // 60 for day, seconds in sorted(line.days.items())},
+        "result": line.status,
+        "assurance": row.assurance if line.status == sweat.VERIFIED else None,
+        "reason": line.reason or row.reason,
+        "checks": checks,
+        "salt": salt or secrets.token_hex(16),
+    }
+
+
+def build_sheet(session: Session, challenge: db.Challenge, players: list[str], sync: dict[int, str] | None = None,
+                commit: bool = True) -> dict:
+    """Final points for every onchain player, worked out one last time from what is stored.
+
+    Proof of Sweat challenges read imported workouts only: no call to Oura happens here.
+    """
     participants = session.scalars(select(db.Participant.user_id).where(db.Participant.challenge_id == challenge.id))
-    for user_id in participants:
-        scores.recompute(session, challenge, user_id)
+    for user_id in list(participants):
+        scores.recompute(session, challenge, user_id, commit=commit)
     rows = {row["wallet"]: row for row in scores.leaderboard(session, challenge)}
     fmt, settings = formats.of(challenge)
 
@@ -90,6 +173,9 @@ def build_sheet(session: Session, challenge: db.Challenge, players: list[str]) -
         "scores": [entry(wallet) for wallet in players],
         "salt": secrets.token_hex(16),  # stops anyone guessing the sheet from the hash alone
     }
+    if scores.is_sweat(challenge):
+        sheet["rules_version"], sheet["rules_sha256"] = sweat.RULES_VERSION, sweat.rules_fingerprint()
+        sheet["proof_of_sweat"] = sweat_section(session, challenge, players, sync, store=not commit)
     if scores.uses_league_stats(challenge):
         sheet["rules"] = "league_stats"
         sheet["rules_version"], sheet["rules_sha256"] = leaguestats.RULES_VERSION, None  # weights are hashed below
@@ -164,11 +250,14 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
         challenge.status, challenge.settle_tx = "refunded", signature
         result.update(action="refunded", status="refunded", signature=signature)
     else:
-        grace = 0 if end_now else config.SETTLE_GRACE_SECONDS
-        if now < state.end_time + grace:
+        is_sweat = scores.is_sweat(challenge)
+        # Proof of Sweat: rings sync to Oura's cloud with a delay, so wait a while before fixing the scores.
+        grace = 0 if end_now else max(config.SETTLE_GRACE_SECONDS, config.SYNC_GRACE_SECONDS if is_sweat else 0)
+        if now < state.end_time:
             raise NotYet("The challenge has not finished yet.")
-        # Prediction rounds: wait for Gemini's results, up to RESULT_WAIT after the end. Then (or at once,
-        # for an admin's early end) any round still without a result is void and scores nothing.
+        if now < state.end_time + grace:
+            raise NotYet("Waiting for final workout syncs before the scores are fixed." if is_sweat
+                         else "The challenge has not finished yet.")
         locked = chain.fetch_rules(client, address)
         ruleset = rules.of(challenge)
         if locked is None or ruleset is None:
@@ -185,14 +274,32 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
             rules.check_current(ruleset)  # never re-score under rules nobody agreed to
         except rules.RulesError as e:
             raise NotYet(str(e)) from e
+        named = ruleset["scoring"].get("name") or sweat.LEGACY_TEMPLATE
+        if ruleset["scoring"]["source"] == "fitness" and named != (challenge.template or sweat.LEGACY_TEMPLATE):
+            raise NotYet(f"This challenge locked {named} scoring but is recorded with {challenge.template}. "
+                         "It will not be scored under rules nobody agreed to; it refunds 72 hours after the end.")
         verifier = attest.load_verifier()
         if verifier is None or verifier.pubkey() != locked.verifier:
             raise NotYet("The verifier key named in this challenge's rules is not available, so the result "
                          "can't be signed. Payout waits until it is.")
+        # Prediction rounds: wait for Gemini's results, up to RESULT_WAIT after the end. Then (or at once,
+        # for an admin's early end) any round still without a result is void and scores nothing.
         waited = now - state.end_time >= pickrounds.RESULT_WAIT.total_seconds()
         if not pickrounds.resolve(session, challenge, give_up=end_now or waited):
             raise NotYet("Waiting for game results from Gemini.")
-        sheet = build_sheet(session, challenge, [str(p) for p in state.players])
+        sync_states = None
+        if is_sweat:
+            # Outside the settlement itself: bring every player's imported workouts up to date, by the same
+            # rule for all. Bounded: a few tries per player, and no waiting past SYNC_GIVE_UP_SECONDS.
+            gave_up = end_now or now - state.end_time >= config.SYNC_GIVE_UP_SECONDS
+            ready, sync_states = oura_sync.reconcile_challenge(
+                session, challenge, datetime.fromtimestamp(state.end_time, timezone.utc), force=gave_up)
+            if not ready:
+                raise NotYet("Waiting for final workout syncs before the scores are fixed.")
+        # From here to the commit the challenge row is locked (Postgres), and nothing is committed in
+        # between, so the points that are hashed and sent onchain are exactly the points that are stored.
+        session.execute(select(db.Challenge.id).where(db.Challenge.id == challenge.id).with_for_update())
+        sheet = build_sheet(session, challenge, [str(p) for p in state.players], sync=sync_states, commit=False)
         sheet["rules_hash"] = locked.rules_hash.hex()
         payout = payout_of(sheet)  # follows from the sheet alone, so anyone holding it can check the payout
         keys = [Pubkey.from_string(w) for w in payout.wallets]
@@ -219,6 +326,11 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
 def finish_all_due(session: Session) -> list[dict]:
     """The automatic path: finishes every open challenge that is due. Called by a scheduler."""
     done = []
+    try:  # retention: drop imported workouts no recent challenge needs
+        oura_sync.cleanup(session)
+    except Exception:
+        session.rollback()
+        log.exception("Could not clean up imported workouts")
     for challenge in session.scalars(select(db.Challenge).where(db.Challenge.status == "open")).all():
         if db.utc(challenge.start_time) > datetime.now(timezone.utc):
             continue

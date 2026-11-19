@@ -12,7 +12,13 @@ type Ruleset = {
   mode: string;
   length_seconds: number;
   max_players: number;
-  scoring: { source: string; version: string; sha256: string | null; stat_weights: Record<string, number> | null };
+  scoring: {
+    source: string;
+    name?: string; // "proof_of_sweat_v1" or "daily_mover"; missing on rulesets locked before Proof of Sweat
+    version: string;
+    sha256: string | null;
+    stat_weights: Record<string, number> | null;
+  };
   workouts: { count: string[]; never_count: string[] };
   consent_required: boolean;
   format: { name: string } & Record<string, unknown>;
@@ -60,6 +66,7 @@ export function LockedRulesCard({ info, ruleset }: { info: ChallengeInfo; rulese
   const r = JSON.parse(ruleset) as Ruleset;
   const matches = hash === null ? null : hash === info.rules.rulesHash;
   const lockedLine = payoutLockedLine(info);
+  const sweat = r.scoring.name === "proof_of_sweat_v1";
   const rows: [string, string][] = [
     [
       "Scoring",
@@ -68,9 +75,16 @@ export function LockedRulesCard({ info, ruleset }: { info: ChallengeInfo; rulese
             .filter(([, v]) => v > 0)
             .map(([k, v]) => `${v} per ${k.replace(/s$/, "")}`)
             .join(", ")})`
-        : `Daily Mover rules, version ${r.scoring.version}`,
+        : sweat
+          ? `Proof of Sweat: Oura-verified exercise only (${r.scoring.version})`
+          : `Daily Mover rules (${r.scoring.version})`,
     ],
-    ["Workouts that count", "Passed checks and hand-typed (marked unverified). Rejected ones never count."],
+    [
+      "Workouts that count",
+      sweat
+        ? "Only workouts synced from Oura that pass the checks. Nothing typed into the app counts."
+        : "Passed checks and hand-typed (marked unverified). Rejected ones never count.",
+    ],
     ["Runs for", termLabel(r.length_seconds * 1000)],
     ["Players", `Up to ${r.max_players}. Only players who agree to share their points can score.`],
     [

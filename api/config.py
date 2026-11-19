@@ -59,6 +59,17 @@ ORACLE_PUBLIC_KEY = os.environ.get("ORACLE_PUBLIC_KEY") or "6EEkAR114PYKhJJCWBiJ
 # README and in web/src/proof.ts, so a proof can be checked without asking our server who to trust.
 VERIFIER_PUBLIC_KEY = os.environ.get("VERIFIER_PUBLIC_KEY") or "5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway"
 
+# Which fitness rules a NEW challenge gets (api/sweat.py). Production leaves this unset: Proof of Sweat,
+# scored only from workouts imported from a player's own connected Oura account. "daily_mover" is the
+# old self-reported rule set, kept for the automated tests and for challenges created before Proof of Sweat.
+NEW_CHALLENGE_RULES = os.environ.get("NEW_CHALLENGE_RULES") or "proof_of_sweat_v1"
+# Proof of Sweat settlement: wait this long after the end so rings can sync (not a guarantee that they will),
+# and stop waiting for a missing final sync this long after the end.
+SYNC_GRACE_SECONDS = int(os.environ.get("SYNC_GRACE_SECONDS") or 30 * 60)
+SYNC_GIVE_UP_SECONDS = int(os.environ.get("SYNC_GIVE_UP_SECONDS") or 6 * 60 * 60)
+# Imported workouts are deleted this many days after the last challenge that needed them ended.
+EVIDENCE_RETENTION_DAYS = int(os.environ.get("EVIDENCE_RETENTION_DAYS") or 7)
+
 # Settlement. Grace period: how long after the end we wait for late activities (0 for demos; 12 hours suits Strava).
 SETTLE_GRACE_SECONDS = int(os.environ.get("SETTLE_GRACE_SECONDS") or 0)
 ADMIN_EMAILS = {e.strip().lower() for e in (os.environ.get("ADMIN_EMAILS") or "").split(",") if e.strip()}

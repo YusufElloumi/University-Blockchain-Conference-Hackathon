@@ -35,6 +35,7 @@ export type ProofV2 = {
   issued_at: number;
   settle_tx: string | null;
   checked_onchain: true;
+  proof_of_sweat?: { receipts: number; receipts_sha256: string }; // covered by the signed score-sheet hash
 };
 
 export type AnyProof = Proof | ProofV2;
@@ -63,7 +64,14 @@ export type ProofPayload = {
   issued_at: number;
   nonce: string;
   verifier: string;
+  /** Proof of Sweat results (schema 2): how many workout receipts the sheet commits to, and one hash over them. */
+  proof_of_sweat?: { receipts: number; receipts_sha256: string };
 };
+
+/** A player's own final workout receipt: the exact text whose SHA-256 is listed in the score sheet. */
+export type OwnReceipt = { commitment: string; canonical: string; receipt: { wallet: string } };
+
+type SweatSection = { participants: { wallet: string; receipts: string[] }[] };
 
 export type Check = { label: string; ok: boolean | null; detail: string };
 
@@ -128,8 +136,25 @@ async function checkedAtPayout(signature: string, message: Uint8Array): Promise<
   }
 }
 
+/** Has Solana confirmed the payout transaction? null when the network could not be asked. */
+async function settlementConfirmed(signature: string | null): Promise<boolean | null> {
+  if (!signature) return null;
+  try {
+    const { value } = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+    if (!value) return false;
+    return !value.err && (value.confirmationStatus === "confirmed" || value.confirmationStatus === "finalized");
+  } catch {
+    return null;
+  }
+}
+
 /** Every check for a v2 proof. `info` is the challenge as read from Solana by this browser. */
-export async function checkProofV2(address: string, reply: ScoreSheetReply, info: ChallengeInfo): Promise<Check[]> {
+export async function checkProofV2(
+  address: string,
+  reply: ScoreSheetReply,
+  info: ChallengeInfo,
+  own: OwnReceipt[] = [],
+): Promise<Check[]> {
   const proof = reply.proof as ProofV2;
   const message = fromBase64(proof.message);
   let rebuilt: Uint8Array | null = null;
@@ -197,12 +222,48 @@ export async function checkProofV2(address: string, reply: ScoreSheetReply, info
             ? "The signed fingerprint differs from the score sheet."
             : "The score sheet's fingerprint matches the one stored on Solana at payout.",
     },
+    ...(await sweatChecks(reply, proof.proof_of_sweat, own)),
   ];
 }
 
-/** Runs every check on a v1 proof. `onchainHash` is the challenge account's `score_hash`, read from Solana by the browser. */
-export async function checkProof(address: string, reply: ScoreSheetReply, onchainHash: number[]): Promise<Check[]> {
-  const proof = reply.proof as Proof;
+/** The Proof of Sweat checks: the sheet's receipt list matches the signed summary, and the player's own receipts are in it. */
+async function sweatChecks(
+  reply: ScoreSheetReply,
+  signed: { receipts: number; receipts_sha256: string } | undefined,
+  own: OwnReceipt[],
+): Promise<Check[]> {
+  const section = reply.sheet.proof_of_sweat as SweatSection | undefined;
+  if (!section) return [];
+  const all = section.participants.flatMap((p) => p.receipts);
+  const summary = await sha256Hex(JSON.stringify([...all].sort()));
+  const bound = !!signed && signed.receipts === all.length && signed.receipts_sha256 === summary;
+  const checks: Check[] = [
+    {
+      label: "Workout checks are part of the signed result",
+      ok: bound,
+      detail: bound
+        ? `The result commits to ${all.length} workout receipt${all.length === 1 ? "" : "s"} by fingerprint. No workout details are in it.`
+        : "The workout receipts listed do not match what was signed.",
+    },
+  ];
+  if (own.length) {
+    const mine = section.participants.find((p) => p.wallet === own[0].receipt.wallet)?.receipts ?? [];
+    let good = true;
+    for (const r of own) good = good && (await sha256Hex(r.canonical)) === r.commitment && mine.includes(r.commitment);
+    checks.push({
+      label: "Your workout receipts are in this result",
+      ok: good,
+      detail: good
+        ? `Each of your ${own.length} receipt${own.length === 1 ? "" : "s"} hashes to a fingerprint listed under your wallet.`
+        : "One of your receipts does not match the fingerprints in the result.",
+    });
+  }
+  return checks;
+}
+
+/** Runs every check. `onchainHash` is the challenge account's `score_hash`, read from Solana by the browser. */
+export async function checkProof(address: string, reply: ScoreSheetReply, onchainHash: number[], own: OwnReceipt[] = []): Promise<Check[]> {
+  const proof = reply.proof!;
   const payload = JSON.parse(proof.message) as ProofPayload;
   const signed = await signatureValid(proof);
   const byUs = proof.verifier === VERIFIER_PUBLIC_KEY && payload.verifier === VERIFIER_PUBLIC_KEY;
@@ -243,6 +304,20 @@ export async function checkProof(address: string, reply: ScoreSheetReply, onchai
             ? "The signed fingerprint differs from the score sheet."
             : "The score sheet's fingerprint matches the one stored on Solana at payout.",
     },
+    ...(await sweatChecks(reply, payload.proof_of_sweat, own)),
+    await (async (): Promise<Check> => {
+      const confirmed = await settlementConfirmed(reply.transaction);
+      return {
+        label: "Payout confirmed on Solana",
+        ok: confirmed,
+        detail:
+          confirmed === null
+            ? "Couldn't ask the network just now. Open the payout link to check it yourself."
+            : confirmed
+              ? "The payout transaction is confirmed on Solana devnet."
+              : "The payout transaction was not found as confirmed.",
+      };
+    })(),
     {
       label: "Signed, not checked onchain",
       ok: null,

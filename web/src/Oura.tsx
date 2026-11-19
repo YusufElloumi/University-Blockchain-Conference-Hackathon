@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { ApiError } from "./api";
 import type { Session } from "./App";
+import { syncOura } from "./Sweat";
 import { Eyebrow } from "./ui";
 
 /** What the server says about the caller's Oura link. Tokens never come to the browser. */
@@ -9,6 +11,8 @@ type OuraStatus = {
   connected: boolean;
   connected_at: string | null;
   missing_permissions: string[];
+  last_sync_at?: string | null;
+  last_sync_error?: string | null;
 };
 
 const REASONS: Record<string, string> = {
@@ -33,11 +37,28 @@ function clearReturn() {
   window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : ""));
 }
 
+const SYNC_ERROR: Record<string, string> = {
+  reconnect: "Oura stopped accepting Rival's access. Disconnect, then connect again.",
+  permission: "Oura refused access to workouts. Reconnect and allow workouts and heart rate.",
+  rate_limited: "Oura was busy on the last sync. Try again in a few minutes.",
+  unreachable: "Oura couldn't be reached on the last sync. Your points are unchanged.",
+  error: "The last sync didn't finish. Your points are unchanged.",
+};
+
+const ago = (iso: string) => {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)} h ago`;
+  return `${Math.round(minutes / 1440)} d ago`;
+};
+
 const message = (e: unknown) => (e instanceof ApiError ? e.message : "Something went wrong. Try again.");
 
 /** Connect an Oura Ring. Connection only for now: Rival does not read any Oura data yet. */
 export default function OuraCard({ session }: { session: Session }) {
   const { call } = session;
+  const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState<OuraStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -98,6 +119,22 @@ export default function OuraCard({ session }: { session: Session }) {
     }
   }
 
+  async function sync() {
+    setSyncing(true);
+    setError(null);
+    setNote(null);
+    try {
+      const done = await syncOura(call);
+      setStatus(await call<OuraStatus>("GET", "/integrations/oura"));
+      setNote(done);
+    } catch (e) {
+      setError(message(e));
+      call<OuraStatus>("GET", "/integrations/oura").then(setStatus).catch(() => undefined);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function disconnect() {
     setBusy(true);
     setError(null);
@@ -134,9 +171,18 @@ export default function OuraCard({ session }: { session: Session }) {
 
       <p className="oura-line">
         {connected
-          ? `Linked${since ? ` since ${since}` : ""}. Your Oura data isn't used for points yet; workout checks come later.`
-          : "Link your ring for Proof of Sweat. Rival will only ask to see workouts and heart rate."}
+          ? `Linked${since ? ` since ${since}` : ""}. Workouts your ring records earn your challenge points: 1 point per 10 verified minutes.`
+          : "Link your ring to earn challenge points. Rival reads workouts and heart rate only, and other players see just your points."}
       </p>
+
+      {connected && (
+        <p className="fine oura-synced">
+          {status!.last_sync_at ? `Last synced ${ago(status!.last_sync_at)}.` : "Not synced yet."}
+        </p>
+      )}
+      {connected && status!.last_sync_error && !error && !note && (
+        <p className="fine warn">{SYNC_ERROR[status!.last_sync_error] ?? SYNC_ERROR.error}</p>
+      )}
 
       {connected && status!.missing_permissions.length > 0 && (
         <p className="fine warn">Some permissions were not granted ({status!.missing_permissions.join(", ")}). Reconnect to allow them.</p>
@@ -147,6 +193,10 @@ export default function OuraCard({ session }: { session: Session }) {
       ) : connected ? (
         confirming ? (
           <div className="oura-actions">
+            <p className="fine">
+              This revokes Rival's access and deletes your imported workouts, including your points in challenges that haven't
+              finished. Finished results stay.
+            </p>
             <button className="btn btn-quiet btn-sm" onClick={disconnect} disabled={busy}>
               {busy ? "Disconnecting..." : "Yes, disconnect"}
             </button>
@@ -161,7 +211,10 @@ export default function OuraCard({ session }: { session: Session }) {
                 Reconnect
               </button>
             )}
-            <button className="btn btn-quiet btn-sm" onClick={() => setConfirming(true)} disabled={busy}>
+            <button className="btn btn-primary btn-sm" onClick={sync} disabled={busy || syncing}>
+              <RefreshCw size={14} className={syncing ? "spin" : ""} aria-hidden /> {syncing ? "Checking Oura..." : "Sync workouts"}
+            </button>
+            <button className="btn btn-quiet btn-sm" onClick={() => setConfirming(true)} disabled={busy || syncing}>
               Disconnect
             </button>
           </div>
@@ -175,12 +228,13 @@ export default function OuraCard({ session }: { session: Session }) {
       {note && !error && <p className="fine oura-note" role="status">{note}</p>}
       {error && <p className="error-text" role="alert">{error}</p>}
 
-      {connected && !confirming && <OuraDiagnostic call={call} />}
+      {/* Developer diagnostic: admins only (the server refuses everyone else). */}
+      {connected && !confirming && session.me?.is_admin && <OuraDiagnostic call={call} />}
     </section>
   );
 }
 
-/* ---------- TEMPORARY diagnostic (remove before Proof of Sweat ships) ----------
+/* ---------- Developer diagnostic (admins only) ----------
    Shows what Oura's API returns for the signed-in owner's own account, via GET /integrations/oura/workouts.
    Deliberately leaves out workout IDs, times, calories, distances and every heart-rate value: only field
    names, classifications and sample counts. Nothing is saved; the summary lives in this card until reload. */
@@ -243,7 +297,7 @@ function OuraDiagnostic({ call }: { call: Session["call"] }) {
   return (
     <div className="oura-diag">
       <div className="oura-diag-head">
-        <span className="oura-diag-tag">Diagnostic · temporary</span>
+        <span className="oura-diag-tag">Diagnostic · admins only</span>
         <button className="btn btn-quiet btn-sm" onClick={check} disabled={checking}>
           {checking ? "Checking..." : report ? "Check again" : "Check Oura data"}
         </button>

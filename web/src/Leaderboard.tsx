@@ -1,4 +1,4 @@
-import { Crown, Target } from "lucide-react";
+import { Crown, ShieldCheck, Target } from "lucide-react";
 import type { PlayerRow } from "./api";
 import { goalUnit, type Format, type FormatConfig } from "./formats";
 import { Avatar, useFlip } from "./ui";
@@ -15,6 +15,7 @@ export default function Leaderboard(props: {
   format?: Format;
   formatConfig?: FormatConfig;
   showShares?: boolean; // show what each player would win if the event ended now
+  sweat?: boolean; // Proof of Sweat: show whether each player's Oura is linked and synced (never their workouts)
 }) {
   const teams = props.format === "teams" ? (props.formatConfig?.teams ?? []) : [];
   const goal = props.format === "goal" ? props.formatConfig : undefined;
@@ -56,6 +57,19 @@ export default function Leaderboard(props: {
                     {leader && <Crown className="board-crown" size={14} strokeWidth={2} aria-label="Leading" />}
                     {p.is_you && <span className="tag tag-accent">You</span>}
                   </span>
+                  {props.sweat && p.oura && (
+                    <span className={`board-sub board-oura ${p.oura}`}>
+                      {p.oura === "synced" ? (
+                        <>
+                          <ShieldCheck size={11} aria-hidden /> Oura verified
+                        </>
+                      ) : p.oura === "waiting" ? (
+                        "Waiting for Oura sync"
+                      ) : (
+                        "Oura not connected"
+                      )}
+                    </span>
+                  )}
                   {props.picks && p.pick_points > 0 && (
                     <span className="board-sub">
                       <Target size={11} aria-hidden /> {p.pick_points} from picks

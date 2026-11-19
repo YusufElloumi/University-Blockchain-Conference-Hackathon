@@ -319,7 +319,8 @@ function CompetitionCard(props: { event: MyEvent; now: number; standing?: Standi
 }
 
 /**
- * "Delete my workouts": DELETE /me/fitness removes every workout you logged and your points in
+ * "Delete my workouts": DELETE /me/fitness removes every workout you logged, revokes and removes the Oura
+ * connection with its imported workouts and saved receipts, and removes your points in
  * challenges that have not finished. You stay in those pools. Finished results are kept.
  * The confirm step is part of the card, not a browser dialog.
  */
@@ -341,8 +342,9 @@ function DeleteWorkouts({ call }: { call: Session["call"] }) {
       {step === "confirm" || step === "busy" ? (
         <>
           <p className="muted">
-            This deletes every workout you have logged and your points in challenges that have not finished. You stay in those
-            challenges with zero points. Finished results are kept. This cannot be undone.
+            This deletes every workout you have logged, disconnects Oura and deletes the workouts imported from it, and removes
+            your points in challenges that have not finished. You stay in those challenges with zero points. Finished results
+            are kept. This cannot be undone.
           </p>
           <div className="btn-row">
             <button className="btn btn-danger btn-sm" onClick={remove} disabled={step === "busy"}>
@@ -360,10 +362,10 @@ function DeleteWorkouts({ call }: { call: Session["call"] }) {
           </button>
           <p className="fine" role="status">
             {step === "done"
-              ? "Done. Your workouts and your points in unfinished challenges are deleted."
+              ? "Done. Your workouts and unfinished-challenge points are deleted, and Oura is disconnected. Reload to refresh this page."
               : step === "error"
                 ? "That didn't work. Try again in a moment."
-                : "Removes your logged workouts and your points in unfinished challenges."}
+                : "Removes your logged and Oura-imported workouts, disconnects Oura, and clears your points in unfinished challenges."}
           </p>
         </>
       )}

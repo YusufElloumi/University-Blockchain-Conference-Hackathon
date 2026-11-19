@@ -30,6 +30,7 @@ import chain
 import config
 import leaguestats
 import scoring
+import sweat
 
 SCHEMA = "rival.ruleset.v1"
 PAYOUT_KINDS = ["winner_takes_all", "podium", "goal", "teams"]  # same order as the program's PayoutKind
@@ -42,11 +43,32 @@ class RulesError(ValueError):
     """Settings that cannot be used (the message is safe to show)."""
 
 
-def scoring_rules(source: str) -> dict:
-    """The scoring rules a new challenge commits to: the version in force now and its fingerprint."""
+def fitness_template() -> str:
+    """Which fitness rules a challenge created now uses (config.NEW_CHALLENGE_RULES). main._register
+    stores the same choice on challenges.template, so the locked ruleset and the scoring always agree."""
+    return sweat.TEMPLATE if config.NEW_CHALLENGE_RULES == sweat.TEMPLATE else sweat.LEGACY_TEMPLATE
+
+
+def scoring_rules(source: str, name: str | None = None) -> dict:
+    """The scoring rules a challenge commits to: their name, version in force and fingerprint.
+
+    Fitness rules are Proof of Sweat (Oura-verified workouts only) or the earlier Daily Mover rules.
+    `name` picks one; by default, the one new challenges use now.
+    """
     if source == "league_stats":
         return {"source": "league_stats", "version": leaguestats.RULES_VERSION, "sha256": None}
-    return {"source": "fitness", "version": scoring.RULES_VERSION, "sha256": scoring.rules_fingerprint()}
+    if (name or fitness_template()) == sweat.TEMPLATE:
+        return {"source": "fitness", "name": sweat.TEMPLATE, "version": sweat.RULES_VERSION,
+                "sha256": sweat.rules_fingerprint()}
+    return {"source": "fitness", "name": sweat.LEGACY_TEMPLATE, "version": scoring.RULES_VERSION,
+            "sha256": scoring.rules_fingerprint()}
+
+
+def workouts_policy(scoring_rules_: dict) -> dict:
+    """Which workout results count. Proof of Sweat counts only workouts synced from Oura that passed its checks."""
+    if scoring_rules_.get("name") == sweat.TEMPLATE:
+        return {"count": ["verified"], "never_count": ["rejected", "pending", "entered_in_app"]}
+    return WORKOUTS
 
 
 def build(
@@ -63,6 +85,7 @@ def build(
     verifier: str | None = None,
 ) -> dict:
     """The ruleset as a dict. `format_config` must already be cleaned (formats.clean_config)."""
+    scored = scoring_rules(scoring_source)
     return {
         "schema": SCHEMA,
         "network": "solana-devnet",
@@ -71,11 +94,11 @@ def build(
         "length_seconds": int(length_seconds),
         "max_players": int(max_players),
         "scoring": {
-            **scoring_rules(scoring_source),
+            **scored,
             "stat_weights": {**leaguestats.DEFAULT_WEIGHTS, **(stat_weights or {})}
             if scoring_source == "league_stats" else None,
         },
-        "workouts": WORKOUTS,
+        "workouts": workouts_policy(scored),
         "consent_required": True,  # a player who never agrees to share points scores zero
         "format": {"name": fmt, **format_config},
         "payout": payout_terms(fmt, format_config),
@@ -111,7 +134,8 @@ def check_current(ruleset: dict) -> None:
     settling would re-score it under rules nobody agreed to, so we stop instead.
     """
     committed = ruleset["scoring"]
-    current = scoring_rules(committed["source"])
+    # Rulesets locked before Proof of Sweat existed have no name: they are Daily Mover rules.
+    current = scoring_rules(committed["source"], committed.get("name") or sweat.LEGACY_TEMPLATE)
     if (committed["version"], committed["sha256"]) != (current["version"], current["sha256"]):
         raise RulesError(
             f"This challenge locked scoring rules {committed['version']}, but this server now runs "

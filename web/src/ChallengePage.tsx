@@ -19,6 +19,7 @@ import { FORMAT_INFO, type Format } from "./formats";
 import { MODE_INFO, ModeBadge } from "./modes";
 import { ConnectFitness, ProofCard } from "./Proof";
 import { LockedRulesCard, payoutLockedLine } from "./LockedRules";
+import SweatWorkouts from "./Sweat";
 import { EmptyState, Eyebrow, Skeleton } from "./ui";
 import {
   Activity,
@@ -323,7 +324,7 @@ export default function ChallengePage(props: { address: string; session: Session
           </div>
           <div className={`status-pill ${phase}`}>
             {phase === "live" && <span className="live-dot" />}
-            {PHASE_LABEL[phase]}
+            {phase === "ended" && state?.sweat?.awaiting_final_sync ? "Awaiting final sync" : PHASE_LABEL[phase]}
           </div>
         </div>
         <h1 className="ch-title">{name}</h1>
@@ -432,7 +433,10 @@ export default function ChallengePage(props: { address: string; session: Session
             <section className="card">
               <label className="consent">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-                <span>Share my challenge points with this group. They see points only, never my activities.</span>
+                <span>
+                  Share my challenge points with this group. They see points only, never my activities.
+                  {state?.challenge?.rules?.proof_of_sweat && " Points come from workouts Rival reads from my connected Oura account."}
+                </span>
               </label>
               <button className="btn btn-primary btn-block" onClick={onConsentOnly} disabled={busy || !consent}>
                 Add me to the leaderboard
@@ -519,7 +523,10 @@ export default function ChallengePage(props: { address: string; session: Session
           <div className="tab-panel" key={tab}>
             {tab === "table" && <Table state={state} phase={phase} />}
             {tab === "feed" && <Feed state={state} now={now} />}
-            {tab === "me" && !statsScored && (
+            {tab === "me" && !statsScored && state?.challenge?.rules?.proof_of_sweat && (
+              <SweatWorkouts session={session} address={address} live={phase === "live" || phase === "ended"} onScored={loadState} />
+            )}
+            {tab === "me" && !statsScored && !state?.challenge?.rules?.proof_of_sweat && (
               <MyWorkouts
                 session={session}
                 canAdd={onTable && config.fitness.can_add && phase !== "settled" && phase !== "refunded"}
@@ -533,6 +540,7 @@ export default function ChallengePage(props: { address: string; session: Session
 
       {intro && (
         <JoinIntro
+          sweat={!!state?.challenge?.rules?.proof_of_sweat}
           scoring={state?.challenge?.scoring_source ?? "fitness"}
           weights={state?.challenge?.stat_weights ?? null}
           hasPicks={!!state?.challenge?.round_hours}
@@ -856,6 +864,7 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
       />
     );
   const days = Math.max(0, ...state.players.map((p) => p.ticks.length));
+  const sweat = !!state.challenge?.rules?.proof_of_sweat;
   const form = state.challenge?.scoring_source !== "league_stats"; // stat sheets have no daily form
   const challenge = state.challenge;
   const final = phase === "settled" || phase === "refunded";
@@ -878,10 +887,13 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
         format={challenge?.format}
         formatConfig={challenge?.format_config}
         showShares={phase !== "joining" && !final}
+        sweat={sweat && !final}
       />
       {(phase === "joining" || form) && (
         <p className="fine board-note">
           {phase === "joining" ? "Scoring starts when the challenge does." : `Form shows active days${days > 7 ? " (last 7)" : ""}.`}
+          {sweat && " Fitness points come only from Oura-verified workouts: 1 per 10 minutes, up to 6 a day."}
+          {sweat && state.sweat?.awaiting_final_sync && " Final scores are pending while workouts finish syncing."}
         </p>
       )}
     </section>

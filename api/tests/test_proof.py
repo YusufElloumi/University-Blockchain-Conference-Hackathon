@@ -229,9 +229,9 @@ def states(client, who="sam"):
     return [(a["status"], a["reason"]) for a in reply.json()]
 
 
-def test_a_device_recorded_workout_is_verified(client, challenge):
+def test_a_workout_entered_in_the_app_counts_but_is_never_called_verified(client, challenge):
     workout(client, "sam")
-    assert states(client) == [("verified", None)]
+    assert states(client) == [("flagged", "entered in the app, not device-verified")]
 
 
 def test_an_impossible_workout_is_rejected_with_a_reason(client, challenge):
@@ -243,7 +243,8 @@ def test_an_overlapping_copy_is_rejected(client, challenge):
     started = (datetime.now(timezone.utc) - timedelta(minutes=40)).isoformat()
     for _ in range(2):
         client.post("/me/activities", json={"type": "run", "minutes": 30, "start": started}, headers=make_token("sam"))
-    assert sorted(states(client)) == [("rejected", "overlaps another activity"), ("verified", None)]
+    assert sorted(states(client)) == [("flagged", "entered in the app, not device-verified"),
+                                      ("rejected", "overlaps another activity")]
 
 
 def test_a_hand_typed_workout_is_flagged(client, challenge, monkeypatch):

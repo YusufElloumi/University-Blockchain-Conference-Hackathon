@@ -6,7 +6,7 @@ import { Reveal } from "./ui";
 
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
-/** A sample week: points per day (the real cap is 3 a day). */
+/** A sample week: points per day, one pip each (the real cap is 6 a day; nobody here goes past 3). */
 export const WEEK: { name: string; you?: boolean; days: number[] }[] = [
   { name: "Maya", days: [2, 2, 0, 3, 2, 1, 2] },
   { name: "You", you: true, days: [2, 1, 2, 0, 2, 2, 2] },
@@ -25,6 +25,7 @@ export function LaneRow(props: {
   you?: boolean;
   lead?: boolean;
   upto?: number; // only count and show the first this-many days (the scroll story reveals the week)
+  per?: number; // points each pip stands for (default 1)
 }) {
   const upto = props.upto ?? props.days.length;
   return (
@@ -40,7 +41,7 @@ export function LaneRow(props: {
           </span>
         ))}
       </span>
-      <span className="lane-total">{sum(props.days.slice(0, upto))}</span>
+      <span className="lane-total">{sum(props.days.slice(0, upto)) * (props.per ?? 1)}</span>
     </div>
   );
 }
@@ -70,7 +71,7 @@ export function LaneBoard() {
         <LaneRow key={player.name} n={i + 1} name={player.name} days={player.days} you={player.you} lead={i === 0} />
       ))}
       <div className="graphic-foot">
-        <span>Each pip is a point · three a day at most</span>
+        <span>Each pip is a point: 10 verified minutes</span>
         <span>Sample data</span>
       </div>
     </Reveal>
@@ -122,9 +123,9 @@ export function Matchup() {
 
 /** The scoring rules as a scoreboard strip. These are the app's real numbers. */
 const RULES = [
-  { value: "20", unit: "min", label: "Active minutes for a point", short: "= 1 point" },
-  { value: "5", unit: "km", label: "Distance for a point", short: "= 1 point" },
-  { value: "3", unit: "pts", label: "Most you can earn in a day", short: "a day, at most" },
+  { value: "10", unit: "min", label: "Verified minutes for a point", short: "= 1 point" },
+  { value: "6", unit: "pts", label: "Most you can earn in a day", short: "a day, at most" },
+  { value: "60", unit: "min", label: "Most that counts in a day", short: "count each day" },
   { value: "8", unit: "max", label: "Players in one event", short: "players" },
 ];
 
@@ -169,20 +170,20 @@ export function CapGraphic() {
     <Reveal className="graphic cap-graphic">
       <div className="graphic-head">
         <span>The daily cap</span>
-        <span>3 pts a day</span>
+        <span>6 pts a day</span>
       </div>
       <div className="cap-rows">
         <div>
           <small>One heroic Sunday</small>
-          <LaneRow n={2} name="30 km, once" days={[0, 0, 0, 0, 0, 0, 3]} />
+          <LaneRow n={2} name="3 hours, once" days={[0, 0, 0, 0, 0, 0, 3]} per={2} />
         </div>
         <div>
           <small>A steady week</small>
-          <LaneRow n={1} name="A little, daily" days={[2, 1, 2, 2, 1, 2, 2]} you lead />
+          <LaneRow n={1} name="A little, daily" days={[2, 1, 2, 2, 1, 2, 2]} you lead per={2} />
         </div>
       </div>
       <div className="graphic-foot">
-        <span>The habit wins, not the highlight</span>
+        <span>Each pip is 2 points · the habit wins, not the highlight</span>
         <span>Illustration</span>
       </div>
     </Reveal>

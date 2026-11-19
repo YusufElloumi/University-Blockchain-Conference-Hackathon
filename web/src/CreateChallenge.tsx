@@ -90,6 +90,7 @@ const DEFAULT_NAME: Record<Mode, (player: string) => string> = {
 /** Creating an event. The mode comes from the screen it was opened from, so it is never picked twice. */
 export default function CreateChallenge({ mode, session }: { mode: Mode; session: Session; balance: number | null }) {
   const { me, config, call, send, go } = session;
+  const sweatRules = !!config.new_challenge_rules?.proof_of_sweat; // new fitness challenges are Oura-verified
   const info = MODE_INFO[mode];
   const [name, setName] = useState(DEFAULT_NAME[mode](me.name));
   const [organizer, setOrganizer] = useState("");
@@ -464,15 +465,31 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
               </div>
             ) : (
               <ul className="rule-list">
-                <li>
-                  <b>+1</b> 20 active minutes in a day
-                </li>
-                <li>
-                  <b>+1</b> every 5 km
-                </li>
-                <li>
-                  <b>3</b> max a day
-                </li>
+                {sweatRules ? (
+                  <>
+                    <li>
+                      <b>+1</b> every 10 Oura-verified minutes
+                    </li>
+                    <li>
+                      <b>6</b> max a day
+                    </li>
+                    <li>
+                      <b>Oura</b> players connect a ring to score
+                    </li>
+                  </>
+                ) : (
+                  <>
+                    <li>
+                      <b>+1</b> 20 active minutes in a day
+                    </li>
+                    <li>
+                      <b>+1</b> every 5 km
+                    </li>
+                    <li>
+                      <b>3</b> max a day
+                    </li>
+                  </>
+                )}
               </ul>
             )}
           </section>

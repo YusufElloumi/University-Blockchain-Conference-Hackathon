@@ -20,17 +20,24 @@ import settlement
 from test_stage4 import CHALLENGE, WALLETS, board, challenge, client, fakes, make_token, state  # noqa: F401
 
 
+_READ: dict[str, chain.Rules] = {}  # what the pretend chain read, so a payout needs no second database session
+
+
 def stored_rules(address) -> chain.Rules | None:
-    """The onchain Rules account, as create_challenge would have written it for the stored ruleset."""
+    """The onchain Rules account, as create_challenge would have written it for the stored ruleset.
+    (Read once per challenge: opening a session mid-payout would roll back the test's shared connection.)"""
+    if str(address) in _READ:
+        return _READ[str(address)]
     with db.SessionLocal() as session:
         row = session.scalar(select(db.Challenge).where(db.Challenge.address == str(address)))
         text = row.ruleset if row else None
     if text is None:
         return None
     ruleset = json.loads(text)
-    return chain.Rules(Pubkey.from_string(str(address)), Pubkey.from_string(str(address)),
+    _READ[str(address)] = found = chain.Rules(Pubkey.from_string(str(address)), Pubkey.from_string(str(address)),
                        hashlib.sha256(text.encode()).digest(), Pubkey.from_string(ruleset["verifier"]),
                        ruleset["payout"]["kind"], ruleset["payout"]["split_bps"])
+    return found
 
 
 def program_checks(address, winners, verifier, message, signature):
@@ -52,6 +59,7 @@ def fake_chain(monkeypatch, fakes):
     """A pretend Solana: records what the oracle sent and changes the pretend challenge like the program would."""
     sent = []
     fakes.vault = fakes.mint
+    _READ.clear()
 
     def end_early(client, oracle, address):
         fakes.end_time = int(time.time()) - 1
