@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ChallengeView, StatWeights } from "./api";
+import type { ChallengeView, RulesPreview, StatWeights } from "./api";
 import type { Session } from "./App";
 import { buildCreateTransaction, friendlyError } from "./chain";
 import { dayCount, termLabel, usdc } from "./format";
@@ -148,25 +148,39 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
     setBusy(true);
     setError("");
     try {
-      const { transaction, address } = await buildCreateTransaction(me.wallet, {
-        buyIn,
-        joinWindowSeconds: joinWindow.seconds,
-        lengthSeconds,
-        oracle: config.oracle,
-        mint: config.usdc_mint,
-      });
-      await send(transaction);
-      await call<ChallengeView>("POST", "/challenges", {
-        address,
-        name: name.trim(),
+      const settings = {
         mode,
-        organizer_name: mode === "league" ? organizer.trim() : null,
         scoring_source: usesStats ? "league_stats" : "fitness",
         stat_weights: usesStats ? weights : null,
         pick_themes: rounds ? themes : [],
         round_hours: rounds ? roundEvery.hours : null,
         format,
         format_config: formatConfig,
+      };
+      // 1. The server turns the settings into a ruleset; its hash and the payout terms are locked onchain.
+      const locked = await call<RulesPreview>("POST", "/rules", {
+        ...settings,
+        length_seconds: lengthSeconds,
+        max_players: 8,
+      });
+      const { transaction, address } = await buildCreateTransaction(me.wallet, {
+        buyIn,
+        joinWindowSeconds: joinWindow.seconds,
+        lengthSeconds,
+        oracle: config.oracle,
+        mint: config.usdc_mint,
+        rulesHash: locked.rules_hash,
+        verifier: locked.verifier,
+        payout: locked.payout.kind,
+        splitBps: locked.payout.split_bps,
+      });
+      await send(transaction);
+      // 2. The server checks the chain holds exactly those rules before recording the event.
+      await call<ChallengeView>("POST", "/challenges", {
+        ...settings,
+        address,
+        name: name.trim(),
+        organizer_name: mode === "league" ? organizer.trim() : null,
       });
       go({ view: "challenge", address });
     } catch (e) {
@@ -283,7 +297,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
 
           <section className="card">
             <h2 className="card-title">Format</h2>
-            <p className="fine">How the prize pool is paid. Locked once the event is created.</p>
+            <p className="fine">How the prize pool is paid. Locked onchain when the event is created: not even Rival can change it.</p>
             <div className="format-grid" role="radiogroup" aria-label="Competition format">
               {FORMATS.map((f) => {
                 const { title, Icon, line, example } = FORMAT_INFO[f];

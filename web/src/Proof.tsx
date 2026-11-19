@@ -2,7 +2,17 @@ import { useState } from "react";
 import { ArrowUpRight, CircleAlert, CircleCheck, CircleHelp, Download, Link2, ShieldCheck, X } from "lucide-react";
 import type { Call } from "./api";
 import { explorerTx, type ChallengeInfo } from "./chain";
-import { checkProof, downloadProof, payloadOf, VERIFIER_PUBLIC_KEY, type Check, type ScoreSheetReply } from "./proofCheck";
+import {
+  checkProof,
+  checkProofV2,
+  downloadProof,
+  isV2,
+  payloadOf,
+  VERIFIER_PUBLIC_KEY,
+  type Check,
+  type Proof,
+  type ScoreSheetReply,
+} from "./proofCheck";
 import { Eyebrow, useEscape } from "./ui";
 
 const explorerAddress = (address: string) => `https://explorer.solana.com/address/${address}?cluster=devnet`;
@@ -27,14 +37,23 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
         setError("This challenge was paid out before signed results existed, so there is nothing to check.");
         return;
       }
-      setChecks(await checkProof(info.address, found, info.scoreHash));
+      setChecks(
+        isV2(found.proof)
+          ? await checkProofV2(info.address, found, info)
+          : await checkProof(info.address, found, info.scoreHash),
+      );
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
-  const allGood = checks?.every((c) => c.ok === true);
-  const payload = reply?.proof ? payloadOf(reply.proof) : null;
+  const v2 = !!reply?.proof && isV2(reply.proof);
+  // v1 proofs end with an informational "Signed, not checked onchain" line that is neither good nor bad.
+  const scored = checks?.filter((c) => !(c.ok === null && c.label.startsWith("Signed, not"))) ?? null;
+  const allGood = scored?.every((c) => c.ok === true);
+  const payload = reply?.proof && !isV2(reply.proof) ? payloadOf(reply.proof as Proof) : null;
+  const proofV2 = reply?.proof && isV2(reply.proof) ? reply.proof : null;
+  const payoutTx = proofV2?.settle_tx ?? reply?.transaction ?? null;
 
   return (
     <section className="card proof-card">
@@ -42,7 +61,7 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
         <div>
           <Eyebrow>Proof of Sweat</Eyebrow>
           <h2 className="card-title">Check this result</h2>
-          <p className="fine">See for yourself that the result was signed and the scores weren't changed after payout.</p>
+          <p className="fine">Rules locked at creation → result signed → signature checked by Solana at payout.</p>
         </div>
         <span className="icon-tile">
           <ShieldCheck size={18} strokeWidth={1.75} aria-hidden />
@@ -77,7 +96,9 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
           </ul>
           <p className={`message ${allGood ? "ok" : checks.some((c) => c.ok === false) ? "error" : ""}`}>
             {allGood
-              ? "Everything checks out."
+              ? v2
+                ? "Everything checks out. Solana itself checked the signed result before paying."
+                : "Everything checks out. Signed, not checked onchain (paid out before the program checked signatures)."
               : checks.some((c) => c.ok === false)
                 ? "Something doesn't match. Don't trust this result."
                 : "Some checks couldn't run in this browser."}
@@ -85,10 +106,23 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
           <details className="proof-details">
             <summary>Technical details</summary>
             <dl>
-              <dt>Rules</dt>
-              <dd>{payload?.rules.version ?? "unknown"}</dd>
+              {proofV2 ? (
+                <>
+                  <dt>Format</dt>
+                  <dd>Proof of Sweat v2, checked onchain</dd>
+                  <dt>Rules hash (SHA-256)</dt>
+                  <dd className="mono">{proofV2.rules_hash}</dd>
+                </>
+              ) : (
+                <>
+                  <dt>Format</dt>
+                  <dd>v1, signed, not checked onchain</dd>
+                  <dt>Rules</dt>
+                  <dd>{payload?.rules.version ?? "unknown"}</dd>
+                </>
+              )}
               <dt>Score sheet SHA-256</dt>
-              <dd className="mono">{payload?.score_sheet_sha256}</dd>
+              <dd className="mono">{proofV2?.score_sheet_sha256 ?? payload?.score_sheet_sha256}</dd>
               <dt>Verifier key</dt>
               <dd className="mono">
                 <a href={explorerAddress(VERIFIER_PUBLIC_KEY)} target="_blank" rel="noreferrer">
@@ -96,16 +130,18 @@ export function ProofCard({ call, info }: { call: Call; info: ChallengeInfo }) {
                 </a>
               </dd>
               <dt>Signed</dt>
-              <dd>{payload ? new Date(payload.issued_at * 1000).toLocaleString() : ""}</dd>
+              <dd>{new Date((proofV2?.issued_at ?? payload?.issued_at ?? 0) * 1000).toLocaleString()}</dd>
             </dl>
             <p className="fine">
-              A signature shows Rival's verifier approved this result. It does not prove a workout happened. No
-              workout details are in the proof or on Solana.
+              The program pays only the winners and shares in a result signed by this key, under the rules locked at
+              creation. That shows Rival's verifier approved the result; it does not prove a workout happened. Payouts and
+              signatures use separate keys, both run by Rival's server. No workout details are in the proof or on
+              Solana.
             </p>
           </details>
           <div className="btn-row">
-            {reply?.transaction && (
-              <a className="btn btn-text" href={explorerTx(reply.transaction)} target="_blank" rel="noreferrer">
+            {payoutTx && (
+              <a className="btn btn-text" href={explorerTx(payoutTx)} target="_blank" rel="noreferrer">
                 Payout on Solana <ArrowUpRight size={13} aria-hidden />
               </a>
             )}

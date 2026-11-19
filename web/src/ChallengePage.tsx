@@ -10,7 +10,7 @@ import {
   type StatsSummary,
 } from "./api";
 import type { Session } from "./App";
-import { buildJoinTransaction, explorerTx, fetchChallenge, friendlyError, type ChallengeInfo } from "./chain";
+import { buildJoinTransaction, explorerTx, fetchChallenge, friendlyError, sha256Hex, type ChallengeInfo } from "./chain";
 import { ago, countdown, money, usdc, when } from "./format";
 import JoinIntro from "./JoinIntro";
 import { InviteCodeBox } from "./events";
@@ -18,6 +18,7 @@ import Leaderboard from "./Leaderboard";
 import { FORMAT_INFO, type Format } from "./formats";
 import { MODE_INFO, ModeBadge } from "./modes";
 import { ConnectFitness, ProofCard } from "./Proof";
+import { LockedRulesCard, payoutLockedLine } from "./LockedRules";
 import { EmptyState, Eyebrow, Skeleton } from "./ui";
 import {
   Activity,
@@ -154,7 +155,13 @@ export default function ChallengePage(props: { address: string; session: Session
     setBusy(true);
     setError("");
     try {
-      const signature = await send(await buildJoinTransaction(me.wallet, info));
+      // Hash the rules this page shows, here in the browser. The program only takes the deposit if this
+      // equals the hash locked at creation, so nobody can pay into rules they did not see.
+      const shown = state?.challenge?.ruleset;
+      if (!shown || !info.rules) throw new Error("This challenge was created before rules were locked, so it can't take new players.");
+      const shownHash = await sha256Hex(shown);
+      if (shownHash !== info.rules.rulesHash) throw new Error("The rules shown here don't match the rules locked onchain. Nothing was paid.");
+      const signature = await send(await buildJoinTransaction(me.wallet, info, shownHash));
       setLastTx(signature);
       await Promise.all([loadChain(), refreshBalance()]);
       await recordJoin(signature, team);
@@ -399,7 +406,7 @@ export default function ChallengePage(props: { address: string; session: Session
                     <h2 className="card-title">Join this challenge</h2>
                     <p className="fine">
                       {canAfford
-                        ? `${usdc(info.buyIn)} moves from your balance into the prize pool. ${state?.challenge?.format_summary ?? ""}`
+                        ? `${usdc(info.buyIn)} moves from your balance into the prize pool. ${state?.challenge?.format_summary ?? ""} ${payoutLockedLine(info) ?? ""}`
                         : "You need more in your balance. Add devnet USDC from the home screen first."}
                     </p>
                   </div>
@@ -442,6 +449,7 @@ export default function ChallengePage(props: { address: string; session: Session
         {/* ----- Side column: picks, invites, organizer tools ----- */}
         <div className="ch-rail">
           {phase === "settled" && inOnchain && <ProofCard call={call} info={info} />}
+          {info && state?.challenge && <LockedRulesCard info={info} ruleset={state.challenge.ruleset} />}
           {state?.rounds && (
             <PickRounds
               session={session}

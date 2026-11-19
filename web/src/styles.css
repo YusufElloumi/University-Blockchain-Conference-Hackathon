@@ -7967,3 +7967,58 @@ input[type="checkbox"] {
 .length-input input[aria-invalid="true"] {
   border-color: var(--danger);
 }
+
+/* Rules locked onchain (LockedRules.tsx) */
+.rules-locked-line {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rules-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.rules-list div {
+  display: grid;
+  grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
+  gap: 12px;
+  font-size: 13px;
+}
+
+.rules-list dt {
+  color: var(--text-2);
+}
+
+.rules-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.rules-match {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.rules-match svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.rules-match.ok svg {
+  color: var(--green, var(--accent));
+}
+
+.rules-match.bad {
+  color: var(--danger);
+}
