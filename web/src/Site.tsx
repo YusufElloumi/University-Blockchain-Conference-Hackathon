@@ -6,6 +6,7 @@ import { RaceStory, Ticker, WaysSelector, WorkoutDemo } from "./interactive";
 import { PHOTOS, type Picture } from "./media";
 import { HeroVideo, Lane, Photo, ProductPreview, StepList } from "./sitekit";
 import { flushSync } from "react-dom";
+import SweatExplainer from "./SweatExplainer";
 import { DemoBanner, prefersReducedMotion, Reveal, Wordmark } from "./ui";
 
 /** The public website's pages. Each has its own address (?page=...), so links and the back button work. */
@@ -385,8 +386,8 @@ function HowPage({ go, onLogin }: Nav) {
             <span className="chapter-n">03</span>
             <h2 className="headline">Move, and earn points</h2>
             <p className="lede">
-              Scoring rewards consistency. The daily cap means nobody can win the week in a single afternoon, so the
-              person who keeps showing up is the one to beat.
+              Scoring rewards consistency. Long days count for less as they go on, so nobody can win the week in a single
+              afternoon and the person who keeps showing up is the one to beat. The full working is just below.
             </p>
           </div>
           <div className="chapter-visual" aria-hidden>
@@ -417,6 +418,12 @@ function HowPage({ go, onLogin }: Nav) {
             <ProductPreview />
           </div>
         </Reveal>
+      </section>
+
+      <section className="env-charcoal">
+        <div className="wrap explain-wrap">
+          <SweatExplainer />
+        </div>
       </section>
 
       <section className="wrap principles">

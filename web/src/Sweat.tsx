@@ -29,7 +29,7 @@ type Result = "passed" | "limited" | "failed" | "pending";
 type CheckRow = { code: string; result: Result; reason: string | null };
 
 /** One workout as the server describes it to its owner. */
-type Workout = {
+export type Workout = {
   key: number | string;
   activity: string | null;
   provider_activity?: string | null;
@@ -67,7 +67,7 @@ type EvidencePart = {
 };
 
 /** What the server works out for one workout under v2 rules (api/sweat2.py). No heart-rate readings. */
-type V2Detail = {
+export type V2Detail = {
   intensity: string | null;
   distance_km: number | null;
   evidence: {
@@ -373,6 +373,7 @@ function ReceiptV2(props: {
   status: ReturnType<typeof statusOf>;
   lines: Line[];
   rulesVersion: string | null;
+  sample?: boolean; // made-up numbers (the explainer), not a real workout
 }) {
   const { w, name, status, lines } = props;
   const { evidence, score } = w.v2!;
@@ -588,8 +589,10 @@ function ReceiptV2(props: {
 
       <p className="fine sweat-foot">
         {props.rulesVersion ? `Rules ${props.rulesVersion}. ` : ""}
-        Rival's server checked this record from Oura against published rules. That doesn't prove a workout happened.
-        {w.commitment ? (
+        {props.sample
+          ? "A sample with made-up numbers, worked out with the same formula the app uses. A real receipt comes from a workout your Oura Ring recorded."
+          : "Rival's server checked this record from Oura against published rules. That doesn't prove a workout happened."}
+        {props.sample ? null : w.commitment ? (
           <>
             {" "}
             Receipt fingerprint <code>{w.commitment.slice(0, 16)}…</code> is listed in this challenge's final score sheet, whose hash
@@ -601,6 +604,12 @@ function ReceiptV2(props: {
       </p>
     </div>
   );
+}
+
+/** The v2 receipt on its own, for the "how points work" explainer. Always made-up data. */
+export function SampleReceipt({ w }: { w: Workout }) {
+  const name = ACTIVITY_NAME[w.activity ?? ""] ?? "Activity";
+  return <ReceiptV2 w={w} name={name} status={statusOf(w)} lines={receiptLines(w)} rulesVersion="proof-of-sweat-v2" sample />;
 }
 
 /** One workout row that opens into its receipt. */
@@ -761,6 +770,11 @@ export default function SweatWorkouts(props: {
             <ShieldCheck size={18} strokeWidth={1.75} aria-hidden />
           </span>
         </div>
+        {isV2 && (
+          <button className="btn btn-text btn-sm sweat-how" onClick={() => go({ view: "help" })}>
+            How Sweat Points are calculated
+          </button>
+        )}
         <div className="sweat-totals">
           <div>
             <b>{data.points ?? 0}</b>

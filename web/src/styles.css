@@ -9163,3 +9163,320 @@ input[type="checkbox"] {
   font-size: 24px;
   color: var(--green);
 }
+
+/* =========================================================================================
+   27. "How Sweat Points are calculated": three steps, a formula line, and a calculator
+   that fills in a sample receipt. Sample data only.
+   ========================================================================================= */
+
+.explain-wrap {
+  padding-block: clamp(56px, 7vw, 104px);
+}
+
+.explain {
+  display: grid;
+  gap: clamp(24px, 3vw, 40px);
+}
+
+.explain-head {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+
+.explain-head .headline,
+.explain-head .lede {
+  margin: 0;
+}
+
+.explain-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.explain-steps li {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.explain-n {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.explain-steps h3 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.explain-steps p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.explain-art {
+  height: 96px;
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 12px;
+}
+
+.explain-art.bands {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.explain-art.bands i {
+  position: relative;
+  flex: 1;
+  border-radius: 6px 6px 3px 3px;
+  background: var(--green);
+}
+
+.explain-art.bands i:nth-child(2) {
+  opacity: 0.65;
+}
+
+.explain-art.bands i:nth-child(3) {
+  opacity: 0.42;
+}
+
+.explain-art.bands b,
+.explain-art.signals b,
+.explain-art.ladder b {
+  font-family: var(--caps);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.explain-art.bands b {
+  position: absolute;
+  left: 8px;
+  bottom: 5px;
+  font-size: 14px;
+  color: var(--green-ink);
+}
+
+.explain-art.signals,
+.explain-art.ladder {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.explain-art.signals span {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.explain-art.signals b {
+  min-width: 40px;
+  font-size: 17px;
+  color: var(--text);
+}
+
+.explain-art.ladder {
+  grid-template-columns: repeat(4, 1fr);
+  align-items: end;
+  gap: 6px;
+  font-family: var(--caps);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.explain-art.ladder span {
+  display: grid;
+  gap: 2px;
+  align-content: end;
+  padding: 6px 2px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+}
+
+.explain-art.ladder span:nth-child(1) {
+  height: 72px;
+}
+
+.explain-art.ladder span:nth-child(2) {
+  height: 61px;
+}
+
+.explain-art.ladder span:nth-child(3) {
+  height: 48px;
+}
+
+.explain-art.ladder span:nth-child(4) {
+  height: 36px;
+}
+
+.explain-art.ladder b {
+  font-size: 17px;
+  color: var(--accent);
+}
+
+.explain-formula {
+  margin: 0;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  font-family: "Instrument Serif", serif;
+  font-style: italic;
+  font-size: clamp(22px, 2.6vw, 34px);
+  line-height: 1.25;
+  text-align: center;
+  color: var(--text-2);
+}
+
+.explain-formula span {
+  color: var(--green);
+}
+
+.explain-formula b {
+  font-weight: 400;
+  color: var(--text);
+}
+
+.explain-try {
+  display: grid;
+  gap: 20px;
+  align-items: start;
+}
+
+.explain-controls {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.explain-controls .fine {
+  margin: 0;
+}
+
+.explain-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.explain-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.explain-result span {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.explain-result b {
+  margin-right: 6px;
+  font-family: var(--caps);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--green);
+}
+
+.explain-result small {
+  display: block;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.explain-receipt {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.explain-sample {
+  font-family: var(--caps);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.explain-receipt .sweat-receipt {
+  margin: 0;
+  animation: none;
+}
+
+.sweat-how {
+  justify-self: start;
+  padding-inline: 0;
+  color: var(--accent);
+}
+
+@media (min-width: 760px) {
+  .explain-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1080px) {
+  .explain-try {
+    grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+  }
+
+  .explain-controls {
+    position: sticky;
+    top: calc(var(--banner-h) + 72px + 20px);
+  }
+
+  .explain.compact .explain-try {
+    grid-template-columns: 1fr;
+  }
+
+  .explain.compact .explain-controls {
+    position: static;
+  }
+}
+
+.explain-art.bands {
+  padding-top: 26px;
+}
+
+.explain-art.bands i:nth-child(3) b {
+  bottom: auto;
+  top: -20px;
+  color: var(--text-2);
+}
