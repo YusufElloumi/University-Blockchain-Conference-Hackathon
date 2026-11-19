@@ -46,6 +46,15 @@ services:
     rootDir: web
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
+    # The legal pages are built as dist/privacy/index.html and dist/terms/index.html;
+    # these make the short addresses /privacy and /terms (no trailing slash) serve them too.
+    routes:
+      - type: rewrite
+        source: /privacy
+        destination: /privacy/index.html
+      - type: rewrite
+        source: /terms
+        destination: /terms/index.html
     envVars:
       - key: NODE_VERSION
         value: 22.14.0

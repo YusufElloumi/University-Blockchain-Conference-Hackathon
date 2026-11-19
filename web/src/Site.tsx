@@ -149,6 +149,8 @@ export default function Site({ onLogin }: { onLogin: () => void }) {
               </a>
             ))}
             <button onClick={onLogin}>Launch app</button>
+            <a href="privacy/">Privacy</a>
+            <a href="terms/">Terms</a>
           </nav>
         </div>
         <div className="site-foot-fine">
