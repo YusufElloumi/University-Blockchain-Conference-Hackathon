@@ -51,6 +51,7 @@ class FakeOura:
         self.revoke_status = 200
         self.serial = 1
         self.scope = None  # what Oura's token reply says was granted (None: no "scope" field)
+        self.data_calls, self.data_status, self.pages = [], {}, {}
 
     def post(self, url, data=None, headers=None, timeout=None):
         assert url == oura.TOKEN_URL and headers.get("User-Agent")
@@ -65,9 +66,22 @@ class FakeOura:
         return Reply(200, body)
 
     def get(self, url, params=None, headers=None, timeout=None):
-        assert url == oura.REVOKE_URL
-        self.revoked.append(params["access_token"])
-        return Reply(self.revoke_status)
+        if url == oura.REVOKE_URL:
+            self.revoked.append(params["access_token"])
+            return Reply(self.revoke_status)
+        # Oura's data API (synthetic records only; see the data tests below).
+        assert headers.get("User-Agent") and headers["Authorization"].startswith("Bearer ")
+        self.data_calls.append((url, dict(params), headers["Authorization"][7:]))
+        status = self.data_status.get(url, 200)
+        if status != 200:
+            return Reply(status, {"detail": "synthetic error SECRET-DETAIL"})
+        pages = self.pages.get(url, [[]])
+        page = int((params or {}).get("next_token") or 0)
+        rows = pages[page]
+        if url.endswith("/heartrate"):  # only samples inside the asked-for window, like the real API
+            lo, hi = params["start_datetime"], params["end_datetime"]
+            rows = [r for r in rows if lo <= r["timestamp"] <= hi]
+        return Reply(200, {"data": rows, "next_token": str(page + 1) if page + 1 < len(pages) else None})
 
 
 @pytest.fixture(autouse=True)
@@ -332,3 +346,131 @@ def test_permissions_are_compared_by_plain_name(client, setup, granted, missing)
     setup.scope = granted
     assert connect(client).json()["missing_permissions"] == missing
     assert stored().scopes == granted  # stored exactly as Oura sent it
+
+
+
+# ---------- read-only workout check (synthetic data only) ----------
+
+from fitness import oura_data  # noqa: E402
+
+WORKOUT_A = {  # a full record, every documented field, plus one Oura might add later
+    "id": "wk-synthetic-a", "activity": "running", "calories": 412.5, "day": "2026-11-17",
+    "distance": 8123.0, "start_datetime": "2026-11-17T07:00:00-06:00", "end_datetime": "2026-11-17T07:40:00-06:00",
+    "intensity": "hard", "label": None, "source": "autodetected", "extra_field": "SYNTHETIC-VALUE",
+}
+WORKOUT_B = {  # a sparse record: optional fields missing or empty
+    "id": "wk-synthetic-b", "activity": "strengthTraining", "day": "2026-11-15",
+    "start_datetime": "2026-11-15T18:00:00-06:00", "end_datetime": "2026-11-15T18:30:00-06:00",
+    "intensity": "moderate", "source": "manual", "calories": None,
+}
+
+
+def hr(ts, bpm=150, source="workout"):
+    return {"timestamp": ts, "timestamp_unix": 0, "bpm": bpm, "source": source}
+
+
+# Workout A runs 13:00-13:40 UTC: samples every 5 minutes for the first 20 minutes, then nothing.
+HR_A = [hr(f"2026-11-17T13:{m:02d}:00+00:00", bpm=171) for m in range(0, 20, 5)] + [hr("2026-11-17T12:30:00+00:00", 63, "awake")]
+
+
+def readings(client, **params):
+    return client.get("/integrations/oura/workouts", params=params, headers=login())
+
+
+def test_workouts_need_login_and_a_connection(client):
+    assert client.get("/integrations/oura/workouts").status_code == 401
+    assert readings(client).status_code == 404  # signed in, but Oura isn't connected
+
+
+def test_workout_fields_and_heart_rate_coverage(client, setup):
+    connect(client)
+    setup.pages = {oura_data.WORKOUT_URL: [[WORKOUT_B], [WORKOUT_A]], oura_data.HEARTRATE_URL: [HR_A]}
+    reply = readings(client, days=7, limit=5)
+    assert reply.status_code == 200 and reply.headers["cache-control"] == "no-store, private"
+    body = reply.json()
+    assert body["workouts_found"] == 2 and [w["id"] for w in body["workouts"]] == ["wk-synthetic-a", "wk-synthetic-b"]
+
+    a, b = body["workouts"]
+    assert a["duration_minutes"] == 40.0 and a["distance_km"] == 8.123 and a["calories"] == 412.5
+    assert a["missing_fields"] == ["label"] and a["undocumented_fields"] == ["extra_field"]
+    assert b["missing_fields"] == ["calories", "distance", "label"]
+    assert body["field_presence"]["distance"] == 1 and body["field_presence"]["id"] == 2
+
+    assert a["heart_rate"] == {"status": "ok", "sample_count": 4, "workout_minutes": 40, "minutes_with_samples": 4,
+                               "coverage_pct": 10.0, "sources": {"workout": 4}, "median_gap_seconds": 300.0,
+                               "first_sample_after_start_seconds": 0, "last_sample_before_end_seconds": 1500}
+    assert b["heart_rate"]["sample_count"] == 0 and b["heart_rate"]["coverage_pct"] == 0.0
+
+    text = reply.text  # counts only: no bpm values, and no values of undocumented fields
+    assert "171" not in text and '"bpm"' not in text and "SYNTHETIC-VALUE" not in text
+
+
+def test_workout_check_asks_oura_for_the_right_window_with_the_users_token(client, setup):
+    connect(client)
+    setup.pages = {oura_data.WORKOUT_URL: [[WORKOUT_A]], oura_data.HEARTRATE_URL: [HR_A]}
+    readings(client, days=14)
+    url, params, token = setup.data_calls[0]
+    assert url == "https://api.ouraring.com/v2/usercollection/workout" and token == ACCESS
+    assert set(params) == {"start_date", "end_date"}
+    url, params, _ = setup.data_calls[-1]
+    assert url == "https://api.ouraring.com/v2/usercollection/heartrate"
+    assert params == {"start_datetime": "2026-11-17T13:00:00+00:00", "end_datetime": "2026-11-17T13:40:00+00:00"}
+
+
+def test_workout_check_refreshes_an_expiring_token_first(client, setup):
+    connect(client)
+    expire_token()
+    setup.pages = {oura_data.WORKOUT_URL: [[]]}
+    assert readings(client).status_code == 200
+    assert setup.data_calls[0][2] == "oura-access-SECRET-2"
+
+
+def test_limit_and_parameter_bounds(client, setup):
+    connect(client)
+    many = [{**WORKOUT_B, "id": f"wk-{i}", "start_datetime": f"2026-11-{i + 1:02d}T18:00:00-06:00",
+             "end_datetime": f"2026-11-{i + 1:02d}T18:30:00-06:00"} for i in range(12)]
+    setup.pages = {oura_data.WORKOUT_URL: [many], oura_data.HEARTRATE_URL: [[]]}
+    body = readings(client, limit=3).json()
+    assert body["workouts_found"] == 12 and [w["id"] for w in body["workouts"]] == ["wk-11", "wk-10", "wk-9"]
+    for bad in ({"days": 0}, {"days": 91}, {"limit": 0}, {"limit": 26}):
+        assert readings(client, **bad).status_code == 422
+
+
+def test_missing_heart_rate_permission_is_reported_not_fatal(client, setup):
+    connect(client)
+    setup.pages = {oura_data.WORKOUT_URL: [[WORKOUT_A, WORKOUT_B]]}
+    setup.data_status = {oura_data.HEARTRATE_URL: 403}
+    body = readings(client).json()
+    assert [w["heart_rate"]["status"] for w in body["workouts"]] == ["unavailable", "unavailable"]
+    assert sum(1 for c in setup.data_calls if c[0] == oura_data.HEARTRATE_URL) == 1  # asked once, not per workout
+
+
+@pytest.mark.parametrize("status, expected", [(401, 401), (403, 403), (429, 429), (500, 502)])
+def test_oura_errors_become_plain_messages(client, setup, status, expected):
+    connect(client)
+    setup.data_status = {oura_data.WORKOUT_URL: status}
+    reply = readings(client)
+    assert reply.status_code == expected and "SECRET" not in reply.text
+
+
+def test_workout_check_stores_nothing_and_logs_no_health_data(client, setup, caplog):
+    connect(client)
+    caplog.set_level(logging.DEBUG)
+    setup.pages = {oura_data.WORKOUT_URL: [[WORKOUT_A]], oura_data.HEARTRATE_URL: [HR_A]}
+    with db.SessionLocal() as s:
+        before = {t: s.execute(db.Base.metadata.tables[t].select()).all() for t in db.Base.metadata.tables}
+    readings(client)
+    setup.data_status = {oura_data.WORKOUT_URL: 500}
+    readings(client)
+    with db.SessionLocal() as s:
+        after = {t: s.execute(db.Base.metadata.tables[t].select()).all() for t in db.Base.metadata.tables}
+    assert after == before
+    for secret in ("wk-synthetic-a", "running", "171", "8123", "SECRET", "SYNTHETIC-VALUE"):
+        assert secret not in caplog.text
+
+
+def test_one_user_cannot_read_anothers_workouts(client, setup):
+    connect(client, "maya")
+    setup.pages = {oura_data.WORKOUT_URL: [[WORKOUT_A]], oura_data.HEARTRATE_URL: [HR_A]}
+    assert client.get("/integrations/oura/workouts", headers=login("sam")).status_code == 404
+    assert not setup.data_calls  # Sam isn't connected, so Oura is never called with anyone's token

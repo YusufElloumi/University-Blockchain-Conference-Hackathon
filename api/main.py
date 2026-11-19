@@ -45,6 +45,7 @@ Oura connection (OAuth only; no Oura data is read yet; see api/fitness/oura.py):
     GET    /integrations/oura/callback   Oura sends the browser here (no login); parks the code, returns to the web app
     POST   /integrations/oura/complete   finish connecting as the signed-in user; tokens stay on the server
     DELETE /integrations/oura            revoke at Oura where possible and delete the stored tokens
+    GET    /integrations/oura/workouts   read-only test: the caller's recent Oura workouts and heart-rate coverage (nothing stored)
 """
 
 from __future__ import annotations
@@ -57,9 +58,9 @@ from typing import Literal
 
 import json
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from solana.rpc.api import Client
 from solders.pubkey import Pubkey
@@ -75,7 +76,7 @@ import db
 import events
 import formats
 import fitness
-from fitness import oura
+from fitness import oura, oura_data
 import leaguestats
 import pickrounds
 import scores
@@ -1033,3 +1034,13 @@ def oura_complete(body: OuraComplete, user: db.User = Depends(current_user), ses
 def oura_disconnect(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
     revoked = _oura(lambda: oura.disconnect(session, user.id))
     return {**oura.status(session, user.id), "revoked": revoked}
+
+
+@app.get("/integrations/oura/workouts")
+def oura_workouts(
+    days: int = Query(30, ge=1, le=90), limit: int = Query(10, ge=1, le=25),
+    user: db.User = Depends(current_user), session: Session = Depends(db.get_session),
+) -> JSONResponse:
+    """Read-only test: the caller's own recent Oura workouts and heart-rate coverage. Nothing is stored or logged."""
+    report = _oura(lambda: oura_data.recent_workouts(session, user.id, days=days, limit=limit))
+    return JSONResponse(report, headers={"Cache-Control": "no-store, private"})
