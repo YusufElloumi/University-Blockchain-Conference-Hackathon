@@ -93,6 +93,31 @@ export type LoserBuys = {
           }
         },
         {
+          "name": "rules",
+          "docs": [
+            "The challenge's rules and payout terms. Created here, never changed afterwards."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  108,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge"
+              }
+            ]
+          }
+        },
+        {
           "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -125,6 +150,33 @@ export type LoserBuys = {
         {
           "name": "oracle",
           "type": "pubkey"
+        },
+        {
+          "name": "rulesHash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "verifier",
+          "type": "pubkey"
+        },
+        {
+          "name": "payout",
+          "type": {
+            "defined": {
+              "name": "payoutKind"
+            }
+          }
+        },
+        {
+          "name": "splitBps",
+          "type": {
+            "vec": "u16"
+          }
         }
       ]
     },
@@ -189,7 +241,8 @@ export type LoserBuys = {
     {
       "name": "joinChallenge",
       "docs": [
-        "Deposits the buy-in and adds the caller to the player list. Before the start time only."
+        "Deposits the buy-in and adds the caller to the player list. Before the start time only,",
+        "and only if `expected_rules_hash` is the rules hash fixed at creation."
       ],
       "discriminator": [
         41,
@@ -244,6 +297,27 @@ export type LoserBuys = {
           "writable": true
         },
         {
+          "name": "rules",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  108,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge"
+              }
+            ]
+          }
+        },
+        {
           "name": "playerToken",
           "docs": [
             "The player's own token account that the buy-in is taken from."
@@ -255,7 +329,17 @@ export type LoserBuys = {
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "expectedRulesHash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "refund",
@@ -326,7 +410,9 @@ export type LoserBuys = {
     {
       "name": "settle",
       "docs": [
-        "Oracle only, after the end time: pays the pool to the winners."
+        "Oracle only, after the end time: pays the pool in equal shares to the winners named in the",
+        "verifier's signed result (an Ed25519 check must be the instruction right before this one).",
+        "Winner takes all, goal and teams formats only."
       ],
       "discriminator": [
         175,
@@ -383,33 +469,43 @@ export type LoserBuys = {
           "writable": true
         },
         {
+          "name": "rules",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  108,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
           "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
-      "args": [
-        {
-          "name": "winners",
-          "type": {
-            "vec": "pubkey"
-          }
-        },
-        {
-          "name": "scoreHash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        }
-      ]
+      "args": []
     },
     {
       "name": "settleSplit",
       "docs": [
-        "Oracle only, after the end time: pays the pool to the winners in fixed shares",
-        "(basis points, adding up to 100%). Used by formats such as a podium split."
+        "Oracle only, after the end time: podium payout. The signed result names the winners in rank",
+        "order; `tie_groups` says how many players share each rank. The program works out every share",
+        "from the split fixed at creation and pays only if the signed shares are exactly those."
       ],
       "discriminator": [
         3,
@@ -466,31 +562,39 @@ export type LoserBuys = {
           "writable": true
         },
         {
+          "name": "rules",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  117,
+                  108,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
           "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
         {
-          "name": "winners",
-          "type": {
-            "vec": "pubkey"
-          }
-        },
-        {
-          "name": "sharesBps",
-          "type": {
-            "vec": "u16"
-          }
-        },
-        {
-          "name": "scoreHash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
+          "name": "tieGroups",
+          "type": "bytes"
         }
       ]
     }
@@ -507,6 +611,19 @@ export type LoserBuys = {
         81,
         22,
         208
+      ]
+    },
+    {
+      "name": "rules",
+      "discriminator": [
+        12,
+        186,
+        182,
+        174,
+        196,
+        165,
+        88,
+        15
       ]
     }
   ],
@@ -587,6 +704,19 @@ export type LoserBuys = {
         210,
         183,
         38
+      ]
+    },
+    {
+      "name": "rulesLocked",
+      "discriminator": [
+        130,
+        249,
+        184,
+        194,
+        203,
+        244,
+        42,
+        85
       ]
     }
   ],
@@ -680,6 +810,51 @@ export type LoserBuys = {
       "code": 6017,
       "name": "invalidShares",
       "msg": "Need one share per winner, adding up to exactly 100%"
+    },
+    {
+      "code": 6018,
+      "name": "invalidRulesHash",
+      "msg": "Rules hash must not be empty"
+    },
+    {
+      "code": 6019,
+      "name": "invalidSplit",
+      "msg": "Payout split must be 2 or 3 places, highest first, adding up to 100% (podium only)"
+    },
+    {
+      "code": 6020,
+      "name": "rulesMismatch",
+      "msg": "These are not the rules this challenge was created with"
+    },
+    {
+      "code": 6021,
+      "name": "wrongPayoutKind",
+      "msg": "This payout is not allowed by the challenge's format"
+    },
+    {
+      "code": 6022,
+      "name": "sharesNotAsCommitted",
+      "msg": "The payout shares are not the ones the challenge's rules give"
+    },
+    {
+      "code": 6023,
+      "name": "invalidTieGroups",
+      "msg": "Tie groups must cover the paid places and every winner"
+    },
+    {
+      "code": 6024,
+      "name": "missingSignatureCheck",
+      "msg": "Expected the verifier's Ed25519 signature check right before this instruction"
+    },
+    {
+      "code": 6025,
+      "name": "wrongVerifier",
+      "msg": "The signature check is not by this challenge's verifier"
+    },
+    {
+      "code": 6026,
+      "name": "invalidSignedResult",
+      "msg": "The signed result is malformed or for another program, challenge or rules"
     }
   ],
   "types": [
@@ -961,6 +1136,29 @@ export type LoserBuys = {
       }
     },
     {
+      "name": "payoutKind",
+      "docs": [
+        "How the pool is paid, fixed at creation (`Rules.payout`)."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "winnerTakesAll"
+          },
+          {
+            "name": "podium"
+          },
+          {
+            "name": "goal"
+          },
+          {
+            "name": "teams"
+          }
+        ]
+      }
+    },
+    {
       "name": "playerJoined",
       "type": {
         "kind": "struct",
@@ -980,6 +1178,113 @@ export type LoserBuys = {
           {
             "name": "poolTotal",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rules",
+      "docs": [
+        "The rules a challenge was created with. A separate account next to the challenge (seeds",
+        "`[\"rules\", challenge]`), so challenges created before it existed keep their layout and can still",
+        "be refunded. Written once by `create_challenge`; no instruction can change it afterwards."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "rulesHash",
+            "docs": [
+              "SHA-256 of the canonical JSON ruleset (scoring rules, format, length, verifier...). The ruleset",
+              "itself is published offchain so anyone can re-hash it. `join_challenge` must quote this hash."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "verifier",
+            "docs": [
+              "The key whose Ed25519 signature on the result `settle` and `settle_split` require."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "payout",
+            "type": {
+              "defined": {
+                "name": "payoutKind"
+              }
+            }
+          },
+          {
+            "name": "splitBps",
+            "docs": [
+              "Podium only: basis points per place (2 or 3 places, highest first, adding up to 10,000).",
+              "Unused places, and every place for other formats, are 0."
+            ],
+            "type": {
+              "array": [
+                "u16",
+                3
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rulesLocked",
+      "docs": [
+        "Emitted with `ChallengeCreated`: the rules and payout terms are now fixed."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "rulesHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "verifier",
+            "type": "pubkey"
+          },
+          {
+            "name": "payout",
+            "type": {
+              "defined": {
+                "name": "payoutKind"
+              }
+            }
+          },
+          {
+            "name": "splitBps",
+            "type": {
+              "array": [
+                "u16",
+                3
+              ]
+            }
           }
         ]
       }
@@ -1011,12 +1316,28 @@ export type LoserBuys = {
       "value": "2"
     },
     {
+      "name": "proofDomain",
+      "docs": [
+        "First bytes of every signed result (the Proof of Sweat message). See docs/ARCHITECTURE.md."
+      ],
+      "type": "bytes",
+      "value": "[114, 105, 118, 97, 108, 46, 112, 114, 111, 111, 102, 45, 111, 102, 45, 101, 102, 102, 111, 114, 116, 46, 118, 50]"
+    },
+    {
       "name": "refundTimeoutSeconds",
       "docs": [
         "If the oracle has not settled this long after the end time, anyone can refund."
       ],
       "type": "i64",
       "value": "259200"
+    },
+    {
+      "name": "rulesSeed",
+      "docs": [
+        "Seed for the rules account that sits next to each challenge."
+      ],
+      "type": "bytes",
+      "value": "[114, 117, 108, 101, 115]"
     },
     {
       "name": "vaultSeed",

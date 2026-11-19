@@ -15,6 +15,8 @@ pub struct JoinChallenge<'info> {
     pub challenge: Box<Account<'info, Challenge>>,
     #[account(mut, address = challenge.vault)]
     pub vault: Box<Account<'info, TokenAccount>>,
+    #[account(seeds = [RULES_SEED, challenge.key().as_ref()], bump = rules.bump)]
+    pub rules: Box<Account<'info, Rules>>,
     /// The player's own token account that the buy-in is taken from.
     #[account(
         mut,
@@ -25,7 +27,13 @@ pub struct JoinChallenge<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handle_join_challenge(ctx: Context<JoinChallenge>) -> Result<()> {
+/// `expected_rules_hash` is the hash of the rules the player was shown. A deposit only goes through
+/// if it matches the hash fixed at creation, so nobody can pay into rules they did not see.
+pub fn handle_join_challenge(ctx: Context<JoinChallenge>, expected_rules_hash: [u8; 32]) -> Result<()> {
+    require!(
+        ctx.accounts.rules.rules_hash == expected_rules_hash,
+        ErrorCode::RulesMismatch
+    );
     let now = Clock::get()?.unix_timestamp;
     let player = ctx.accounts.player.key();
     let challenge = &mut ctx.accounts.challenge;
