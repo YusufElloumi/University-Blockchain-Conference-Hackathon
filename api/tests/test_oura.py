@@ -20,7 +20,7 @@ import config
 import db
 import main
 import secretbox
-from fitness import oura
+from fitness import oura, oura_data
 
 PRIVY_KEY = ec.generate_private_key(ec.SECP256R1())
 WALLETS = {"maya": "6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD", "sam": "J73KdqANTzJ7P1TMTnd37xNCdXvc3LChG7J8X1XX4XY9"}
@@ -92,7 +92,9 @@ def setup(monkeypatch):
     monkeypatch.setattr(db.SessionLocal, "kw", {**db.SessionLocal.kw, "bind": engine})
     monkeypatch.setattr(auth, "_signing_keys", lambda: [PRIVY_KEY.public_key()])
     monkeypatch.setattr(auth, "fetch_privy_user",
-                        lambda pid: auth.PrivyUser(pid, "x@example.com", WALLETS[pid.split(":")[-1]]))
+                        lambda pid: auth.PrivyUser(pid, pid.split(":")[-1] + "@example.com", WALLETS[pid.split(":")[-1]]))
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"maya@example.com"})  # the diagnostic is admin-only
+    monkeypatch.setattr(oura_data, "_sleep", lambda seconds: None)  # no real waiting between retries
     monkeypatch.setattr(config, "WEB_ORIGINS", [WEB, "http://localhost:5173"])
     monkeypatch.setattr(config, "OURA_CLIENT_ID", "client-123")
     monkeypatch.setattr(config, "OURA_CLIENT_SECRET", "client-secret-xyz")
@@ -304,8 +306,8 @@ def test_a_refused_refresh_forgets_the_dead_link(client, setup):
 def test_disconnect_revokes_and_deletes(client, setup):
     connect(client)
     reply = client.delete("/integrations/oura", headers=login())
-    assert reply.json() == {"available": True, "connected": False, "connected_at": None,
-                            "missing_permissions": [], "revoked": True}
+    assert reply.json() == {"available": True, "connected": False, "connected_at": None, "missing_permissions": [],
+                            "last_sync_at": None, "last_sync_error": None, "revoked": True}
     assert setup.revoked == [ACCESS] and stored() is None
 
 
@@ -351,7 +353,6 @@ def test_permissions_are_compared_by_plain_name(client, setup, granted, missing)
 
 # ---------- read-only workout check (synthetic data only) ----------
 
-from fitness import oura_data  # noqa: E402
 
 WORKOUT_A = {  # a full record, every documented field, plus one Oura might add later
     "id": "wk-synthetic-a", "activity": "running", "calories": 412.5, "day": "2026-11-17",
@@ -469,8 +470,10 @@ def test_workout_check_stores_nothing_and_logs_no_health_data(client, setup, cap
         assert secret not in caplog.text
 
 
-def test_one_user_cannot_read_anothers_workouts(client, setup):
+def test_one_user_cannot_read_anothers_workouts(client, setup, monkeypatch):
     connect(client, "maya")
     setup.pages = {oura_data.WORKOUT_URL: [[WORKOUT_A]], oura_data.HEARTRATE_URL: [HR_A]}
+    assert client.get("/integrations/oura/workouts", headers=login("sam")).status_code == 403  # not an admin
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"maya@example.com", "sam@example.com"})
     assert client.get("/integrations/oura/workouts", headers=login("sam")).status_code == 404
     assert not setup.data_calls  # Sam isn't connected, so Oura is never called with anyone's token

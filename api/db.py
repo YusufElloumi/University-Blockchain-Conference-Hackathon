@@ -1,11 +1,12 @@
 """Database setup and tables. SQLite locally, Postgres when deployed (same code through SQLAlchemy).
 
-Twelve tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
+Fourteen tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
 the mock and manual sources; Strava activities are never stored there), `invites` (who has redeemed
 the invite code of a league or private event),
 `pick_rounds` and `round_picks` (prediction rounds on Gemini markets), and `league_stats` (rows of a
 league's stat sheet, uploaded by the organizer), and `oauth_states` (attempts to connect an outside
-account such as Oura, each bound to one user, short-lived and single-use).
+account such as Oura, each bound to one user, short-lived and single-use), `imported_activities`
+(workouts imported from Oura, minimal fields) and `sweat_receipts` (final Proof of Sweat receipts).
 
 A database made before Nov 17 may still hold an unused `picks` table from the old pick'em tiebreaker
 (removed: Gemini is only used through prediction rounds, and ties always split). It is left alone.
@@ -93,6 +94,9 @@ class FitnessConnection(Base):
     token_expires_at: Mapped[datetime | None]
     connected_at: Mapped[datetime] = mapped_column(default=_now)
     scopes: Mapped[str | None]  # permissions granted, space-separated, e.g. "workout heartrate"
+    last_sync_at: Mapped[datetime | None]  # last completed workout sync (api/fitness/oura_sync.py)
+    last_sync_attempt_at: Mapped[datetime | None]  # also the debounce: one sync per user at a time
+    last_sync_error: Mapped[str | None]  # short code of the last failure; cleared by a good sync
 
 
 class OAuthState(Base):
@@ -160,6 +164,7 @@ class Participant(Base):
     consent_at: Mapped[datetime]  # when they agreed to share their points with this group
     stat_name: Mapped[str | None]  # league stats: this player's name on the uploaded stat sheet
     team: Mapped[int | None]  # teams format: index of the team they picked when joining
+    final_sync_attempts: Mapped[int | None]  # Proof of Sweat: tries at the last sync before settlement (bounded)
     joined_at: Mapped[datetime] = mapped_column(default=_now)
 
 
@@ -246,6 +251,64 @@ class LeagueStat(Base):
     assists: Mapped[int] = mapped_column(default=0)
     points: Mapped[int | None]  # the sheet's own points column, if it has one
     uploaded_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class ImportedActivity(Base):
+    """A workout imported from a user's connected provider (Oura), cut down to what checking and scoring need.
+
+    Not kept: the provider's own ID (only a one-way reference), calories, intensity, labels, heart-rate
+    readings, or the raw API reply. Heart rate is kept as minute-bin coverage counts only.
+    One row per provider workout, whoever imports it (the unique reference), so the same record can
+    never be credited to two accounts. It may count in several of its owner's challenges.
+    Deleted on disconnect, and by the clean-up once no recent challenge needs it (oura_sync.cleanup).
+    """
+
+    __tablename__ = "imported_activities"
+    __table_args__ = (UniqueConstraint("provider", "provider_ref"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str]
+    provider_ref: Mapped[str] = mapped_column(index=True)  # SHA-256 of a domain label + the provider's workout ID
+    activity_type: Mapped[str | None]  # Rival category; None when the provider's activity is not supported
+    provider_activity: Mapped[str | None]  # the provider's own activity name, private, so mappings can be reviewed
+    provider_source: Mapped[str | None]  # the provider's provenance label (confirmed, autodetected, manual, ...)
+    start_time: Mapped[datetime | None]
+    end_time: Mapped[datetime | None]
+    minutes: Mapped[float] = mapped_column(default=0)
+    distance_km: Mapped[float | None]
+    content_hash: Mapped[str]  # changes when the provider edits the record, which resets its checks
+    status: Mapped[str] = mapped_column(default="pending")  # pending, verified, rejected
+    assurance: Mapped[str | None]  # strong or limited (verified workouts only)
+    reason: Mapped[str | None]  # short code: why rejected, or why the evidence is limited
+    checks: Mapped[str | None] = mapped_column(Text)  # JSON list of {code, result, reason}
+    hr_bins_total: Mapped[int | None]
+    hr_bins_covered: Mapped[int | None]
+    hr_attempts: Mapped[int] = mapped_column(default=0)
+    missing_syncs: Mapped[int] = mapped_column(default=0)  # complete syncs in a row that did not return it
+    rules_version: Mapped[str | None]
+    first_seen_at: Mapped[datetime] = mapped_column(default=_now)
+    synced_at: Mapped[datetime] = mapped_column(default=_now)
+    verified_at: Mapped[datetime | None]
+
+
+class SweatReceipt(Base):
+    """A workout's final Proof of Sweat receipt in one settled challenge, kept for its owner.
+
+    `payload` is the exact canonical JSON whose SHA-256 is `commitment`; the commitment is listed in
+    the challenge's score sheet, whose hash is stored onchain. The payload holds a category, minutes,
+    check results and a random salt: no times, no provider IDs, no heart-rate values.
+    """
+
+    __tablename__ = "sweat_receipts"
+    __table_args__ = (UniqueConstraint("challenge_id", "commitment"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    commitment: Mapped[str]
+    payload: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
 class LoggedActivity(Base):

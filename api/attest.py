@@ -36,6 +36,7 @@ import formats
 
 DOMAIN = "rival.proof-of-effort"
 SCHEMA = 1
+SWEAT_SCHEMA = 2  # Proof of Sweat sheets: adds the receipt commitments summary
 CLUSTER = "devnet"
 
 
@@ -60,6 +61,22 @@ def load_verifier() -> Keypair | None:
 def build(challenge: str, sheet: dict, payout: formats.Payout, verifier: Pubkey,
           now: int | None = None, nonce: str | None = None) -> dict:
     """The message to sign. Every field is public information."""
+    payload = _payload(challenge, sheet, payout, verifier, now, nonce)
+    section = sheet.get("proof_of_sweat")
+    if section:
+        # Schema 2: the proof also names how many workout receipts the sheet commits to, and one hash over them.
+        commitments = [c for p in section.get("participants", []) for c in p.get("receipts", [])]
+        payload["schema"] = SWEAT_SCHEMA
+        payload["proof_of_sweat"] = {"receipts": len(commitments), "receipts_sha256": receipts_sha256(commitments)}
+    return payload
+
+
+def receipts_sha256(commitments: list[str]) -> str:
+    return sheet_sha256(sorted(commitments)).hex()
+
+
+def _payload(challenge: str, sheet: dict, payout: formats.Payout, verifier: Pubkey,
+             now: int | None = None, nonce: str | None = None) -> dict:
     return {
         "schema": SCHEMA,
         "domain": DOMAIN,
@@ -119,8 +136,10 @@ def check(proof: dict, *, challenge: str, sheet: dict | None = None, trusted: st
         problems.append(f"signed by {signer}, not by the published verifier {trusted}")
     if not signature.verify(signer, message.encode()):
         problems.append("the signature does not match the message")
-    expected = {"schema": SCHEMA, "domain": DOMAIN, "cluster": CLUSTER, "program": str(chain.PROGRAM_ID),
-                "challenge": challenge}
+    wanted = SWEAT_SCHEMA if "proof_of_sweat" in payload else SCHEMA
+    if payload.get("schema") != wanted:
+        problems.append(f"schema is {payload.get('schema')!r}, expected {wanted!r}")
+    expected = {"domain": DOMAIN, "cluster": CLUSTER, "program": str(chain.PROGRAM_ID), "challenge": challenge}
     for field, value in expected.items():
         if payload.get(field) != value:
             problems.append(f"{field} is {payload.get(field)!r}, expected {value!r}")
@@ -129,6 +148,12 @@ def check(proof: dict, *, challenge: str, sheet: dict | None = None, trusted: st
             problems.append("the score sheet does not match the signed hash")
         if sheet.get("challenge") != challenge:
             problems.append("the score sheet is for another challenge")
+        section = sheet.get("proof_of_sweat")
+        if section or payload.get("proof_of_sweat"):
+            commitments = [c for p in (section or {}).get("participants", []) for c in p.get("receipts", [])]
+            signed = payload.get("proof_of_sweat") or {}
+            if signed.get("receipts") != len(commitments) or signed.get("receipts_sha256") != receipts_sha256(commitments):
+                problems.append("the workout receipt commitments do not match the signed summary")
         paid = [{"wallet": w, "bps": bps} for w, bps in settlement.payout_of(sheet).shares]
         if paid != payload.get("payout"):
             problems.append("the signed payout is not what the score sheet gives")

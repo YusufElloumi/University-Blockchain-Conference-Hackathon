@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from datetime import date, datetime, timedelta, timezone
 
 import httpx
@@ -34,26 +35,55 @@ WORKOUT_FIELDS = WORKOUT_REQUIRED + WORKOUT_OPTIONAL
 log = logging.getLogger("loser_buys")
 
 
-def _get(url: str, token: str, params: dict) -> list[dict]:
-    """All pages of one Oura collection request (up to MAX_PAGES). Errors never include Oura's reply."""
-    rows: list[dict] = []
-    params = dict(params)
-    for _ in range(MAX_PAGES):
+RETRIES = 3  # tries per request for timeouts, 5xx and 429, with a short doubling wait between them
+_sleep = time.sleep  # replaced in tests
+
+
+def _request(url: str, token: str, params: dict) -> dict:
+    """One Oura API request with bounded retries. Errors never include Oura's reply."""
+    failure: oura.OuraError | None = None
+    for attempt in range(RETRIES):
+        if attempt:
+            _sleep(0.5 * 2 ** (attempt - 1))
         try:
             response = httpx.get(url, params=params, headers={**oura.HEADERS, "Authorization": f"Bearer {token}"},
                                  timeout=20)
         except httpx.HTTPError as e:
             log.warning("Oura data request failed: %s", type(e).__name__)
-            raise oura.OuraError("Couldn't reach Oura. Try again in a moment.", 502) from None
-        if response.status_code != 200:
-            log.warning("Oura data request answered HTTP %s", response.status_code)
-            raise _error_for(response.status_code)
-        body = response.json()
+            failure = oura.OuraError("Couldn't reach Oura. Try again in a moment.", 502)
+            continue
+        if response.status_code == 200:
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
+            if not isinstance(body, dict) or not isinstance(body.get("data", []), list):
+                log.warning("Oura data request returned an unreadable reply")
+                raise oura.OuraError("Oura sent an unexpected reply. Try again in a moment.", 502)
+            return body
+        log.warning("Oura data request answered HTTP %s", response.status_code)
+        failure = _error_for(response.status_code)
+        if response.status_code not in (429, 500, 502, 503, 504):
+            break  # 401, 403 and the like will not change on a retry
+    raise failure or oura.OuraError("Couldn't reach Oura. Try again in a moment.", 502)
+
+
+def pages(url: str, token: str, params: dict, max_pages: int = MAX_PAGES) -> tuple[list, bool]:
+    """Rows from up to `max_pages` pages, and whether that was everything Oura had for the request."""
+    rows: list = []
+    params = dict(params)
+    for _ in range(max_pages):
+        body = _request(url, token, params)
         rows.extend(body.get("data") or [])
         if not body.get("next_token"):
-            break
+            return rows, True
         params["next_token"] = body["next_token"]
-    return rows
+    return rows, False
+
+
+def _get(url: str, token: str, params: dict) -> list[dict]:
+    """All pages of one Oura collection request (up to MAX_PAGES)."""
+    return [row for row in pages(url, token, params)[0] if isinstance(row, dict)]
 
 
 def _error_for(status: int) -> oura.OuraError:
