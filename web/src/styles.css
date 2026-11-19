@@ -1090,15 +1090,8 @@ input[type="checkbox"] {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* The files are already black and white with one object left in a brand colour (see CREDITS.md),
-     so the page only deepens the contrast. A grayscale filter here would remove that colour. */
-  filter: contrast(1.12) brightness(0.82);
-}
-
-/* Photos are shown fully black and white: the one-colour treatment stays on the hero film only. */
-.photo img,
-.film img,
-.starter > img {
+  /* Shown fully black and white. The files still carry a one-colour accent (see CREDITS.md);
+     the grayscale filter removes it on purpose. */
   filter: grayscale(1) contrast(1.12) brightness(0.82);
 }
 
