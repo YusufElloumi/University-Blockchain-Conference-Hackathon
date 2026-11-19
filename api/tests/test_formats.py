@@ -44,10 +44,18 @@ def test_bad_settings_are_refused(fmt, raw):
         formats.clean_config(fmt, raw)
 
 
-def test_league_stats_goal_must_use_points():
-    with pytest.raises(formats.FormatError):
-        formats.clean_config("goal", {"metric": "active_days", "target": 3}, league_stats=True)
-    assert formats.clean_config("goal", {"metric": "points", "target": 3}, league_stats=True)["metric"] == "points"
+def test_new_goals_are_active_days_only():
+    assert formats.clean_config("goal", {"target": 3}) == {"metric": "active_days", "target": 3}
+    with pytest.raises(formats.FormatError):  # points targets are gone for new events
+        formats.clean_config("goal", {"metric": "points", "target": 3})
+    for metric in ("active_days", "points"):  # stat sheets have no active days, so no goal format at all
+        with pytest.raises(formats.FormatError):
+            formats.clean_config("goal", {"metric": metric, "target": 3}, league_stats=True)
+
+
+def test_events_that_already_locked_a_points_goal_are_still_read_and_described():
+    assert "points" in formats.describe("goal", {"metric": "points", "target": 5})
+    assert formats.goal_progress(Entry("a", 9, 2), {"metric": "points", "target": 5}) == 9
 
 
 # ---------- payout rules ----------
@@ -188,13 +196,12 @@ def test_podium_end_to_end(client, three_players, split_chain):
 
 
 def test_goal_end_to_end(client, split_chain):
-    create(client, "goal", {"metric": "points", "target": 2})
+    create(client, "goal", {"metric": "active_days", "target": 1})
     join(client, "maya")
     join(client, "sam")
-    workout(client, "sam", distance_km=5)  # 2 points: made it
-    workout(client, "maya")  # 1 point: did not
+    workout(client, "sam", distance_km=5)  # an active day: made it
     progress = {p["name"]: p["goal_progress"] for p in state(client)["players"]}
-    assert progress == {"sam": 2, "maya": 1}
+    assert progress == {"sam": 1, "maya": 0}  # Maya logged nothing: did not
     body = end_now(client)
     assert body["winners"] == [WALLETS["sam"]] and split_chain[-1][0] == "settle"
 

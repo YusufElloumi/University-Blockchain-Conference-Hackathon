@@ -33,6 +33,7 @@ import config
 import db
 import sweat
 import sweat2
+import sweat3
 from fitness import oura, oura_data
 
 PROVIDER = oura.PROVIDER
@@ -43,7 +44,8 @@ MAX_WORKOUT_PAGES = 10
 MAX_HR_FETCHES = 25  # heart-rate windows read per sync; the rest stay pending until the next one
 MAX_HR_ATTEMPTS = 3  # then the workout is rated limited evidence instead of waiting forever
 MAX_FINAL_SYNC_ATTEMPTS = 3  # per player, before settlement stops waiting for them
-SWEAT_TEMPLATES = (sweat.TEMPLATE, sweat2.TEMPLATE)
+SWEAT_TEMPLATES = (sweat.TEMPLATE, sweat2.TEMPLATE, sweat3.TEMPLATE)
+EFFORT_ENGINES = {sweat2.TEMPLATE: sweat2, sweat3.TEMPLATE: sweat3}  # rule sets that use a personal heart-rate reference
 MISSING_SYNCS_BEFORE_REMOVAL = 2  # complete syncs in a row that must miss a workout before we drop it
 
 # Oura activity names -> Rival categories. Names are compared in lower case with punctuation removed.
@@ -227,7 +229,7 @@ def _sync(session: Session, user_id: int, now: datetime) -> dict:
         since = db.utc(connection.last_sync_at) - timedelta(days=OVERLAP_DAYS)
         for challenge in _open_sweat_challenges(session, user_id):
             since = min(since, db.utc(challenge.start_time) - timedelta(days=1))
-            if challenge.template == sweat2.TEMPLATE and not _reference_frozen(session, challenge, user_id):
+            if challenge.template in EFFORT_ENGINES and not _reference_frozen(session, challenge, user_id):
                 # v2 compares effort with the player's earlier workouts: look back far enough to build that reference.
                 since = min(since, db.utc(challenge.start_time) - timedelta(days=sweat2.REFERENCE_WINDOW_DAYS))
         since = max(since, floor)
@@ -391,7 +393,8 @@ def freeze_reference(session: Session, challenge: db.Challenge, user_id: int, no
                db.ImportedActivity.start_time >= start - timedelta(days=sweat2.REFERENCE_WINDOW_DAYS))
         .order_by(db.ImportedActivity.start_time.desc(), db.ImportedActivity.id)
     )
-    reference = sweat2.personal_reference([r.hr_median for r in rows if sweat2.qualifies_for_heart(heart_of(r))])
+    engine = EFFORT_ENGINES.get(challenge.template, sweat2)
+    reference = engine.personal_reference([r.hr_median for r in rows if sweat2.qualifies_for_heart(heart_of(r))])
     if reference is None:
         connection = oura._connection(session, user_id)
         if connection is None or connection.last_sync_at is None:
@@ -488,7 +491,7 @@ def cleanup(session: Session, now: datetime | None = None) -> int:
                 db.utc(row.end_time) <= db.utc(c.start_time)
                 and db.utc(row.end_time) >= db.utc(c.start_time) - timedelta(days=sweat2.REFERENCE_WINDOW_DAYS)
                 and not _reference_frozen(session, c, row.user_id)
-                for c in _open_sweat_challenges(session, row.user_id) if c.template == sweat2.TEMPLATE
+                for c in _open_sweat_challenges(session, row.user_id) if c.template in EFFORT_ENGINES
             )
         if not needed:
             session.delete(row)

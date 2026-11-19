@@ -126,7 +126,7 @@ export function Matchup() {
 /** The scoring rules as a scoreboard strip. These are the app's real numbers. */
 const RULES = [
   { value: "1", unit: "pt", label: "About a point per verified minute", short: "per verified minute" },
-  { value: "1.25", unit: "×", label: "Most that effort can add", short: "effort weighting, at most" },
+  { value: "1.5", unit: "×", label: "Most a harder session can earn", short: "for effort, at most" },
   { value: "60", unit: "min", label: "Count in full each day, then taper", short: "a day count in full" },
   { value: "8", unit: "max", label: "Players in one event", short: "players" },
 ];

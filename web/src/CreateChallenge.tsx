@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChallengeView, RulesPreview, StatWeights } from "./api";
 import type { Session } from "./App";
 import { buildCreateTransaction, friendlyError } from "./chain";
@@ -106,11 +106,15 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const [roundEvery, setRoundEvery] = useState(ROUND_EVERY[0]);
   const [format, setFormat] = useState<Format>("winner_takes_all");
   const [shares, setShares] = useState<number[]>(PODIUM_PRESETS[0]);
-  const [goalMetric, setGoalMetric] = useState<"active_days" | "points">("active_days");
   const [goalTarget, setGoalTarget] = useState(5);
   const [teamNames, setTeamNames] = useState(["Team A", "Team B"]);
   const usesStats = mode === "league" && source === "league_stats";
-  const metric = usesStats ? "points" : goalMetric; // stat sheets have no active days
+  const metric = "active_days" as const; // a goal is a number of active days
+  // Stat sheets have no active days, so league-stats events can't use the goal format.
+  const formatChoices = usesStats ? FORMATS.filter((f) => f !== "goal") : FORMATS;
+  useEffect(() => {
+    if (usesStats && format === "goal") setFormat("winner_takes_all");
+  }, [usesStats, format]);
   const custom = lengthChoice === CUSTOM;
   const customNumber = Number(customAmount);
   const lengthSeconds = custom
@@ -121,7 +125,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const lengthOk = lengthSeconds >= MIN_LENGTH && lengthSeconds <= MAX_LENGTH;
   const lengthLabel = lengthOk ? termLabel(lengthSeconds * 1000) : "-";
   const lengthDays = dayCount(lengthSeconds);
-  const goalOk = !(format === "goal" && metric === "active_days" && goalTarget > lengthDays);
+  const goalOk = !(format === "goal" && goalTarget > lengthDays);
   const sharesOk =
     shares.reduce((a, b) => a + b, 0) === 100 && shares.every((v, i) => v > 0 && (i === 0 || v <= shares[i - 1]));
   const teamsOk =
@@ -300,7 +304,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
             <h2 className="card-title">Format</h2>
             <p className="fine">How the prize pool is paid. Locked onchain when the event is created: not even Rival can change it.</p>
             <div className="format-grid" role="radiogroup" aria-label="Competition format">
-              {FORMATS.map((f) => {
+              {formatChoices.map((f) => {
                 const { title, Icon, line, example } = FORMAT_INFO[f];
                 return (
                   <button
@@ -358,22 +362,6 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
 
             {format === "goal" && (
               <>
-                {!usesStats && (
-                  <div className="segmented" role="radiogroup" aria-label="Goal type">
-                    {(["active_days", "points"] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        role="radio"
-                        aria-checked={goalMetric === m}
-                        className={goalMetric === m ? "on" : ""}
-                        onClick={() => setGoalMetric(m)}
-                      >
-                        {m === "active_days" ? "Active days" : "Points"}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 <div className="field">
                   <span className="field-label">Goal</span>
                   <div className="stepper">
@@ -465,13 +453,13 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
               </div>
             ) : (
               <ul className="rule-list">
-                {sweatRules && config.new_challenge_rules?.generation === 2 ? (
+                {sweatRules && (config.new_challenge_rules?.generation ?? 0) >= 2 ? (
                   <>
                     <li>
                       <b>+1</b> about a point per Oura-verified minute
                     </li>
                     <li>
-                      <b>×</b> weighted by effort, 0.85 to 1.25
+                      <b>×</b> {config.new_challenge_rules?.generation === 2 ? "weighted by effort, 0.85 to 1.25" : "up to 1.5 for harder sessions the data backs up"}
                     </li>
                     <li>
                       <b>60</b> minutes a day count in full, then less

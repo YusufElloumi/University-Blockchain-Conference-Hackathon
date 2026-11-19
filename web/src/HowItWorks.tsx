@@ -1,6 +1,7 @@
 import { ShieldCheck, Target, Wallet } from "lucide-react";
 import type { Session } from "./App";
 import { StepList } from "./sitekit";
+import SweatExplainer from "./SweatExplainer";
 import { MODE_INFO, MODES } from "./modes";
 import { Eyebrow } from "./ui";
 
@@ -20,6 +21,11 @@ export default function HowItWorks({ session }: { session: Session }) {
       </header>
 
       <StepList compact />
+
+      <div className="section-head">
+        <h2>How Sweat Points are calculated</h2>
+      </div>
+      <SweatExplainer compact />
 
       <div className="section-head">
         <h2>Ways to play</h2>

@@ -47,6 +47,7 @@ import scores
 import scoring
 import sweat
 import sweat2
+import sweat3  # noqa: F401  (reached through scores.engine_of)
 from fitness import oura_sync
 
 log = logging.getLogger("loser_buys")
@@ -88,7 +89,8 @@ def sweat_section(session: Session, challenge: db.Challenge, players: list[str],
         select(db.User).join(db.Participant, db.Participant.user_id == db.User.id)
         .where(db.Participant.challenge_id == challenge.id))}
     v2 = scores.is_sweat2(challenge)
-    fingerprint = sweat2.rules_fingerprint() if v2 else sweat.rules_fingerprint()
+    engine = scores.engine_of(challenge) if v2 else sweat
+    fingerprint = engine.rules_fingerprint()
     listed = []
     for wallet in players:
         user = users.get(wallet)
@@ -105,8 +107,8 @@ def sweat_section(session: Session, challenge: db.Challenge, players: list[str],
                 if v2:
                     # v2 receipts add the Evidence Index and the score breakdown, under the v2 rules.
                     reference, _ = scores.reference_of(session, challenge, user.id)
-                    detail = scores.sweat2_detail(row, line, reference)
-                    payload.update(schema=RECEIPT_SCHEMA_V2, rules_version=sweat2.RULES_VERSION,
+                    detail = scores.sweat2_detail(row, line, reference, engine)
+                    payload.update(schema=RECEIPT_SCHEMA_V2, rules_version=engine.RULES_VERSION,
                                    points=str(line.points), **detail)
                     if line.status == sweat.VERIFIED:
                         payload["assurance"] = detail["evidence"]["label"]  # strong or limited, by the v2 criteria
@@ -185,7 +187,7 @@ def build_sheet(session: Session, challenge: db.Challenge, players: list[str], s
         "salt": secrets.token_hex(16),  # stops anyone guessing the sheet from the hash alone
     }
     if scores.is_sweat(challenge):
-        engine = sweat2 if scores.is_sweat2(challenge) else sweat
+        engine = scores.engine_of(challenge) if scores.is_sweat2(challenge) else sweat
         sheet["rules_version"], sheet["rules_sha256"] = engine.RULES_VERSION, engine.rules_fingerprint()
         sheet["proof_of_sweat"] = sweat_section(session, challenge, players, sync, store=not commit)
     if scores.uses_league_stats(challenge):

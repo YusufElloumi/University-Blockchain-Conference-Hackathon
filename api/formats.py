@@ -30,6 +30,8 @@ DEFAULT_FORMAT = "winner_takes_all"
 FULL = 10_000  # 100% in basis points
 
 DEFAULT_PODIUM = [60, 30, 10]
+# A goal is a number of active days. Points targets were removed for new events (Nov 19): they are
+# still read, paid and described for events created before that, which locked them in their rules.
 GOAL_METRICS = ("active_days", "points")
 DEFAULT_GOAL = {"metric": "active_days", "target": 5}
 DEFAULT_TEAMS = ["Team A", "Team B"]
@@ -61,10 +63,10 @@ def clean_config(fmt: str, raw: dict | None, *, league_stats: bool = False, days
         return {"shares": shares}
     if fmt == "goal":
         metric = raw.get("metric", DEFAULT_GOAL["metric"])
-        if metric not in GOAL_METRICS:
-            raise FormatError("Choose active days or points as the goal.")
-        if league_stats and metric == "active_days":
-            raise FormatError("League stats have no active days. Use a points goal.")
+        if league_stats:
+            raise FormatError("The goal format counts active days, which league stats don't have. Pick another format.")
+        if metric != "active_days":
+            raise FormatError("A goal is a number of active days.")
         target = raw.get("target", DEFAULT_GOAL["target"])
         if not isinstance(target, int) or isinstance(target, bool) or not 1 <= target <= 100:
             raise FormatError("The goal must be a whole number from 1 to 100.")

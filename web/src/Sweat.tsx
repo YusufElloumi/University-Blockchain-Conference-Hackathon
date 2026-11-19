@@ -2,7 +2,7 @@
 // Everything here is private to the signed-in player. Points and checks are worked out on the server
 // (api/sweat.py); this file only explains them.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   Bike,
@@ -29,7 +29,7 @@ type Result = "passed" | "limited" | "failed" | "pending";
 type CheckRow = { code: string; result: Result; reason: string | null };
 
 /** One workout as the server describes it to its owner. */
-type Workout = {
+export type Workout = {
   key: number | string;
   activity: string | null;
   provider_activity?: string | null;
@@ -66,8 +66,8 @@ type EvidencePart = {
   sub?: Record<string, number>;
 };
 
-/** What the server works out for one workout under v2 rules (api/sweat2.py). No heart-rate readings. */
-type V2Detail = {
+/** What the server works out for one workout under the effort-weighted rules (api/sweat2.py, api/sweat3.py). No heart-rate readings. */
+export type V2Detail = {
   intensity: string | null;
   distance_km: number | null;
   evidence: {
@@ -84,6 +84,7 @@ type V2Detail = {
     effective_minutes: string;
     factors: { provider: FactorView; heart: FactorView; movement: FactorView };
     weights: { provider: string; heart: string; movement: string };
+    multiplier_range?: string[]; // lowest and highest effort multiplier under this challenge's rules
     multiplier: string;
     base_points?: string; // effective minutes: what duration alone earns
     potential_bonus?: string; // what the effort signals suggest on top (can be negative)
@@ -288,19 +289,19 @@ const fmtPoints = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1)
 
 const PART_INFO: Record<EvidencePart["key"], { label: string; what: string }> = {
   provenance: {
-    label: "Provenance",
+    label: "Source authentication",
     what: "An authorized Oura record from a recorded source. Full marks for Oura's own sources; fewer for a third-party heart-rate source.",
   },
   integrity: {
-    label: "Timing and integrity",
+    label: "Timing and duplicates",
     what: "Valid times, inside this challenge, at least 10 minutes, and not counted twice. A partly overlapping workout scores a little lower.",
   },
   movement: {
-    label: "Movement",
+    label: "Movement plausibility",
     what: "Distance and time agree with the activity type. With no usable distance this is \"not observed\" (7 of 15), which is not a mark against you.",
   },
   physiological: {
-    label: "Heart-rate signal",
+    label: "Physiological evidence",
     what: "How much of the workout has usable heart-rate samples (15), whether any were recorded as exercise (5), how well they are spread (3), and whether all were clean (2). No samples is \"not observed\" (0 of 25), not evidence of anything.",
   },
 };
@@ -334,8 +335,8 @@ function factorLine(key: "provider" | "heart" | "movement", f: FactorView): stri
 }
 
 /** A factor on its real scale, with the neutral 1.00 marked. */
-function Gauge({ label, weight, f, line }: { label: string; weight: string; f: FactorView; line: string }) {
-  const [lo, hi] = [0.85, 1.25];
+function Gauge({ label, weight, f, line, scale }: { label: string; weight: string; f: FactorView; line: string; scale: [number, number] }) {
+  const [lo, hi] = scale;
   const value = Number(f.value);
   const at = (v: number) => `${Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100))}%`;
   const from = Math.min(1, value);
@@ -366,15 +367,44 @@ const signed = (text: string) => (Number(text) > 0 ? `+${text}` : Number(text) =
 
 const BAND_LABEL = ["Day's 1st hour", "2nd hour", "3rd hour", "Past 3 hours"];
 
-/** The v2 receipt: evidence on one side, score on the other, never mixed. */
+/** A numbered part of the receipt: what it is, and its one-line result on the right. */
+function Part(props: { n: string; title: string; hint: string; result?: ReactNode; tone?: string; children: ReactNode }) {
+  return (
+    <section className={`sweat-part${props.tone ? ` ${props.tone}` : ""}`}>
+      <header>
+        <span className="sweat-part-n">{props.n}</span>
+        <h4>
+          {props.title} <span>{props.hint}</span>
+        </h4>
+        {props.result != null && <b className="sweat-part-result">{props.result}</b>}
+      </header>
+      {props.children}
+    </section>
+  );
+}
+
+/** Secondary detail, closed until asked for. */
+function More({ label, open, children }: { label: ReactNode; open?: boolean; children: ReactNode }) {
+  return (
+    <details className="sweat-more" open={open}>
+      <summary>
+        <ChevronDown size={14} aria-hidden /> {label}
+      </summary>
+      <div>{children}</div>
+    </details>
+  );
+}
+
+/** The effort-weighted receipt (rules v2 and later): result first, then Activity, Verification, Effort, Final score. */
 function ReceiptV2(props: {
   w: Workout;
   name: string;
   status: ReturnType<typeof statusOf>;
   lines: Line[];
   rulesVersion: string | null;
+  sample?: boolean; // made-up numbers (the explainer), not a real workout
 }) {
-  const { w, name, status, lines } = props;
+  const { w, name, status } = props;
   const { evidence, score } = w.v2!;
   const verified = w.result === "verified";
   const f = score.factors;
@@ -386,6 +416,26 @@ function ReceiptV2(props: {
   const withheld = Math.abs(Number(potential)) - Math.abs(Number(adjusted));
   const scale = Math.max(1, Number(base) + Math.max(0, Number(potential)));
   const fallbacks = (["provider", "heart", "movement"] as const).filter((k) => f[k].state === "unavailable").length;
+  const range = score.multiplier_range ?? ["0.85", "1.25"];
+  const gaugeScale: [number, number] = score.multiplier_range ? [0.75, 1.7] : [0.85, 1.25];
+  // The three signals' parts add up to the potential bonus unless the multiplier hit its limit.
+  const signalSum = Number(f.provider.bonus ?? 0) + Number(f.heart.bonus ?? 0) + Number(f.movement.bonus ?? 0);
+  const limited = verified && Math.abs(signalSum - Number(potential)) > 0.015;
+  const tapered = score.band_minutes.slice(1).some((m) => m > 0);
+  const checks = props.lines.filter((line) => line.label !== "Physiological evidence assessed");
+  const passed = checks.filter((line) => line.result === "passed").length;
+  const clean = passed === checks.length;
+  const signals = (
+    [
+      ["heart", "Heart rate", "against your own usual"],
+      ["movement", "Movement", "pace for the activity"],
+      ["provider", "Oura intensity", "Oura's own label"],
+    ] as const
+  )
+    .slice()
+    .sort((a, b) => Number(score.weights[b[0]]) - Number(score.weights[a[0]]));
+  const pct = (weight: string) => `${Math.round(Number(weight) * 100)}%`;
+
   return (
     <div className="sweat-receipt v2">
       <div className="sweat-receipt-head">
@@ -393,50 +443,100 @@ function ReceiptV2(props: {
           Proof of <em className="serif">sweat.</em>
         </span>
         <span className="sweat-head-tags">
-          <span className="sweat-badge">{name}</span>
-          <span className="sweat-badge">Oura</span>
-          <span className={`sweat-badge ${status.tone}`}>{status.label}</span>
+          {props.sample && <span className="sweat-badge sample">Sample</span>}
+          <span className="sweat-badge">Recorded by Oura</span>
         </span>
       </div>
 
-      <dl className="sweat-ribbon">
-        <div>
-          <dt>Eligible</dt>
-          <dd>
-            {w.eligible_minutes ?? 0}
-            <small>min</small>
-          </dd>
+      <div className={`sweat-hero ${status.tone}`}>
+        <div className="sweat-hero-what">
+          <span className={`sweat-verdict ${status.tone}`}>
+            {status.tone === "rejected" ? <CircleAlert size={15} aria-hidden /> : status.tone === "pending" ? <CircleDashed size={15} aria-hidden /> : <ShieldCheck size={15} aria-hidden />}
+            {status.label}
+          </span>
+          <strong>
+            {name} · {w.duration_minutes} min
+          </strong>
+          <small>
+            {verified
+              ? `${passed} of ${checks.length} required checks passed before this could score.`
+              : status.tone === "pending"
+                ? "Checks are still running."
+                : status.line}
+          </small>
         </div>
-        {w.v2!.distance_km != null && w.v2!.distance_km > 0 && (
+        <dl className="sweat-hero-stats">
           <div>
-            <dt>Distance</dt>
+            <dt>Evidence Index</dt>
             <dd>
-              {w.v2!.distance_km}
-              <small>km</small>
+              {evidence.index}
+              <small>/100</small>
             </dd>
           </div>
+          <div className="pts">
+            <dt>Sweat Points</dt>
+            <dd>{verified ? score.contribution : "0"}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <Part n="01" title="Activity" hint="what Oura recorded" result={verified ? `${base} base` : undefined}>
+        <dl className="sweat-facts">
+          <div>
+            <dt>Counted</dt>
+            <dd>{w.eligible_minutes ?? 0} min</dd>
+          </div>
+          {w.v2!.distance_km != null && w.v2!.distance_km > 0 && (
+            <div>
+              <dt>Distance</dt>
+              <dd>{w.v2!.distance_km} km</dd>
+            </div>
+          )}
+          <div>
+            <dt>Oura intensity</dt>
+            <dd className="word">{w.v2!.intensity ?? "none"}</dd>
+          </div>
+          {verified && (
+            <div>
+              <dt>Base points</dt>
+              <dd>{base}</dd>
+            </div>
+          )}
+        </dl>
+        {verified && (
+          <More label="How minutes become base points" open={tapered}>
+            <div className="sweat-bands">
+              {score.band_minutes.map((m, i) => (
+                <div key={i} className={`sweat-band${m > 0 ? " on" : ""}${i === 3 ? " over" : ""}`}>
+                  <span className="bar">
+                    <i style={{ height: `${(m / maxBand) * 100}%` }} />
+                  </span>
+                  <b>{m > 0 ? `${m} min` : "–"}</b>
+                  <span>{BAND_LABEL[i]}</span>
+                  <small>×{score.band_weights[i]}</small>
+                </div>
+              ))}
+            </div>
+            <p className="fine">
+              About a point a minute. Each day's first hour counts in full, the second at 0.6 and the third at 0.25, in time order
+              across all your workouts that day. A game rule so one long day can't decide a week, not exercise advice.
+            </p>
+          </More>
         )}
-        <div>
-          <dt>Oura intensity</dt>
-          <dd className="word">{w.v2!.intensity ?? "none"}</dd>
-        </div>
-        <div>
-          <dt>Evidence Index</dt>
-          <dd>
+      </Part>
+
+      <Part
+        n="02"
+        title="Verification"
+        hint="checked before it can score"
+        tone={status.tone}
+        result={
+          <>
             {evidence.index}
             <small>/100</small>
-          </dd>
-        </div>
-        <div className="pts">
-          <dt>Sweat Points</dt>
-          <dd>{verified ? score.contribution : "0"}</dd>
-        </div>
-      </dl>
-
-      <section className="sweat-block">
-        <h4>
-          Evidence assessment <span>how complete the recording is</span>
-        </h4>
+          </>
+        }
+      >
         <div className="sweat-evidence-bar" role="img" aria-label={`Evidence Index ${evidence.index} of 100`}>
           {evidence.parts.map((p) => (
             <span key={p.key} className={`seg ${p.key} ${p.state}`} style={{ flexGrow: p.max }}>
@@ -461,52 +561,62 @@ function ReceiptV2(props: {
                 </summary>
                 <p>
                   {PART_INFO[p.key].what}
-                  {p.sub && ` Here: coverage ${p.sub.coverage}/15, exercise-tagged ${p.sub.exercise_tagged}/5, spread ${p.sub.distribution}/3, clean ${p.sub.validity}/2.`}
+                  {p.sub && ` Here: coverage ${p.sub.coverage}/15, recorded as exercise ${p.sub.exercise_tagged}/5, spread ${p.sub.distribution}/3, clean ${p.sub.validity}/2.`}
                   {p.reason && REASON[p.reason] ? ` ${REASON[p.reason]}` : ""}
                 </p>
               </details>
             </li>
           ))}
         </ul>
+        <More
+          open={!clean}
+          label={
+            <>
+              Required checks{" "}
+              <em className={clean ? "ok" : "warn"}>
+                {passed} of {checks.length} passed
+              </em>
+            </>
+          }
+        >
+          <ul className="sweat-checks">
+            {checks.map((line) => (
+              <li key={line.label} className={line.result ?? "skipped"}>
+                <ResultIcon result={line.result} />
+                <details>
+                  <summary>
+                    <span>{line.label}</span>
+                    <em>{line.result ? RESULT_WORD[line.result] : "Not assessed"}</em>
+                  </summary>
+                  <p>{line.detail}</p>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </More>
         <p className="fine">
-          The index adds up rule-based evidence. It is not a probability that the workout happened, and it can't rescue a workout
-          that fails a required check. It never touches your base points: it only sets how much of the effort bonus counts
-          {evidence.reliability ? ` (here ${Math.round(Number(evidence.reliability) * 100)}%)` : ""}.
+          A failed required check always means zero. The Evidence Index then rates how complete the recording is; it is a rule-based
+          score, not a probability that the workout happened.
         </p>
-      </section>
+      </Part>
 
       {verified && (
-        <section className="sweat-block">
-          <h4>
-            Sweat Score <span>base + evidence-adjusted effort</span>
-          </h4>
-          <div className="sweat-bands">
-            {score.band_minutes.map((m, i) => (
-              <div key={i} className={`sweat-band${m > 0 ? " on" : ""}${i === 3 ? " over" : ""}`}>
-                <span className="bar">
-                  <i style={{ height: `${(m / maxBand) * 100}%` }} />
-                </span>
-                <b>{m > 0 ? `${m} min` : "–"}</b>
-                <span>{BAND_LABEL[i]}</span>
-                <small>×{score.band_weights[i]}</small>
-              </div>
+        <Part n="03" title="Effort analysis" hint="how hard, from three signals" result={`×${score.multiplier}`}>
+          <div className="sweat-gauges">
+            {signals.map(([key, label]) => (
+              <Gauge key={key} label={label} weight={pct(score.weights[key])} f={f[key]} line={factorLine(key, f[key])} scale={gaugeScale} />
             ))}
-            <div className="sweat-band-total">
-              <small>Base activity points</small>
-              <b>{base}</b>
-            </div>
           </div>
           <p className="fine">
-            Each day's first hour of exercise counts in full, the second at 0.6 and the third at 0.25, in time order across all your
-            workouts that day. A game rule to keep long days from deciding everything, not exercise advice.
+            Weighted together into one effort multiplier, kept between ×{range[0]} and ×{range[1]}
+            {limited ? `; this workout reached that limit` : ""}. A signal with no usable data sits at a neutral ×1.00
+            {fallbacks > 0 ? ` (${fallbacks} of 3 here)` : ""}, so missing data is never a bonus or a penalty.
           </p>
+        </Part>
+      )}
 
-          <div className="sweat-gauges">
-            <Gauge label="Oura intensity" weight={score.weights.provider} f={f.provider} line={factorLine("provider", f.provider)} />
-            <Gauge label="Heart rate" weight={score.weights.heart} f={f.heart} line={factorLine("heart", f.heart)} />
-            <Gauge label="Movement" weight={score.weights.movement} f={f.movement} line={factorLine("movement", f.movement)} />
-          </div>
-
+      {verified && (
+        <Part n="04" title="Final score" hint="base + effort, as far as the evidence supports" result={score.contribution}>
           <div className="sweat-stack" role="img" aria-label={`Base ${base}, effort bonus counted ${adjusted} of ${potential}`}>
             <i className="base" style={{ width: `${(Number(base) / scale) * 100}%` }} />
             {Number(adjusted) > 0 && <i className="bonus" style={{ width: `${(Number(adjusted) / scale) * 100}%` }} />}
@@ -514,34 +624,20 @@ function ReceiptV2(props: {
           </div>
           <dl className="sweat-steps">
             <div>
-              <dt>Base activity points</dt>
+              <dt>Base points</dt>
               <dd>{base}</dd>
             </div>
-            <div className="sub">
-              <dt>Oura intensity</dt>
-              <dd>{signed(f.provider.bonus ?? "0.00")}</dd>
-            </div>
-            <div className="sub">
-              <dt>Heart-rate exertion</dt>
-              <dd>{signed(f.heart.bonus ?? "0.00")}</dd>
-            </div>
-            <div className="sub">
-              <dt>Movement</dt>
-              <dd>{signed(f.movement.bonus ?? "0.00")}</dd>
-            </div>
             <div>
-              <dt>Potential effort bonus</dt>
+              <dt>
+                Effort bonus <small>base × (×{score.multiplier} − 1)</small>
+              </dt>
               <dd>{signed(potential)}</dd>
             </div>
             <div className="rel">
               <dt>
-                Evidence reliability <small>Evidence Index {evidence.index}/100</small>
+                Evidence supports <small>Evidence Index {evidence.index}/100</small>
               </dt>
               <dd>× {share}%</dd>
-            </div>
-            <div>
-              <dt>Evidence-adjusted bonus</dt>
-              <dd>{signed(adjusted)}</dd>
             </div>
             <div className="final">
               <dt>Sweat Points from this workout</dt>
@@ -554,42 +650,51 @@ function ReceiptV2(props: {
               : share === 100
                 ? `The recording backs the effort signals fully, so the whole ${signed(potential)} counts.`
                 : `The evidence scored ${evidence.index}/100, so ${share}% of the ${signed(potential)} effort adjustment counts: ${signed(adjusted)}.`}
-            {fallbacks > 0 && ` ${fallbacks} of 3 signals had no usable data and sit at neutral.`}
           </p>
-          <p className="fine">
-            Reliability steps: Evidence Index 90+ counts 100% of the effort bonus, 75+ counts 85%, 50+ counts 65%, below that 40%.
-            Base points never depend on the index. Your day's total is rounded to a whole number once, after adding its workouts.
-            Scoring rules for a friendly game, not a measure of fitness or calories.
-          </p>
-        </section>
+          <More label="Every step of the calculation">
+            <dl className="sweat-steps small">
+              <div>
+                <dt>Base points × heart-rate weight {pct(score.weights.heart)} × (×{f.heart.value} − 1)</dt>
+                <dd>{signed(f.heart.bonus ?? "0.00")}</dd>
+              </div>
+              <div>
+                <dt>Base points × movement weight {pct(score.weights.movement)} × (×{f.movement.value} − 1)</dt>
+                <dd>{signed(f.movement.bonus ?? "0.00")}</dd>
+              </div>
+              <div>
+                <dt>Base points × Oura intensity weight {pct(score.weights.provider)} × (×{f.provider.value} − 1)</dt>
+                <dd>{signed(f.provider.bonus ?? "0.00")}</dd>
+              </div>
+              <div>
+                <dt>
+                  Effort bonus{limited ? ` (multiplier held at its ×${Number(potential) > 0 ? range[1] : range[0]} limit)` : ""}
+                </dt>
+                <dd>{signed(potential)}</dd>
+              </div>
+              <div>
+                <dt>× evidence reliability {share}%</dt>
+                <dd>{signed(adjusted)}</dd>
+              </div>
+              <div>
+                <dt>Base {base} + counted bonus</dt>
+                <dd>{score.contribution}</dd>
+              </div>
+            </dl>
+            <p className="fine">
+              Reliability steps: an Evidence Index of 90+ counts 100% of the effort bonus, 75+ counts 85%, 50+ counts 65%, below that
+              40%. Base points never depend on the index. A day's total is rounded to a whole number once, after adding its workouts.
+              Scoring rules for a friendly game, not a measure of fitness or calories.
+            </p>
+          </More>
+        </Part>
       )}
-
-      <section className="sweat-block">
-        <h4>
-          Rules checklist <span>required to count</span>
-        </h4>
-        <ul className="sweat-checks">
-          {lines
-            .filter((line) => line.label !== "Physiological evidence assessed")
-            .map((line) => (
-              <li key={line.label} className={line.result ?? "skipped"}>
-                <ResultIcon result={line.result} />
-                <details>
-                  <summary>
-                    <span>{line.label}</span>
-                    <em>{line.result ? RESULT_WORD[line.result] : "Not assessed"}</em>
-                  </summary>
-                  <p>{line.detail}</p>
-                </details>
-              </li>
-            ))}
-        </ul>
-      </section>
 
       <p className="fine sweat-foot">
         {props.rulesVersion ? `Rules ${props.rulesVersion}. ` : ""}
-        Rival's server checked this record from Oura against published rules. That doesn't prove a workout happened.
-        {w.commitment ? (
+        {props.sample
+          ? "Illustrative numbers, worked out with the app's real scoring rules. A real receipt comes from a workout your Oura Ring recorded."
+          : "Rival's server checked this record from Oura against published rules. That is evidence, not proof that a workout happened."}
+        {props.sample ? null : w.commitment ? (
           <>
             {" "}
             Receipt fingerprint <code>{w.commitment.slice(0, 16)}…</code> is listed in this challenge's final score sheet, whose hash
@@ -601,6 +706,12 @@ function ReceiptV2(props: {
       </p>
     </div>
   );
+}
+
+/** The receipt on its own, for the "how points work" explainer. Always made-up data. */
+export function SampleReceipt({ w, rulesVersion }: { w: Workout; rulesVersion: string }) {
+  const name = ACTIVITY_NAME[w.activity ?? ""] ?? "Activity";
+  return <ReceiptV2 w={w} name={name} status={statusOf(w)} lines={receiptLines(w)} rulesVersion={rulesVersion} sample />;
 }
 
 /** One workout row that opens into its receipt. */
@@ -746,7 +857,7 @@ export default function SweatWorkouts(props: {
       })
     : data.workouts;
   const counted = workouts.filter((w) => w.result === "verified");
-  const isV2 = data.rules?.generation === 2;
+  const isV2 = (data.rules?.generation ?? 0) >= 2;
   const topDay = Math.max(1, ...(data.days ?? []).map((d) => d.points));
 
   return (
@@ -761,6 +872,11 @@ export default function SweatWorkouts(props: {
             <ShieldCheck size={18} strokeWidth={1.75} aria-hidden />
           </span>
         </div>
+        {isV2 && (
+          <button className="btn btn-text btn-sm sweat-how" onClick={() => go({ view: "help" })}>
+            How Sweat Points are calculated
+          </button>
+        )}
         <div className="sweat-totals">
           <div>
             <b>{data.points ?? 0}</b>

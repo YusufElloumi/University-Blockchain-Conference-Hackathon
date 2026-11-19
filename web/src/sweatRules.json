@@ -1,0 +1,226 @@
+{
+  "rules": {
+    "bands": [
+      [
+        60,
+        "1.00"
+      ],
+      [
+        60,
+        "0.60"
+      ],
+      [
+        60,
+        "0.25"
+      ]
+    ],
+    "evidence_index": {
+      "integrity": {
+        "clean": 25,
+        "max": 25,
+        "overlap_resolved": 20
+      },
+      "movement": {
+        "max": 15,
+        "observed": 15,
+        "unobserved": 7
+      },
+      "physiological": {
+        "coverage": 15,
+        "distribution": 3,
+        "exercise_tagged": 5,
+        "max": 25,
+        "validity": 2
+      },
+      "provenance": {
+        "max": 35,
+        "native": 35,
+        "third_party": 20
+      }
+    },
+    "final": "base + base * (multiplier - 1) * reliability",
+    "gates": {
+      "conservative_sources": [
+        "live_third_party_heart_rate"
+      ],
+      "day_seconds": 86400,
+      "eligible_sources": [
+        "confirmed",
+        "autodetected",
+        "workout_heart_rate",
+        "live_oura_heart_rate"
+      ],
+      "heart_rate": {
+        "affects_points": false,
+        "bin_seconds": 60,
+        "bpm_range": [
+          25,
+          250
+        ],
+        "strong_coverage": 0.5,
+        "strong_min_bins": 5,
+        "workout_sources": [
+          "workout",
+          "live"
+        ]
+      },
+      "max_activity_minutes": 1440,
+      "max_points_per_day": 6,
+      "max_speed_kmh": {
+        "hike": 10,
+        "ride": 80,
+        "run": 25,
+        "swim": 8,
+        "walk": 10,
+        "workout": null
+      },
+      "min_activity_minutes": 10,
+      "minutes_per_point": 10,
+      "overlap_policy": "union",
+      "version": "proof-of-sweat-v1"
+    },
+    "heart": {
+      "min_bins": 10,
+      "min_coverage": 0.5,
+      "range": [
+        "0.80",
+        "1.65"
+      ],
+      "reference": "median of per-workout medians, workouts before the challenge start, frozen per player",
+      "reference_max_workouts": 10,
+      "reference_min_workouts": 4,
+      "reference_window_days": 30,
+      "slope": "3.00"
+    },
+    "movement_bands": {
+      "hike": [
+        [
+          0,
+          "0.95"
+        ],
+        [
+          3,
+          "1.00"
+        ],
+        [
+          4.5,
+          "1.20"
+        ]
+      ],
+      "ride": [
+        [
+          0,
+          "0.90"
+        ],
+        [
+          15,
+          "1.00"
+        ],
+        [
+          22,
+          "1.20"
+        ],
+        [
+          28,
+          "1.45"
+        ]
+      ],
+      "run": [
+        [
+          0,
+          "0.90"
+        ],
+        [
+          8,
+          "1.00"
+        ],
+        [
+          10,
+          "1.20"
+        ],
+        [
+          12,
+          "1.45"
+        ]
+      ],
+      "swim": [
+        [
+          0,
+          "0.90"
+        ],
+        [
+          1.5,
+          "1.00"
+        ],
+        [
+          2.5,
+          "1.20"
+        ],
+        [
+          3.2,
+          "1.45"
+        ]
+      ],
+      "walk": [
+        [
+          0,
+          "0.90"
+        ],
+        [
+          4,
+          "1.00"
+        ],
+        [
+          5.5,
+          "1.15"
+        ],
+        [
+          6.5,
+          "1.30"
+        ]
+      ]
+    },
+    "multiplier_range": [
+      "0.85",
+      "1.50"
+    ],
+    "provider_factor": {
+      "easy": "0.85",
+      "hard": "1.30",
+      "moderate": "1.00"
+    },
+    "reliability": [
+      [
+        90,
+        "1.00"
+      ],
+      [
+        75,
+        "0.85"
+      ],
+      [
+        50,
+        "0.65"
+      ],
+      [
+        0,
+        "0.40"
+      ]
+    ],
+    "rounding": "per-day total, round half up",
+    "strong_evidence": {
+      "min_bins": 5,
+      "min_coverage": 0.5,
+      "min_index": 80,
+      "min_samples": 10
+    },
+    "unavailable_signal": "1.00, not renormalized",
+    "version": "proof-of-sweat-v3",
+    "weights": {
+      "heart": "0.45",
+      "movement": "0.30",
+      "provider": "0.25"
+    }
+  },
+  "sha256": "3d0021d727de45dc86e9df82dc4e4092efcaf1a54e915cc757ae5b3684b261c9"
+}
