@@ -469,6 +469,40 @@ const TERMS: Doc = {
       ),
     },
     {
+      id: "free",
+      title: "Free to use, and how we keep it free",
+      status: "planned",
+      body: (
+        <>
+          <p>
+            Rival is free to use. We charge no sign-up, subscription or platform fee, and we take no cut of any prize pool: every entry
+            fee goes into the pool and is paid out to players under the challenge's locked rules.
+          </p>
+          <p>
+            To keep Rival free, we intend to fund it by placing pooled entry fees with an established lending protocol while a challenge
+            is running, and keeping the interest earned. Today, no entry fees are lent or invested: they stay in our Solana program
+            until payout or refund. Before this is switched on, we will tell you, and it will work as follows:
+          </p>
+          <ul>
+            <li>Entry fees are only placed after joining closes, and only while the challenge is running.</li>
+            <li>
+              Funds are returned to the program, with a safety margin, before any payout or refund can fall due. A share of every pool
+              is always held back and never placed.
+            </li>
+            <li>
+              Interest belongs to Rival and is never added to, or taken from, any prize pool. Your entry fee, prize and refund amounts
+              are exactly what they would be without it.
+            </li>
+            <li>Interest earned first funds a reserve whose purpose is to guarantee payouts.</li>
+            <li>
+              Lending carries risk, including a loss at the lending protocol or a delay in withdrawing funds. We will set out these
+              risks, and how the reserve protects payouts, before any entry fee is placed.
+            </li>
+          </ul>
+        </>
+      ),
+    },
+    {
       id: "fair",
       title: "Fair play",
       body: (
