@@ -21,13 +21,27 @@ const LENGTHS = [
   { label: "1 day", seconds: 86400 },
   { label: "3 days", seconds: 3 * 86400 },
   { label: "1 week", seconds: 7 * 86400 },
-  { label: "Custom", seconds: 0 }, // shows a number and unit input
+  { label: "Pick dates", seconds: 0 }, // shows first-day and last-day calendars
 ];
 const CUSTOM = LENGTHS[4];
 // The program accepts any end after the start; this is a typo guard. The API enforces the same range.
 const MIN_LENGTH = 15 * 60;
 const MAX_LENGTH = 365 * 86400;
-type Unit = "hours" | "days";
+
+/** A local calendar day as "YYYY-MM-DD", the format <input type="date"> uses. */
+function isoDay(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+/** Midnight at the start of a "YYYY-MM-DD" day, in this device's time zone. */
+function dayStart(iso: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+function addDays(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+}
+const shortDay = (d: Date) => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
 function Chips<T>(props: { options: T[]; value: T; label: (o: T) => string; onPick: (o: T) => void }) {
   return (
@@ -97,8 +111,10 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const [buyIn, setBuyIn] = useState(1);
   const [joinWindow, setJoinWindow] = useState(JOIN_WINDOWS[1]);
   const [lengthChoice, setLengthChoice] = useState(LENGTHS[3]);
-  const [customAmount, setCustomAmount] = useState("36");
-  const [customUnit, setCustomUnit] = useState<Unit>("hours");
+  // Picked dates: the event starts at midnight on the first day and ends at midnight after the last day.
+  const today = new Date();
+  const [startDay, setStartDay] = useState(() => isoDay(addDays(today, 1)));
+  const [lastDay, setLastDay] = useState(() => isoDay(addDays(today, 7)));
   const [source, setSource] = useState<Source>("fitness");
   const [weights, setWeights] = useState<StatWeights>({ goals: 2, assists: 1, points: 0 });
   const [picksOn, setPicksOn] = useState(true);
@@ -106,7 +122,9 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const [roundEvery, setRoundEvery] = useState(ROUND_EVERY[0]);
   const [format, setFormat] = useState<Format>("winner_takes_all");
   const [shares, setShares] = useState<number[]>(PODIUM_PRESETS[0]);
-  const [goalTarget, setGoalTarget] = useState(5);
+  const [goalText, setGoalText] = useState("5"); // typed freely, so it can be empty mid-edit
+  const goalTarget = Number(goalText) || 0;
+  const setGoalTarget = (n: number) => setGoalText(String(Math.min(100, Math.max(1, n))));
   const [teamNames, setTeamNames] = useState(["Team A", "Team B"]);
   const usesStats = mode === "league" && source === "league_stats";
   const metric = "active_days" as const; // a goal is a number of active days
@@ -116,16 +134,20 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
     if (usesStats && format === "goal") setFormat("winner_takes_all");
   }, [usesStats, format]);
   const custom = lengthChoice === CUSTOM;
-  const customNumber = Number(customAmount);
-  const lengthSeconds = custom
-    ? Number.isFinite(customNumber) && customAmount.trim() !== ""
-      ? Math.round(customNumber * (customUnit === "hours" ? 3600 : 86400))
-      : 0
-    : lengthChoice.seconds;
-  const lengthOk = lengthSeconds >= MIN_LENGTH && lengthSeconds <= MAX_LENGTH;
+  const firstDate = dayStart(startDay);
+  const lastDate = dayStart(lastDay);
+  const tomorrow = addDays(today, 1);
+  // Whole days, first and last included. Counted as exact 24-hour blocks so a clock change can't add a stray hour.
+  const pickedDays =
+    firstDate && lastDate ? Math.round((addDays(lastDate, 1).getTime() - firstDate.getTime()) / 86400000) : 0;
+  const startOk = !!firstDate && firstDate.getTime() >= tomorrow.getTime();
+  const startAt = custom && firstDate ? Math.floor(firstDate.getTime() / 1000) : undefined;
+  const lengthSeconds = custom ? pickedDays * 86400 : lengthChoice.seconds;
+  const lengthOk = lengthSeconds >= MIN_LENGTH && lengthSeconds <= MAX_LENGTH && (!custom || startOk);
   const lengthLabel = lengthOk ? termLabel(lengthSeconds * 1000) : "-";
   const lengthDays = dayCount(lengthSeconds);
-  const goalOk = !(format === "goal" && goalTarget > lengthDays);
+  const goalInRange = goalTarget >= 1 && goalTarget <= 100;
+  const goalOk = format !== "goal" || (goalInRange && goalTarget <= lengthDays);
   const sharesOk =
     shares.reduce((a, b) => a + b, 0) === 100 && shares.every((v, i) => v > 0 && (i === 0 || v <= shares[i - 1]));
   const teamsOk =
@@ -171,6 +193,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
       const { transaction, address } = await buildCreateTransaction(me.wallet, {
         buyIn,
         joinWindowSeconds: joinWindow.seconds,
+        startAt,
         lengthSeconds,
         oracle: config.oracle,
         mint: config.usdc_mint,
@@ -253,47 +276,58 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
               <Chips options={BUY_INS} value={buyIn} label={usdc} onPick={setBuyIn} />
             </div>
             <div className="field">
-              <span className="field-label">{mode === "private" ? "Friends can join for" : "Joining stays open for"}</span>
-              <Chips options={JOIN_WINDOWS} value={joinWindow} label={(o) => o.label} onPick={setJoinWindow} />
-            </div>
-            <div className="field">
-              <span className="field-label">Then it runs for</span>
+              <span className="field-label">{custom ? "Length" : "Runs for"}</span>
               <Chips options={LENGTHS} value={lengthChoice} label={(o) => o.label} onPick={setLengthChoice} />
             </div>
+            {!custom && (
+              <div className="field">
+                <span className="field-label">{mode === "private" ? "Friends can join for" : "Joining stays open for"}</span>
+                <Chips options={JOIN_WINDOWS} value={joinWindow} label={(o) => o.label} onPick={setJoinWindow} />
+              </div>
+            )}
             {custom && (
               <div className="field">
-                <span className="field-label">Custom length</span>
-                <div className="length-input">
-                  <input
-                    inputMode="decimal"
-                    value={customAmount}
-                    aria-label="Custom length"
-                    aria-invalid={!lengthOk}
-                    onChange={(e) => setCustomAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-                  />
-                  <div className="segmented" role="radiogroup" aria-label="Length unit">
-                    {(["hours", "days"] as Unit[]).map((u) => (
-                      <button
-                        key={u}
-                        type="button"
-                        role="radio"
-                        aria-checked={customUnit === u}
-                        className={customUnit === u ? "on" : ""}
-                        onClick={() => setCustomUnit(u)}
-                      >
-                        {u === "hours" ? "Hours" : "Days"}
-                      </button>
-                    ))}
-                  </div>
+                <div className="date-range">
+                  <label>
+                    <span className="field-label">First day</span>
+                    <input
+                      type="date"
+                      value={startDay}
+                      min={isoDay(tomorrow)}
+                      max={isoDay(addDays(today, 365))}
+                      aria-invalid={!startOk}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setStartDay(next);
+                        // Moving the first day keeps the same length.
+                        const from = dayStart(next);
+                        if (from && pickedDays > 0) setLastDay(isoDay(addDays(from, pickedDays - 1)));
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span className="field-label">Last day</span>
+                    <input
+                      type="date"
+                      value={lastDay}
+                      min={startDay}
+                      max={firstDate ? isoDay(addDays(firstDate, 364)) : undefined}
+                      aria-invalid={startOk && !lengthOk}
+                      onChange={(e) => setLastDay(e.target.value)}
+                    />
+                  </label>
                 </div>
-                {lengthOk ? (
+                {lengthOk && firstDate && lastDate ? (
                   <p className="fine">
-                    Runs {lengthLabel} · {lengthDays} scoring day{lengthDays === 1 ? "" : "s"}
-                    {lengthSeconds % 86400 !== 0 && lengthSeconds > 86400 ? " (the last one is shorter)" : ""}
+                    {shortDay(firstDate)} to {shortDay(lastDate)} · {pickedDays} scoring day{pickedDays === 1 ? "" : "s"}.
+                    Starts at midnight and ends at midnight after the last day. {mode === "private" ? "Friends" : "Players"}{" "}
+                    can join until it starts.
                   </p>
                 ) : (
                   <p className="fine warn" role="alert">
-                    A challenge runs for at least 15 minutes and at most 365 days.
+                    {!startOk
+                      ? "Pick a first day from tomorrow on."
+                      : "The last day must be on or after the first, and an event runs at most 365 days."}
                   </p>
                 )}
               </div>
@@ -373,9 +407,18 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
                     >
                       <Minus size={16} aria-hidden />
                     </button>
-                    <b>
-                      {goalTarget} {goalUnit(metric, goalTarget)}
-                    </b>
+                    <label className="stepper-value">
+                      <input
+                        inputMode="numeric"
+                        value={goalText}
+                        maxLength={3}
+                        aria-label="Goal in active days"
+                        aria-invalid={!goalOk}
+                        onChange={(e) => setGoalText(e.target.value.replace(/[^0-9]/g, ""))}
+                        onBlur={() => goalText !== "" && setGoalTarget(goalTarget)}
+                      />
+                      <span>{goalUnit(metric, goalTarget)}</span>
+                    </label>
                     <button
                       type="button"
                       className="icon-btn"
@@ -386,7 +429,8 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
                     </button>
                   </div>
                 </div>
-                {!goalOk && lengthOk && (
+                {!goalInRange && <p className="fine warn">Pick a goal from 1 to 100 active days.</p>}
+                {goalInRange && !goalOk && lengthOk && (
                   <p className="fine warn">
                     This event has {lengthDays} scoring day{lengthDays === 1 ? "" : "s"}, so nobody can reach {goalTarget}{" "}
                     active days.
@@ -537,11 +581,15 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
               </div>
               <div>
                 <dt>Joining open</dt>
-                <dd>{joinWindow.label}</dd>
+                <dd>{custom ? "Until it starts" : joinWindow.label}</dd>
               </div>
               <div>
-                <dt>Runs for</dt>
-                <dd>{lengthLabel}</dd>
+                <dt>{custom ? "Dates" : "Runs for"}</dt>
+                <dd>
+                  {custom && lengthOk && firstDate && lastDate
+                    ? `${shortDay(firstDate)} to ${shortDay(lastDate)}`
+                    : lengthLabel}
+                </dd>
               </div>
               <div>
                 <dt>Format</dt>

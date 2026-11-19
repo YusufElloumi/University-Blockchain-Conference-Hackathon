@@ -136,6 +136,7 @@ export async function buildJoinTransaction(
 export type NewChallenge = {
   buyIn: number; // dollars
   joinWindowSeconds: number; // how long people can join before it starts
+  startAt?: number; // unix seconds; a first day picked on a calendar replaces the join window
   lengthSeconds: number;
   oracle: string; // the server's address that is allowed to report results
   mint: string;
@@ -162,7 +163,9 @@ export async function buildCreateTransaction(
   const rules = rulesAddress(challenge);
   // Use the network's clock, not this device's, because the program checks times against the network.
   const chainNow = await connection.getBlockTime(await connection.getSlot()).catch(() => null);
-  const start = (chainNow ?? Math.floor(Date.now() / 1000)) + options.joinWindowSeconds;
+  const now = chainNow ?? Math.floor(Date.now() / 1000);
+  const start = options.startAt ?? now + options.joinWindowSeconds;
+  if (start <= now) throw new Error("The start time has already passed. Pick a later first day.");
   const tx = await program.methods
     .createChallenge(
       id,
