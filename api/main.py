@@ -44,7 +44,9 @@ Oura connection (OAuth only; no Oura data is read yet; see api/fitness/oura.py):
     POST   /integrations/oura/start      begin connecting: returns Oura's sign-in address
     GET    /integrations/oura/callback   Oura sends the browser here (no login); parks the code, returns to the web app
     POST   /integrations/oura/complete   finish connecting as the signed-in user; tokens stay on the server
-    DELETE /integrations/oura            revoke at Oura where possible and delete the stored tokens
+    DELETE /integrations/oura            revoke at Oura where possible and delete the stored tokens and imported workouts
+    POST   /integrations/oura/sync       Sync Workouts: import, check and score the caller's Oura workouts
+    GET    /me/sweat?challenge=          the caller's own imported workouts and Proof of Sweat receipts
     GET    /integrations/oura/workouts   read-only test: the caller's recent Oura workouts and heart-rate coverage (nothing stored)
 """
 
@@ -76,13 +78,14 @@ import db
 import events
 import formats
 import fitness
-from fitness import oura, oura_data
+from fitness import oura, oura_data, oura_sync
 import leaguestats
 import pickrounds
 import scores
 import scoring
 import secretbox
 import settlement
+import sweat
 import treasury
 
 log = logging.getLogger("loser_buys")
@@ -376,6 +379,8 @@ def _challenge_view(challenge: db.Challenge) -> dict:
         "format": formats.of(challenge)[0],
         "format_config": formats.of(challenge)[1],
         "format_summary": formats.describe(*formats.of(challenge)),
+        # Which fitness rules apply, fixed at creation: Proof of Sweat (Oura-verified) or the earlier rules.
+        "rules": scores.rules_of(challenge),
     }
 
 
@@ -387,7 +392,8 @@ def _activity_view(activity: fitness.Activity, provider: fitness.FitnessProvider
         "minutes": activity.minutes,
         "distance_km": activity.distance_km,
         "device": activity.device,
-        "verified": not activity.is_manual,
+        # Entered in our own app (demo or by hand): never device-verified, whatever label it carries.
+        "verified": not activity.is_manual and not isinstance(provider, fitness.LoggedProvider),
         "source": provider.name,
         "source_label": provider.label,
     }
@@ -464,6 +470,8 @@ def _register(
         end_time=datetime.fromtimestamp(state.end_time, timezone.utc),
         status=state.status,
         invite_code=_new_invite_code(session),
+        # New challenges are scored by Proof of Sweat; the rule set never changes after creation.
+        template=sweat.TEMPLATE if config.NEW_CHALLENGE_RULES == sweat.TEMPLATE else sweat.LEGACY_TEMPLATE,
         creator_id=creator_id,
         mode=mode,
         organizer_name=organizer_name,
@@ -553,6 +561,9 @@ def add_activity(
     start = db.utc(body.start) if body.start else now
     if start > now:
         raise HTTPException(400, "An activity cannot start in the future.")
+    if config.NEW_CHALLENGE_RULES == sweat.TEMPLATE and now - start > timedelta(minutes=10):
+        # Hand-entered workouts are personal notes here and can never be dated back into a challenge.
+        raise HTTPException(400, "A workout logged by hand counts from now. It can't be dated in the past.")
     try:
         activity = provider.log_activity(session, user.id, body.type, start, body.minutes, body.distance_km)
     except fitness.NotSupported as e:
@@ -563,6 +574,11 @@ def add_activity(
         if scores.uses_league_stats(challenge):
             results.append({"address": challenge.address, "name": challenge.name, "points": 0, "counted": False,
                             "reason": "this event is scored from the league's stat sheet"})
+            continue
+        if scores.is_sweat(challenge):
+            # Proof of Sweat: nothing typed into the app can earn points, whatever the request says.
+            results.append({"address": challenge.address, "name": challenge.name, "points": sheet.total,
+                            "counted": False, "reason": "this challenge only counts workouts synced from Oura"})
             continue
         counted = any(activity.id in day.activity_ids for day in sheet.days.values())
         results.append(
@@ -595,8 +611,15 @@ def my_activities(
         found = _visible_challenge(session, challenge, user)
         if _is_player(session, found, user) and not scores.uses_league_stats(found):
             sheet = scores.sheet_for(session, found, user.id)
+            if scores.is_sweat(found):
+                for view in views:
+                    view["status"], view["reason"] = "rejected", "this challenge only counts workouts synced from Oura"
+                return views
             for view in views:
                 view["status"], view["reason"] = sheet.verdict(view["id"])
+                if view["status"] == "verified" and isinstance(provider, fitness.LoggedProvider):
+                    # It passed the rule checks, but it was entered in the app: no device vouches for it.
+                    view["status"], view["reason"] = "flagged", "entered in the app, not device-verified"
     return views
 
 
@@ -614,6 +637,9 @@ def app_config() -> dict:
     return {
         "oracle": config.ORACLE_PUBLIC_KEY,
         "usdc_mint": config.USDC_MINT,
+        # Rules a challenge created now will use (fixed at creation).
+        "new_challenge_rules": {"proof_of_sweat": config.NEW_CHALLENGE_RULES == sweat.TEMPLATE,
+                                "summary": sweat.SUMMARY if config.NEW_CHALLENGE_RULES == sweat.TEMPLATE else None},
         "fitness": {
             "source": provider.name,
             "label": provider.label,
@@ -762,8 +788,10 @@ def challenge_state(
             _update_rounds(session, challenge)
         board = scores.leaderboard(session, challenge)
         fmt = scores.format_view(challenge, board)
+        oura_state = _oura_states(session, challenge, [r["user_id"] for r in board]) if scores.is_sweat(challenge) else {}
         players = [
             {"rank": r["rank"], "name": r["name"], "points": r["points"], "ticks": r["ticks"],
+             "oura": oura_state.get(r["user_id"]),
              "base_points": r["base_points"], "pick_points": r["pick_points"],
              "team": r["team"], "projected_share": fmt["projected"].get(r["user_id"], 0),
              "goal_progress": fmt.get("progress", {}).get(r["user_id"]),
@@ -796,8 +824,42 @@ def challenge_state(
         "players": players,
         "format": format_state,  # players only: team table, and whether a goal has been missed so far
         "rounds": rounds,
+        "sweat": _sweat_state(challenge) if challenge is not None and scores.is_sweat(challenge) else None,
         # A wallet with no account here (or one that never shared a name) is shown by its last 4 characters.
         "feed": events.feed(rows, lambda wallet: names.get(wallet, f"Player {wallet[-4:]}")),
+    }
+
+
+def _oura_states(session: Session, challenge: db.Challenge, user_ids: list[int]) -> dict[int, str]:
+    """For the leaderboard: is each player's Oura linked and synced? Nothing about their workouts.
+
+    none = no Oura link (cannot earn fitness points); waiting = linked but not synced yet, or not since
+    the challenge ended; synced = up to date.
+    """
+    links = {c.user_id: c for c in session.scalars(select(db.FitnessConnection).where(
+        db.FitnessConnection.provider == oura.PROVIDER, db.FitnessConnection.user_id.in_(user_ids)))}
+    end = db.utc(challenge.end_time)
+    over = datetime.now(timezone.utc) >= end and challenge.status == "open"
+    states = {}
+    for user_id in user_ids:
+        link = links.get(user_id)
+        if link is None:
+            states[user_id] = "none"
+        elif link.last_sync_at is None or (over and db.utc(link.last_sync_at) < end):
+            states[user_id] = "waiting"
+        else:
+            states[user_id] = "synced"
+    return states
+
+
+def _sweat_state(challenge: db.Challenge) -> dict:
+    """When a Proof of Sweat challenge's scores get fixed: after the end plus the sync grace period."""
+    end = db.utc(challenge.end_time)
+    grace = max(config.SETTLE_GRACE_SECONDS, config.SYNC_GRACE_SECONDS)
+    return {
+        "grace_seconds": grace,
+        "scores_final_after": (end + timedelta(seconds=grace)).isoformat(),
+        "awaiting_final_sync": challenge.status == "open" and datetime.now(timezone.utc) >= end,
     }
 
 
@@ -981,8 +1043,8 @@ def match_stats(
 @app.delete("/me/fitness")
 def disconnect_fitness(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
     """Disconnect: deletes the caller's fitness data and their points in unsettled challenges. They stay in the pool."""
-    scores.forget_user(session, user.id)
-    return {"disconnected": True}
+    revoked = scores.forget_user(session, user.id)
+    return {"disconnected": True, "oura_revoked": revoked}
 
 
 # ---------- Oura connection (OAuth only) ----------
@@ -1043,6 +1105,10 @@ def oura_complete(body: OuraComplete, user: db.User = Depends(current_user), ses
 @app.delete("/integrations/oura")
 def oura_disconnect(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
     revoked = _oura(lambda: oura.disconnect(session, user.id))
+    # Their imported workouts are gone, so their points in unfinished Proof of Sweat challenges go too.
+    for challenge in scores.challenges_of(session, user.id):
+        if scores.is_sweat(challenge):
+            scores.recompute(session, challenge, user.id)
     return {**oura.status(session, user.id), "revoked": revoked}
 
 
@@ -1051,6 +1117,93 @@ def oura_workouts(
     days: int = Query(30, ge=1, le=90), limit: int = Query(10, ge=1, le=25),
     user: db.User = Depends(current_user), session: Session = Depends(db.get_session),
 ) -> JSONResponse:
-    """Read-only test: the caller's own recent Oura workouts and heart-rate coverage. Nothing is stored or logged."""
+    """Developer diagnostic (admins only): the caller's own recent Oura workouts and heart-rate coverage.
+    Nothing is stored or logged."""
+    if not _is_admin(user):
+        raise HTTPException(403, "This diagnostic is for admins.")
     report = _oura(lambda: oura_data.recent_workouts(session, user.id, days=days, limit=limit))
     return JSONResponse(report, headers={"Cache-Control": "no-store, private"})
+
+
+@app.post("/integrations/oura/sync")
+def oura_sync_now(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    """Sync Workouts: imports the caller's own Oura workouts, checks the new ones and updates their points.
+    Safe to repeat: the same workout is never imported or credited twice. Limited to one sync per 30 seconds."""
+    summary = _oura(lambda: oura_sync.sync_user(session, user.id))
+    return {**summary, "status": oura.status(session, user.id)}
+
+
+def _row_view(row: db.ImportedActivity, line: sweat.Line | None) -> dict:
+    """One imported workout for its owner. `line` is its result in a challenge, when one was asked for."""
+    checks = [{"code": c.code, "result": c.result, "reason": c.reason} for c in oura_sync.checks_of(row)]
+    if not checks and row.status == "pending":
+        checks = [{"code": "evidence", "result": sweat.PENDING, "reason": None}]
+    result, reason = row.status, row.reason
+    if line is not None:
+        result, reason = line.status, line.reason or row.reason
+        checks += [
+            {"code": "window", "result": line.window, "reason": reason if line.window == sweat.FAILED else None},
+            {"code": "duplicate", "result": line.overlap, "reason": line.reason if line.overlap != sweat.PASSED else None},
+            {"code": "scoring", "result": sweat.PASSED if line.status == sweat.VERIFIED else
+             sweat.PENDING if line.status == sweat.PENDING else sweat.FAILED, "reason": None},
+        ]
+    coverage = None
+    if row.hr_bins_total:
+        coverage = round(100 * (row.hr_bins_covered or 0) / row.hr_bins_total)
+    return {
+        "key": row.id,
+        "activity": row.activity_type,
+        "provider_activity": row.provider_activity,
+        "provider_source": row.provider_source,
+        "start": db.utc(row.start_time).isoformat() if row.start_time else None,
+        "duration_minutes": int(row.minutes or 0),
+        "distance_km": row.distance_km,
+        "result": result,
+        "assurance": row.assurance if result == sweat.VERIFIED else None,
+        "reason": reason,
+        "eligible_minutes": line.eligible_minutes if line else None,
+        "points": line.points if line else None,
+        "heart_rate_coverage_pct": coverage,
+        "checks": checks,
+    }
+
+
+@app.get("/me/sweat")
+def my_sweat(
+    challenge: str | None = None, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)
+) -> JSONResponse:
+    """The caller's own imported workouts and their Proof of Sweat checks. Only ever their own.
+
+    With `?challenge=<address>` (a Proof of Sweat challenge the caller plays in): each workout's result
+    and points in that challenge. Once the challenge is settled, the saved final receipts instead, each
+    with the exact text whose SHA-256 is committed in the score sheet.
+    """
+    link = oura.status(session, user.id)
+    reply: dict = {"connected": link["connected"], "available": link["available"],
+                   "last_sync_at": link["last_sync_at"], "last_sync_error": link["last_sync_error"],
+                   "rules": None, "final": False, "eligible_minutes": None, "points": None,
+                   "workouts": [], "receipts": []}
+    if challenge is None:
+        rows = session.scalars(select(db.ImportedActivity).where(db.ImportedActivity.user_id == user.id)
+                               .order_by(db.ImportedActivity.start_time.desc()).limit(50))
+        reply["workouts"] = [_row_view(row, None) for row in rows]
+    else:
+        found = _visible_challenge(session, challenge, user)
+        if not _is_player(session, found, user) or not scores.is_sweat(found):
+            raise HTTPException(404, "No Proof of Sweat record for you in that challenge.")
+        reply["rules"] = scores.rules_of(found)
+        if found.status in scores.FINAL_STATUSES:
+            saved = session.scalars(select(db.SweatReceipt).where(
+                db.SweatReceipt.challenge_id == found.id, db.SweatReceipt.user_id == user.id).order_by(db.SweatReceipt.id))
+            reply["final"] = True
+            reply["receipts"] = [{"commitment": r.commitment, "canonical": r.payload, "receipt": json.loads(r.payload)}
+                                 for r in saved]
+            reply["points"] = sum(r["receipt"]["points"] for r in reply["receipts"])
+            reply["eligible_minutes"] = sum(r["receipt"]["eligible_minutes"] for r in reply["receipts"])
+        else:
+            sheet = scores.sweat_sheet(session, found, user.id)
+            rows = scores.imported_rows(session, found, user.id)
+            reply["workouts"] = [_row_view(row, sheet.lines.get(oura_sync.as_workout(row).ref))
+                                 for row in reversed(rows)]
+            reply["points"], reply["eligible_minutes"] = sheet.total, sheet.eligible_minutes
+    return JSONResponse(reply, headers={"Cache-Control": "no-store, private"})

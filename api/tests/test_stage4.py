@@ -185,6 +185,7 @@ def test_all_tables_exist():
     assert set(db.Base.metadata.tables) == {
         "users", "fitness_connections", "challenges", "participants", "score_entries", "chain_events",
         "logged_activities", "invites", "pick_rounds", "round_picks", "league_stats", "oauth_states",
+        "imported_activities", "sweat_receipts",
     }
 
 
@@ -230,7 +231,7 @@ def test_adding_an_activity_changes_points(client, challenge):
                         headers=make_token("maya"))
     assert reply.status_code == 200
     body = reply.json()
-    assert body["activity"]["verified"] is True and body["activity"]["device"] == "Mock Watch"
+    assert body["activity"]["verified"] is False and body["activity"]["device"] == "Mock Watch"
     assert body["challenges"] == [
         {"address": CHALLENGE, "name": "Office week", "points": 2, "counted": True, "reason": None}
     ]

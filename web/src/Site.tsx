@@ -392,13 +392,13 @@ function HowPage({ go, onLogin }: Nav) {
           <div className="chapter-visual" aria-hidden>
             <ul className="demo-rules">
               <li>
-                <b>+1</b> 20 active minutes in a day
+                <b>+1</b> every 10 verified minutes
               </li>
               <li>
-                <b>+1</b> every 5 km
+                <b>6</b> points a day, at most
               </li>
               <li>
-                <b>3</b> points a day, at most
+                <b>Oura</b> workouts only, checked by Proof of Sweat
               </li>
             </ul>
           </div>

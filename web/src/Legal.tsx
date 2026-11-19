@@ -50,7 +50,7 @@ const PRIVACY: Doc = {
   ),
   plain: "Privacy policy",
   lede:
-    "Rival is a hackathon prototype that turns workouts into friendly competitions on the Solana devnet test network. This page explains what we collect today, what a planned Oura connection would add, who can see what, and what stays private.",
+    "Rival is a hackathon prototype that turns workouts into friendly competitions on the Solana devnet test network. This page explains what we collect, how the optional Oura connection is used, who can see what, and what stays private.",
   sections: [
     {
       id: "summary",
@@ -58,9 +58,13 @@ const PRIVACY: Doc = {
       body: (
         <ul>
           <li>Other players see your points, never your workout details.</li>
+          <li>
+            If you connect an Oura account, Rival reads your workouts and heart rate to check and score them. It keeps a small
+            record of each workout and no heart-rate readings.
+          </li>
           <li>Workout and health data never goes on the blockchain and is never sent to any AI service.</li>
           <li>The blockchain holds only wallet addresses, test-money movements, winners and a scrambled fingerprint (hash) of the final scores. It is public and permanent.</li>
-          <li>Rival does not connect to Oura yet and does not collect heart rate today. Both are planned and described below.</li>
+          <li>Disconnecting Oura revokes Rival's access and deletes your imported workouts.</li>
           <li>Everything uses devnet test funds with no real-world value.</li>
         </ul>
       ),
@@ -77,11 +81,16 @@ const PRIVACY: Doc = {
             name you choose, and the address of the wallet Privy creates for you. We also record when we sent your wallet test funds
             or a small amount of devnet SOL to cover network fees.
           </p>
+          <h3>Workouts imported from Oura</h3>
+          <p>
+            Only if you connect Oura. For each workout we keep: its category (run, walk and so on), Oura's own activity name and how
+            Oura says it was recorded, its start and end time, its distance if there is one, the result of each check, and how many
+            minutes of it had heart-rate measurements. Details are in the Oura section below.
+          </p>
           <h3>Workouts you log in the app</h3>
           <p>
-            In this demo version, workouts are added inside Rival, either from the demo workout generator or typed in by hand. For each
-            one we store the type, start time, duration in minutes, distance in kilometres, a device label and how it was added. No
-            fitness device or fitness app is connected yet.
+            Some older challenges let you add a workout by hand. For each one we store the type, start time, duration, distance and
+            how it was added. These are never treated as device-verified, and they earn no points in Proof of Sweat challenges.
           </p>
           <h3>Points and competition records</h3>
           <p>
@@ -93,8 +102,9 @@ const PRIVACY: Doc = {
           <p>League organizers can upload a stat sheet. It holds player names, jersey numbers, teams, goals, assists and game dates.</p>
           <h3>What we do not collect</h3>
           <p>
-            Today we do not collect heart rate, sleep, GPS routes or location, and we receive no data from Oura, Strava or any other
-            fitness service. We use no analytics, advertising or tracking tools.
+            We do not store heart-rate readings, calories, Oura's intensity estimate, or Oura's own workout IDs. We never request
+            sleep, readiness, GPS routes or location. We receive nothing from Strava or any other fitness service. We use no
+            analytics, advertising or tracking tools.
           </p>
         </>
       ),
@@ -102,42 +112,51 @@ const PRIVACY: Doc = {
     {
       id: "oura",
       title: "Oura integration",
-      status: "planned",
+      status: "now",
       body: (
         <>
           <p>
-            We plan to let you connect an Oura account so your real workouts count without typing them in. None of this is built yet.
-            When it is, it will work as follows, and this page will be updated before it goes live.
+            Connecting Oura is optional, but new fitness challenges only award points for workouts imported from a connected Oura
+            account (shown in the app as Proof of Sweat). Rival is not affiliated with or endorsed by Oura.
           </p>
           <ul>
             <li>
-              <b>Your choice.</b> Nothing is read until you press connect and approve access on Oura's own screen. You can disconnect
-              at any time.
+              <b>Your choice.</b> Nothing is read until you press Connect Oura and approve access on Oura's own screen. Rival asks for
+              two permissions only: workouts and heart rate.
             </li>
             <li>
-              <b>What we would read.</b> Your workouts (type, start and end time, duration, distance where available) and heart-rate
-              readings from the time of those workouts. We would not request sleep, readiness or other data we do not use.
+              <b>What we read.</b> When you press Sync workouts, and once more when a challenge you are in ends, Rival asks Oura for
+              your recent workouts (up to 30 days back the first time) and, for each eligible workout, the heart-rate measurements
+              taken during it.
             </li>
             <li>
-              <b>Why.</b> To turn workouts into points, and to check that a workout was recorded by a device and looks real, for
-              example that heart rate rose during it. That is the only use.
+              <b>What we keep.</b> A small record per workout, listed above. Heart-rate measurements are counted and then discarded:
+              we keep only how many minutes of the workout they cover, never the readings. Oura's workout ID is replaced by a one-way
+              reference used to stop the same workout being counted twice.
             </li>
             <li>
-              <b>Who sees it.</b> Only you see your Oura workouts and heart-rate data. Other players see the points they produce.
+              <b>Why.</b> To check each workout against published rules and turn eligible minutes into challenge points. Heart rate
+              is used only to describe how strong the recording's evidence is. It never changes your points.
             </li>
             <li>
-              <b>Storage.</b> The keys Oura gives us to read your data would be stored encrypted on our server, never in your browser
+              <b>Who sees it.</b> Only you see your workouts and their checks. Other players see your points, and whether your Oura
+              is linked and synced.
+            </li>
+            <li>
+              <b>Storage.</b> The keys Oura gives us to read your data are stored encrypted on our server, never in your browser
               and never on the blockchain.
             </li>
             <li>
-              <b>How long.</b> Raw Oura data would be kept only as long as needed to score and check an active challenge, under a fixed
-              time limit that we will publish here before launch.
+              <b>How long.</b> Imported workouts are deleted automatically 7 days after the last challenge that used them has ended,
+              or 7 days after the workout if no challenge used it. This clean-up runs with our scheduled job; if that job is not
+              running, the records stay until you disconnect.
             </li>
             <li>
-              <b>Disconnecting.</b> Disconnecting would cancel our access and delete the Oura data we hold for you.
+              <b>Disconnecting.</b> The Disconnect button on your dashboard asks Oura to revoke Rival's access, then deletes the
+              stored keys and every imported workout, along with your points in challenges that have not finished.
             </li>
             <li>
-              <b>Never.</b> We would not sell Oura data, use it for advertising, send it to any AI or language-model service, or put it
+              <b>Never.</b> We do not sell Oura data, use it for advertising, send it to any AI or language-model service, or put it
               on the blockchain.
             </li>
           </ul>
@@ -153,8 +172,8 @@ const PRIVACY: Doc = {
           <li>To run your account and wallet, and send devnet test funds.</li>
           <li>To score challenges, build leaderboards and pay out devnet test-money prize pools through our Solana program.</li>
           <li>
-            To check workouts. Each workout is marked as passed checks, flagged (typed in by hand, so it counts but nobody can vouch for
-            it) or rejected (for example, outside the challenge dates), with the reason shown to you.
+            To check workouts. Each imported workout is marked verified (with strong or limited heart-rate evidence), pending or
+            rejected, with every check and reason shown to you. The checks are fixed rules, not an AI model.
           </li>
           <li>To keep private challenges private and to prevent abuse.</li>
         </ul>
@@ -217,9 +236,10 @@ const PRIVACY: Doc = {
             <li>Your email address.</li>
           </ul>
           <p>
-            When a challenge ends, our server also signs a result receipt (shown in the app as Proof of Sweat). It holds wallet
-            addresses, payout shares, hashes, the scoring-rules version and times, but no workout data. It is stored on our server and
-            players of that challenge can download it.
+            When a challenge ends, our server also signs a result receipt. It holds wallet addresses, payout shares, hashes, the
+            scoring-rules version and times, but no workout data. It is stored on our server and players of that challenge can
+            download it. In Proof of Sweat challenges the score sheet also lists, per player, verified minutes, points, and one
+            salted fingerprint for each workout receipt. A fingerprint reveals nothing about the workout.
           </p>
           <p>
             Your wallet address is not shown on screen, but because it appears on the blockchain, anyone who links it to you could see
@@ -240,8 +260,9 @@ const PRIVACY: Doc = {
             request and only returns data you are allowed to see.
           </p>
           <p>
-            Rival is a prototype. We do not yet add our own encryption to workout records in the database, beyond whatever protection
-            our hosting providers apply, and the app has not had an independent security review. Please don't enter anything you would
+            Oura access keys are encrypted by our server before they are stored. Rival is a prototype: workout records themselves
+            are not separately encrypted in the database, beyond whatever protection our hosting providers apply, and the app has
+            not had an independent security review. Please don't enter anything you would
             not want stored in a prototype.
           </p>
         </>
@@ -255,26 +276,32 @@ const PRIVACY: Doc = {
         <>
           <ul>
             <li>
-              <b>No automatic deletion yet.</b> We have not set a retention schedule. Data is kept while the prototype runs. The
-              prototype database may be reset or deleted after the hackathon.
+              <b>Imported Oura workouts.</b> Deleted automatically 7 days after the last challenge that used them has ended, and
+              immediately when you disconnect Oura.
+            </li>
+            <li>
+              <b>Finished challenges.</b> Final score sheets and result receipts are kept so results stay checkable. For each of your
+              workouts in a finished Proof of Sweat challenge we keep a minimal receipt for you: its category, minutes, check
+              results and a random value. It holds no times, no Oura IDs and no heart-rate data.
             </li>
             <li>
               <b>Deleting your workouts.</b> Use <b>Delete my workouts</b> on your home screen in the app. It deletes every workout
-              you have logged and your points in challenges that have not finished. You stay in those challenges with zero points.
-              It cannot be undone.
+              you have logged, disconnects Oura (revoking Rival's access and deleting your imported workouts and saved receipts),
+              and removes your points in challenges that have not finished. You stay in those challenges with zero points. It
+              cannot be undone.
             </li>
             <li>
-              <b>Finished challenges.</b> Final score sheets and result receipts are kept so results stay checkable.
+              <b>Deleting your account.</b> There is no in-app account deletion yet. Email us and we will remove your account record
+              by hand, within 72 hours for anything that came from Oura.
+              Privy keeps its own login records under its own privacy policy.
             </li>
             <li>
-              <b>Deleting your account.</b> There is no in-app account deletion yet. Ask us and we will remove your account record by
-              hand. Privy keeps its own login records under its own privacy policy.
+              <b>The prototype database</b> may be reset or deleted after the hackathon.
             </li>
             <li>
-              <b>The blockchain.</b> Onchain records cannot be deleted by anyone.
+              <b>The blockchain.</b> Onchain records cannot be deleted by anyone. They hold no health data.
             </li>
           </ul>
-          <p>Before an Oura connection launches, we plan to add a disconnect button, automatic time limits for raw data, and account deletion in the app.</p>
         </>
       ),
     },
@@ -301,7 +328,7 @@ const PRIVACY: Doc = {
             <b>Google Fonts</b> supplies the typefaces, so your browser contacts Google when a page loads.
           </li>
           <li>
-            <b>Oura</b> (planned), only if you choose to connect it.
+            <b>Oura</b> supplies your workouts and heart-rate measurements, only if you choose to connect it.
           </li>
         </ul>
       ),
@@ -328,8 +355,7 @@ const PRIVACY: Doc = {
       body: (
         <>
           <p>
-            This is a draft written for a prototype. We will update it as features change, especially before any Oura connection goes
-            live, and change the date at the top.
+            This is a draft written for a prototype. We will update it as features change, and change the date at the top.
           </p>
           <p>
             For privacy questions and data requests, email <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
@@ -403,13 +429,15 @@ const TERMS: Doc = {
               format (for example winner takes all, podium, goal or teams) is fixed when it is created.
             </li>
             <li>
-              Points follow the rules shown in the app. Today: 20 or more active minutes in a day earns a point (minutes from all your
-              workouts that day add up), every 5 km earns a point,
-              and at most 3 points count per day. Days are 24-hour blocks from the challenge start.
+              Points follow the rules shown in each challenge. New fitness challenges use Proof of Sweat: one point for every 10
+              minutes of exercise recorded by your connected Oura account that passes the checks, up to 6 points per day. Days are
+              24-hour blocks from the challenge start. Distance, calories and heart rate never add points. Challenges created
+              earlier keep the rules they started with.
             </li>
             <li>
-              When a challenge ends, our server reports the result to the program, which pays out the pool. A tie at the top splits the
-              pool. If fewer than 2 players join, entry fees are refunded.
+              When a challenge ends, scores are fixed after a short wait (30 minutes by default) so rings can sync, then our server
+              reports the result to the program, which pays out the pool. Workouts that have not reached Oura's servers by then do
+              not count. A tie at the top splits the pool. If fewer than 2 players join, entry fees are refunded.
             </li>
             <li>Prediction rounds, where enabled, only add points. They are not bets.</li>
           </ul>
@@ -424,7 +452,7 @@ const TERMS: Doc = {
         <>
           <p>Rival only works if everyone plays straight. You agree not to:</p>
           <ul>
-            <li>log workouts that did not happen, or log the same workout twice;</li>
+            <li>record or edit workouts in Oura that did not happen, or wear someone else's ring;</li>
             <li>use more than one account to play in the same challenge, or play on someone else's account;</li>
             <li>upload stat sheets you know are wrong;</li>
             <li>tamper with, overload or try to get around the app, its server or its program;</li>
@@ -441,21 +469,20 @@ const TERMS: Doc = {
         <>
           <ul>
             <li>
-              In this demo version, workouts are added inside the app. Workouts typed in by hand are flagged: they count, but nobody can
-              vouch for them.
+              Proof of Sweat checks the record your Oura account returns against fixed, published rules: how it was recorded, its
+              type, times, length and speed, and that no minute is counted twice. Workouts entered by hand in Oura are not counted.
             </li>
             <li>
-              Our checks confirm that a workout fits the rules (for example, the challenge dates). They do not prove a workout really
-              happened.
+              These checks do not prove a workout really happened. A consumer wearable can be wrong, and a record can be mislabelled.
+              Heart-rate coverage is reported as strong or limited evidence only; missing heart rate is common and is not treated as
+              cheating.
             </li>
             <li>
-              A result receipt (Proof of Sweat) shows that our server approved a result and that the scores were not changed
-              afterwards. It does not prove the workouts behind it.
+              A signed result shows that our server approved it and that the scores were not changed afterwards. The Solana program
+              stores the result's fingerprint and enforces the payout conditions. It does not check workouts, and you are trusting
+              Rival's server to have read the Oura records honestly.
             </li>
-            <li>
-              A planned Oura connection would add device-recorded workouts and heart-rate checks. Device data can still be wrong or
-              missing, so no check is perfect.
-            </li>
+            <li>If Oura is unavailable, syncing and final scores can be delayed. An outage never adds or removes points by itself.</li>
           </ul>
         </>
       ),
@@ -475,8 +502,8 @@ const TERMS: Doc = {
       title: "Other services",
       body: (
         <p>
-          Rival relies on outside services, including Privy, Render, Neon, QuickNode, Solana devnet, Gemini market data, and Oura once
-          that connection exists. Their own terms apply to them, and we are not responsible for their outages or changes.
+          Rival relies on outside services, including Privy, Render, Neon, QuickNode, Solana devnet, Gemini market data and Oura.
+          Their own terms apply to them, and we are not responsible for their outages or changes. Rival is not affiliated with Oura.
         </p>
       ),
     },

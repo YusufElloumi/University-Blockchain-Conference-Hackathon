@@ -117,7 +117,7 @@ export const STEPS = [
   },
   {
     title: "Move, and earn points",
-    text: "Twenty active minutes earns a point. So does every 5 km. Three a day at most, so showing up all week beats one big effort.",
+    text: "Every 10 minutes your Oura Ring records earns a point, up to 6 a day, so showing up all week beats one big effort.",
   },
   {
     title: "Win the week",
