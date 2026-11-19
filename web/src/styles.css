@@ -10089,3 +10089,343 @@ input[type="checkbox"] {
 .explain-sample {
   line-height: 1.5;
 }
+
+/* =========================================================================================
+   29. Proof of Sweat, louder and clearer: the name is the title wherever it appears, each
+   block of the explainer has a real heading, and the receipt opens like a score screen:
+   one big number, then the three things that went into it.
+   ========================================================================================= */
+
+.explain-title,
+.sweat-title {
+  margin: 0;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 0.98;
+  color: var(--text);
+}
+
+.explain-title {
+  font-size: clamp(52px, 8.5vw, 124px);
+}
+
+.explain-title em,
+.sweat-title em {
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+
+.sweat-title {
+  font-size: clamp(30px, 4vw, 40px);
+}
+
+.explain-sub {
+  margin: 0;
+  font-family: var(--caps);
+  font-size: clamp(18px, 2vw, 24px);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.explain-head {
+  gap: 16px;
+  max-width: 900px;
+}
+
+.explain-head .lede {
+  max-width: 62ch;
+}
+
+.explain.compact .explain-title {
+  font-size: clamp(40px, 6vw, 64px);
+}
+
+/* A numbered heading over each block: flow, ingredients, receipt. */
+.explain-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: clamp(12px, 2vw, 28px) 0 -8px;
+  font-size: clamp(26px, 3vw, 40px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.explain-h > span {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  font-family: var(--caps);
+  font-size: 0.6em;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--bg);
+  background: var(--accent);
+}
+
+.explain-h small {
+  flex-basis: 100%;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.explain-flow b {
+  font-size: 19px;
+  letter-spacing: 0.06em;
+}
+
+.explain-flow small {
+  font-size: 14.5px;
+}
+
+.explain-steps .explain-n {
+  font-size: 15px;
+}
+
+.explain-steps h4 {
+  margin: 0;
+  font-size: clamp(22px, 2.1vw, 27px);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.explain-steps p {
+  font-size: 15.5px;
+}
+
+/* ---- the receipt ---- */
+
+.sweat-receipt.v2 .sweat-wordmark {
+  font-family: inherit;
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  line-height: 1;
+}
+
+.sweat-receipt.v2 .sweat-wordmark em {
+  font-size: 1.12em;
+  text-transform: capitalize;
+}
+
+.sweat-receipt.v2 .sweat-receipt-head {
+  padding-block: 20px 16px;
+}
+
+.sweat-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding-block: 26px 22px;
+}
+
+.sweat-hero-what strong {
+  font-size: clamp(26px, 3vw, 36px);
+}
+
+.sweat-hero-what small {
+  font-size: 14.5px;
+}
+
+.sweat-verdict {
+  font-size: 15px;
+  padding: 7px 14px 7px 10px;
+}
+
+.sweat-score {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.sweat-score span {
+  font-family: var(--caps);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.sweat-score b {
+  font-family: var(--caps);
+  font-size: clamp(60px, 8vw, 96px);
+  font-weight: 600;
+  line-height: 0.9;
+  color: var(--green);
+}
+
+.sweat-hero.rejected .sweat-score b,
+.sweat-hero.rejected .sweat-score span,
+.sweat-hero.pending .sweat-score b,
+.sweat-hero.pending .sweat-score span {
+  color: var(--text-3);
+}
+
+.sweat-score small {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* The three contributors, the way a score screen lists what moved the number. */
+.sweat-into {
+  display: grid;
+  gap: 14px;
+  padding-block: 4px 24px;
+}
+
+.sweat-into h4 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.sweat-into dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.sweat-into dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: baseline;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.sweat-into dt {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.sweat-into dd {
+  margin: 0;
+  font-family: var(--caps);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.sweat-into dd small {
+  margin-left: 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-into .meter {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.sweat-into .meter i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--green);
+}
+
+.sweat-into .evidence .meter i {
+  background: var(--accent);
+}
+
+.sweat-into p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+@media (min-width: 700px) {
+  .sweat-into dl {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 460px) {
+  .sweat-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .sweat-score {
+    justify-items: start;
+    text-align: left;
+  }
+}
+
+/* Part titles read as titles: sentence-size, not small capitals. */
+.sweat-part {
+  gap: 16px;
+  padding-block: 24px;
+}
+
+.sweat-part > header {
+  align-items: center;
+}
+
+.sweat-part-n {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+
+.sweat-part h4 {
+  display: grid;
+  gap: 1px;
+  font-family: inherit;
+  font-size: clamp(21px, 2.2vw, 26px);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  line-height: 1.15;
+}
+
+.sweat-part h4 span {
+  font-family: inherit;
+  font-style: normal;
+  font-size: 14px;
+  letter-spacing: 0;
+  color: var(--text-3);
+}
+
+.sweat-part-result {
+  font-size: clamp(24px, 2.6vw, 30px);
+}
+
+.explain-result b {
+  font-size: 38px;
+}

@@ -113,19 +113,21 @@ export default function SweatExplainer({ compact = false }: { compact?: boolean 
 
   return (
     <div className={`explain${compact ? " compact" : ""}`}>
-      {!compact && (
-        <div className="explain-head">
-          <span className="kicker">Proof of Sweat</span>
-          <h2 className="headline">
-            Verified first. <em className="serif">Scored second.</em>
-          </h2>
-          <p className="lede">
-            With money in the pool, a workout has to be checked before it can count. Every point on a Rival leaderboard comes from
-            exercise your Oura Ring recorded and Proof of Sweat verified.
-          </p>
-        </div>
-      )}
+      <div className="explain-head">
+        <span className="kicker">How your score is decided</span>
+        <h2 className="explain-title">
+          Proof of <em className="serif">Sweat.</em>
+        </h2>
+        <p className="explain-sub">Verified first. Scored second.</p>
+        <p className="lede">
+          Proof of Sweat is how Rival confirms you really exercised and turns it into one number. It takes what your Oura Ring
+          recorded, checks it, measures how hard you worked, and gives you your Sweat Points.
+        </p>
+      </div>
 
+      <h3 className="explain-h">
+        <span>1</span> From your ring to the leaderboard
+      </h3>
       <ol className="explain-flow">
         {FLOW.map(({ Icon, who, does, line, key }, i) => (
           <li key={who} className={key ? "key" : undefined}>
@@ -141,12 +143,15 @@ export default function SweatExplainer({ compact = false }: { compact?: boolean 
         ))}
       </ol>
 
+      <h3 className="explain-h">
+        <span>2</span> What goes into your score
+      </h3>
       <ol className="explain-steps">
         <li>
           <span className="explain-n">
-            <ShieldCheck size={16} aria-hidden /> 01 · Verify
+            <ShieldCheck size={16} aria-hidden /> Verify
           </span>
-          <h3>Checked five ways before a point counts</h3>
+          <h4>Checked five ways before a point counts</h4>
           <div className="explain-art checks" aria-hidden>
             {CHECKS.map((c) => (
               <span key={c}>
@@ -158,9 +163,9 @@ export default function SweatExplainer({ compact = false }: { compact?: boolean 
         </li>
         <li>
           <span className="explain-n">
-            <Gauge size={16} aria-hidden /> 02 · Measure
+            <Gauge size={16} aria-hidden /> Measure
           </span>
-          <h3>Harder sessions earn up to ×{TOP}</h3>
+          <h4>Harder sessions earn up to ×{TOP}</h4>
           <div className="explain-art split" aria-hidden>
             <div className="explain-weightbar">
               {WEIGHTS.map((x) => (
@@ -179,9 +184,9 @@ export default function SweatExplainer({ compact = false }: { compact?: boolean 
         </li>
         <li>
           <span className="explain-n">
-            <Activity size={16} aria-hidden /> 03 · Score
+            <Activity size={16} aria-hidden /> Score
           </span>
-          <h3>Minutes, lifted by proven effort</h3>
+          <h4>Minutes, lifted by proven effort</h4>
           <div className="explain-art sum" aria-hidden>
             <span>
               <b>Base</b> ≈ 1 per minute
@@ -199,10 +204,14 @@ export default function SweatExplainer({ compact = false }: { compact?: boolean 
         </li>
       </ol>
 
+      <h3 className="explain-h">
+        <span>3</span> See a Proof of Sweat receipt
+        <small>Every workout gets one. Change the workout and watch the score move.</small>
+      </h3>
       <div className="explain-try">
         <div className="explain-controls">
           <div className="demo-tag">
-            <i /> Try it · illustrative numbers
+            <i /> Change the workout · illustrative numbers
           </div>
           <div className="explain-result" role="status">
             <Activity size={18} aria-hidden />

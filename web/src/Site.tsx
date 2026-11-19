@@ -384,10 +384,11 @@ function HowPage({ go, onLogin }: Nav) {
         <Reveal className="chapter">
           <div className="chapter-copy">
             <span className="chapter-n">03</span>
-            <h2 className="headline">Move, and earn points</h2>
+            <h2 className="headline">Move, and Proof of Sweat scores it</h2>
             <p className="lede">
-              Scoring rewards consistency. Long days count for less as they go on, so nobody can win the week in a single
-              afternoon and the person who keeps showing up is the one to beat. The full working is just below.
+              Proof of Sweat checks each workout your Oura Ring records, then turns it into Sweat Points. Scoring rewards
+              consistency: long days count for less as they go on, so the person who keeps showing up is the one to beat.
+              The full working is just below.
             </p>
           </div>
           <div className="chapter-visual" aria-hidden>
