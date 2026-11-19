@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 import config
 import db
 import sweat
+import sweat2
 from fitness import oura, oura_data
 
 PROVIDER = oura.PROVIDER
@@ -42,6 +43,7 @@ MAX_WORKOUT_PAGES = 10
 MAX_HR_FETCHES = 25  # heart-rate windows read per sync; the rest stay pending until the next one
 MAX_HR_ATTEMPTS = 3  # then the workout is rated limited evidence instead of waiting forever
 MAX_FINAL_SYNC_ATTEMPTS = 3  # per player, before settlement stops waiting for them
+SWEAT_TEMPLATES = (sweat.TEMPLATE, sweat2.TEMPLATE)
 MISSING_SYNCS_BEFORE_REMOVAL = 2  # complete syncs in a row that must miss a workout before we drop it
 
 # Oura activity names -> Rival categories. Names are compared in lower case with punctuation removed.
@@ -105,17 +107,20 @@ def normalize(raw: dict) -> dict | None:
         distance = round(metres / 1000, 3)
     activity = raw.get("activity") if isinstance(raw.get("activity"), str) else None
     source = raw.get("source") if isinstance(raw.get("source"), str) else None
+    intensity = raw.get("intensity") if raw.get("intensity") in sweat2.PROVIDER_FACTOR else None
     fields = {
         "provider_ref": reference(workout_id),
         "activity_type": category_of(activity),
         "provider_activity": activity[:60] if activity else None,
         "provider_source": source[:60] if source else None,
+        "intensity": intensity,
         "start_time": start,
         "end_time": end,
         "minutes": round((end - start).total_seconds() / 60, 2) if start and end else 0.0,
         "distance_km": distance,
     }
-    shape = [activity, source, start.isoformat() if start else None, end.isoformat() if end else None, distance]
+    shape = [activity, source, start.isoformat() if start else None, end.isoformat() if end else None, distance,
+             intensity]
     fields["content_hash"] = hashlib.sha256(json.dumps(shape).encode()).hexdigest()
     return fields
 
@@ -141,6 +146,7 @@ def _save_checks(row: db.ImportedActivity, checks: list[sweat.Check]) -> None:
 def _reset(row: db.ImportedActivity) -> None:
     row.status, row.assurance, row.reason, row.checks = "pending", None, None, None
     row.hr_bins_total = row.hr_bins_covered = row.verified_at = None
+    row.hr_usable = row.hr_quarters = row.hr_tagged_bins = row.hr_warning = row.hr_median = None
     row.hr_attempts = 0
 
 
@@ -149,7 +155,7 @@ def _open_sweat_challenges(session: Session, user_id: int) -> list[db.Challenge]
         select(db.Challenge)
         .join(db.Participant, db.Participant.challenge_id == db.Challenge.id)
         .where(db.Participant.user_id == user_id, db.Challenge.status == "open",
-               db.Challenge.template == sweat.TEMPLATE)
+               db.Challenge.template.in_(SWEAT_TEMPLATES))
     ))
 
 
@@ -221,6 +227,9 @@ def _sync(session: Session, user_id: int, now: datetime) -> dict:
         since = db.utc(connection.last_sync_at) - timedelta(days=OVERLAP_DAYS)
         for challenge in _open_sweat_challenges(session, user_id):
             since = min(since, db.utc(challenge.start_time) - timedelta(days=1))
+            if challenge.template == sweat2.TEMPLATE and not _reference_frozen(session, challenge, user_id):
+                # v2 compares effort with the player's earlier workouts: look back far enough to build that reference.
+                since = min(since, db.utc(challenge.start_time) - timedelta(days=sweat2.REFERENCE_WINDOW_DAYS))
         since = max(since, floor)
     raws, complete = oura_data.pages(
         oura_data.WORKOUT_URL, token,
@@ -243,7 +252,7 @@ def _sync(session: Session, user_id: int, now: datetime) -> dict:
             try:
                 with session.begin_nested():
                     session.add(db.ImportedActivity(user_id=user_id, provider=PROVIDER, first_seen_at=now,
-                                                    synced_at=now, rules_version=sweat.RULES_VERSION, **fields))
+                                                    synced_at=now, rules_version=sweat2.RULES_VERSION, **fields))
                 counts["new"] += 1
             except IntegrityError:  # another request imported it a moment ago
                 counts["skipped"] += 1
@@ -301,7 +310,7 @@ def _verify_pending(session: Session, user_id: int, token: str, now: datetime) -
     for row in pending:
         workout = as_workout(row)
         checks = sweat.assess(workout, now)
-        row.rules_version = sweat.RULES_VERSION
+        row.rules_version = sweat2.RULES_VERSION
         failure = sweat.first_failure(checks)
         if failure:
             row.status, row.assurance, row.reason, row.verified_at = "rejected", None, failure, now
@@ -316,8 +325,9 @@ def _verify_pending(session: Session, user_id: int, token: str, now: datetime) -
             try:
                 samples, _ = oura_data.pages(oura_data.HEARTRATE_URL, token, {
                     "start_datetime": workout.start.isoformat(), "end_datetime": workout.end.isoformat()})
-                evidence = sweat.heart_evidence(samples, workout.start, workout.end)
-                del samples  # counted, never stored
+                heart = sweat2.heart_summary(samples, workout.start, workout.end)
+                evidence = sweat.Evidence(heart.bins_total, heart.bins_covered, heart.tagged, heart.warning)
+                del samples  # reduced to counts and one median; the readings are never stored
             except oura.OuraError as e:
                 if e.status == 401:
                     raise
@@ -335,7 +345,59 @@ def _verify_pending(session: Session, user_id: int, token: str, now: datetime) -
         row.reason = check.reason
         row.hr_bins_total = evidence.bins_total if evidence else None
         row.hr_bins_covered = evidence.bins_covered if evidence else None
+        if evidence:
+            row.hr_usable, row.hr_quarters, row.hr_tagged_bins = heart.usable, heart.quarters, heart.tagged_bins
+            row.hr_warning, row.hr_median = heart.warning, heart.median
         _save_checks(row, checks + [check])
+
+
+# ---------- Proof of Sweat v2: stored heart summary and the frozen personal reference ----------
+
+
+def heart_of(row: db.ImportedActivity) -> sweat2.HeartSummary | None:
+    """The heart-rate summary kept for a workout, or None when none was read (or it predates v2)."""
+    if row.hr_bins_total is None or row.hr_usable is None:
+        return None
+    return sweat2.HeartSummary(
+        bins_total=row.hr_bins_total, bins_covered=row.hr_bins_covered or 0, usable=row.hr_usable,
+        quarters=row.hr_quarters or 0, tagged=bool(row.hr_tagged_bins), warning=bool(row.hr_warning),
+        tagged_bins=row.hr_tagged_bins or 0, median=row.hr_median,
+    )
+
+
+def _reference_frozen(session: Session, challenge: db.Challenge, user_id: int) -> bool:
+    return session.scalar(select(db.Participant.hr_reference_at).where(
+        db.Participant.challenge_id == challenge.id, db.Participant.user_id == user_id)) is not None
+
+
+def freeze_reference(session: Session, challenge: db.Challenge, user_id: int, now: datetime | None = None) -> None:
+    """Fixes a player's personal reference for a v2 challenge, once. Does not commit.
+
+    Built only from workouts that ended before the challenge started (so effort inside the challenge
+    cannot move it) and inside the reference window, each with enough exercise-tagged heart rate.
+    Frozen from the challenge start onwards: with a reference as soon as there is one; without one
+    only after the player has synced at least once, so a late first sync still gets its chance.
+    """
+    now = now or _now()
+    start = db.utc(challenge.start_time)
+    participant = session.scalar(select(db.Participant).where(
+        db.Participant.challenge_id == challenge.id, db.Participant.user_id == user_id))
+    if participant is None or participant.hr_reference_at is not None or now < start:
+        return
+    rows = session.scalars(
+        select(db.ImportedActivity)
+        .where(db.ImportedActivity.user_id == user_id, db.ImportedActivity.status == "verified",
+               db.ImportedActivity.hr_median.is_not(None), db.ImportedActivity.end_time <= start,
+               db.ImportedActivity.start_time >= start - timedelta(days=sweat2.REFERENCE_WINDOW_DAYS))
+        .order_by(db.ImportedActivity.start_time.desc(), db.ImportedActivity.id)
+    )
+    reference = sweat2.personal_reference([r.hr_median for r in rows if sweat2.qualifies_for_heart(heart_of(r))])
+    if reference is None:
+        connection = oura._connection(session, user_id)
+        if connection is None or connection.last_sync_at is None:
+            return  # nothing has been synced yet: decide once it has
+    participant.hr_reference = json.dumps(reference) if reference else None
+    participant.hr_reference_at = now
 
 
 # ---------- before settlement ----------
@@ -416,10 +478,18 @@ def cleanup(session: Session, now: datetime | None = None) -> int:
         needed = row.start_time is not None and row.end_time is not None and session.scalar(
             select(db.Challenge.id)
             .join(db.Participant, db.Participant.challenge_id == db.Challenge.id)
-            .where(db.Participant.user_id == row.user_id, db.Challenge.template == sweat.TEMPLATE,
+            .where(db.Participant.user_id == row.user_id, db.Challenge.template.in_(SWEAT_TEMPLATES),
                    db.Challenge.start_time < row.end_time, db.Challenge.end_time > row.start_time,
                    or_(db.Challenge.status == "open", db.Challenge.end_time > cutoff))
         ) is not None
+        if not needed and row.end_time is not None:
+            # Also kept: workouts a v2 challenge still needs to build a player's reference (not frozen yet).
+            needed = any(
+                db.utc(row.end_time) <= db.utc(c.start_time)
+                and db.utc(row.end_time) >= db.utc(c.start_time) - timedelta(days=sweat2.REFERENCE_WINDOW_DAYS)
+                and not _reference_frozen(session, c, row.user_id)
+                for c in _open_sweat_challenges(session, row.user_id) if c.template == sweat2.TEMPLATE
+            )
         if not needed:
             session.delete(row)
             removed += 1
@@ -431,4 +501,9 @@ def forget(session: Session, user_id: int, receipts: bool = False) -> None:
     """Deletes a user's imported workouts (and, on a full data deletion, their saved receipts). Does not commit."""
     session.execute(delete(db.ImportedActivity).where(db.ImportedActivity.user_id == user_id))
     if receipts:
+        # A full deletion also drops the heart-rate reference kept for unfinished challenges.
+        open_ids = select(db.Challenge.id).where(db.Challenge.status == "open")
+        session.execute(update(db.Participant).where(db.Participant.user_id == user_id,
+                                                     db.Participant.challenge_id.in_(open_ids))
+                        .values(hr_reference=None).execution_options(synchronize_session=False))
         session.execute(delete(db.SweatReceipt).where(db.SweatReceipt.user_id == user_id))
