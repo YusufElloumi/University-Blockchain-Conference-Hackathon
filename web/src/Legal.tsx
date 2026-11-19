@@ -9,6 +9,7 @@ import { DemoBanner, Wordmark } from "./ui";
 export type LegalDoc = "privacy" | "terms";
 
 const UPDATED = "18 November 2026";
+const CONTACT = "shaanbhasin64@gmail.com";
 
 // Addresses are relative so the pages work at /privacy, /privacy/ and under any folder.
 const SITE_LINKS = [
@@ -323,7 +324,9 @@ const PRIVACY: Doc = {
             This is a draft written for a prototype. We will update it as features change, especially before any Oura connection goes
             live, and change the date at the top.
           </p>
-          <p>Contact details for privacy questions and data requests will be added here before launch.</p>
+          <p>
+            For privacy questions and data requests, email <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
+          </p>
         </>
       ),
     },
@@ -498,7 +501,9 @@ const TERMS: Doc = {
             You can stop using Rival at any time. We may suspend or shut down the prototype at any time. We may update these terms, and
             the date at the top will change when we do.
           </p>
-          <p>Contact details will be added here before launch.</p>
+          <p>
+            Questions about these terms: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
+          </p>
         </>
       ),
     },
