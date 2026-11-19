@@ -444,7 +444,7 @@ function ReceiptV2(props: {
         </span>
         <span className="sweat-head-tags">
           {props.sample && <span className="sweat-badge sample">Sample</span>}
-          <span className="sweat-badge">Recorded by Oura</span>
+          <span className="sweat-badge">Receipt · recorded by Oura</span>
         </span>
       </div>
 
@@ -465,17 +465,48 @@ function ReceiptV2(props: {
                 : status.line}
           </small>
         </div>
-        <dl className="sweat-hero-stats">
-          <div>
-            <dt>Evidence Index</dt>
+        <div className="sweat-score">
+          <span>Sweat Points</span>
+          <b>{verified ? score.contribution : "0"}</b>
+          <small>{verified ? "from this workout" : status.tone === "pending" ? "pending checks" : "not counted"}</small>
+        </div>
+      </div>
+
+      <div className="sweat-into">
+        <h4>What went into this score</h4>
+        <dl>
+          <div className="minutes">
+            <dt>Minutes</dt>
+            <dd>
+              {verified ? base : "0"}
+              <small>base points</small>
+            </dd>
+            <span className="meter">
+              <i style={{ width: `${Math.min(100, ((w.eligible_minutes ?? 0) / 60) * 100)}%` }} />
+            </span>
+            <p>{w.eligible_minutes ?? 0} verified min, about a point each</p>
+          </div>
+          <div className="effort">
+            <dt>Effort</dt>
+            <dd>
+              ×{verified ? score.multiplier : "1.000"}
+              <small>{verified ? `${signed(potential)} pts` : "no bonus"}</small>
+            </dd>
+            <span className="meter">
+              <i style={{ width: `${Math.min(100, Math.max(4, ((Number(score.multiplier) - Number(range[0])) / (Number(range[1]) - Number(range[0]))) * 100))}%` }} />
+            </span>
+            <p>Heart rate, movement and Oura intensity</p>
+          </div>
+          <div className="evidence">
+            <dt>Evidence</dt>
             <dd>
               {evidence.index}
-              <small>/100</small>
+              <small>/100 index</small>
             </dd>
-          </div>
-          <div className="pts">
-            <dt>Sweat Points</dt>
-            <dd>{verified ? score.contribution : "0"}</dd>
+            <span className="meter">
+              <i style={{ width: `${evidence.index}%` }} />
+            </span>
+            <p>{verified ? `${share}% of the effort bonus counts` : "How complete the recording is"}</p>
           </div>
         </dl>
       </div>
@@ -865,7 +896,9 @@ export default function SweatWorkouts(props: {
       <section className="card sweat-summary">
         <div className="sweat-summary-top">
           <div>
-            <Eyebrow>Proof of Sweat</Eyebrow>
+            <h2 className="sweat-title">
+              Proof of <em className="serif">Sweat.</em>
+            </h2>
             <p className="sweat-rule">{data.rules?.summary}</p>
           </div>
           <span className="icon-tile">

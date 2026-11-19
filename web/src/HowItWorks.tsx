@@ -22,9 +22,6 @@ export default function HowItWorks({ session }: { session: Session }) {
 
       <StepList compact />
 
-      <div className="section-head">
-        <h2>How Sweat Points are calculated</h2>
-      </div>
       <SweatExplainer compact />
 
       <div className="section-head">
