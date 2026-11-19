@@ -300,5 +300,7 @@ def test_v2_rules_have_their_own_version_and_fingerprint_and_leave_v1_alone():
     assert sweat2.RULES_VERSION == "proof-of-sweat-v2" and sweat2.TEMPLATE == "proof_of_sweat_v2"
     assert len(sweat2.rules_fingerprint()) == 64 and sweat2.rules_fingerprint() != sweat.rules_fingerprint()
     # v1's fingerprint is locked onchain by existing challenges: it must never move.
-    assert sweat.rules_fingerprint() == "43143b257a0d" + sweat.rules_fingerprint()[12:]
+    assert sweat.rules_fingerprint() == "43143b257a0d5e734c25378000ce858aaeb9d53918d12cbfdb469674672ab180"
+    # v2's is locked by every v2 challenge: changing a constant must come with a new RULES_VERSION and this value.
+    assert sweat2.rules_fingerprint() == "de06dea706c74abd5db312efe97838e94da019694dad000ad2e68fd6ad3fc320"
     assert sweat2.rules()["gates"] == sweat.rules()

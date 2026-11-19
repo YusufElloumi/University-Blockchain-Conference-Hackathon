@@ -6,7 +6,8 @@ import { Reveal } from "./ui";
 
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
-/** A sample week: points per day, one pip each (the real cap is 6 a day; nobody here goes past 3). */
+/** A sample week as pips per day. Each pip stands for about 20 Sweat Points (roughly 20 verified minutes). */
+export const PIP_POINTS = 20;
 export const WEEK: { name: string; you?: boolean; days: number[] }[] = [
   { name: "Maya", days: [2, 2, 0, 3, 2, 1, 2] },
   { name: "You", you: true, days: [2, 1, 2, 0, 2, 2, 2] },
@@ -25,7 +26,8 @@ export function LaneRow(props: {
   you?: boolean;
   lead?: boolean;
   upto?: number; // only count and show the first this-many days (the scroll story reveals the week)
-  per?: number; // points each pip stands for (default 1)
+  per?: number; // points each pip stands for (default PIP_POINTS)
+  total?: number; // show this total instead of pips x per (when the day's taper applies)
 }) {
   const upto = props.upto ?? props.days.length;
   return (
@@ -41,7 +43,7 @@ export function LaneRow(props: {
           </span>
         ))}
       </span>
-      <span className="lane-total">{sum(props.days.slice(0, upto)) * (props.per ?? 1)}</span>
+      <span className="lane-total">{props.total ?? sum(props.days.slice(0, upto)) * (props.per ?? PIP_POINTS)}</span>
     </div>
   );
 }
@@ -71,7 +73,7 @@ export function LaneBoard() {
         <LaneRow key={player.name} n={i + 1} name={player.name} days={player.days} you={player.you} lead={i === 0} />
       ))}
       <div className="graphic-foot">
-        <span>Each pip is a point: 10 verified minutes</span>
+        <span>Each pip is about 20 Sweat Points</span>
         <span>Sample data</span>
       </div>
     </Reveal>
@@ -93,7 +95,7 @@ export function Matchup() {
       <div className="matchup-score">
         <div className="matchup-side you">
           <small>You</small>
-          <b>{sum(you.days)}</b>
+          <b>{sum(you.days) * PIP_POINTS}</b>
         </div>
         <div className="matchup-vs" aria-hidden>
           <i />
@@ -102,11 +104,11 @@ export function Matchup() {
         </div>
         <div className="matchup-side">
           <small>{rival.name}</small>
-          <b>{sum(rival.days)}</b>
+          <b>{sum(rival.days) * PIP_POINTS}</b>
         </div>
       </div>
       <div className="matchup-gap">
-        <span>1 pt behind</span>
+        <span>20 pts behind</span>
         <span>2d 14h left</span>
       </div>
       <div className="matchup-lanes">
@@ -123,9 +125,9 @@ export function Matchup() {
 
 /** The scoring rules as a scoreboard strip. These are the app's real numbers. */
 const RULES = [
-  { value: "10", unit: "min", label: "Verified minutes for a point", short: "= 1 point" },
-  { value: "6", unit: "pts", label: "Most you can earn in a day", short: "a day, at most" },
-  { value: "60", unit: "min", label: "Most that counts in a day", short: "count each day" },
+  { value: "1", unit: "pt", label: "About a point per verified minute", short: "per verified minute" },
+  { value: "1.25", unit: "×", label: "Most that effort can add", short: "effort weighting, at most" },
+  { value: "60", unit: "min", label: "Count in full each day, then taper", short: "a day count in full" },
   { value: "8", unit: "max", label: "Players in one event", short: "players" },
 ];
 
@@ -169,21 +171,21 @@ export function CapGraphic() {
   return (
     <Reveal className="graphic cap-graphic">
       <div className="graphic-head">
-        <span>The daily cap</span>
-        <span>6 pts a day</span>
+        <span>Long days taper</span>
+        <span>1st hour ×1 · 2nd ×0.6 · 3rd ×0.25</span>
       </div>
       <div className="cap-rows">
         <div>
           <small>One heroic Sunday</small>
-          <LaneRow n={2} name="3 hours, once" days={[0, 0, 0, 0, 0, 0, 3]} per={2} />
+          <LaneRow n={2} name="3 hours, once" days={[0, 0, 0, 0, 0, 0, 3]} total={111} />
         </div>
         <div>
           <small>A steady week</small>
-          <LaneRow n={1} name="A little, daily" days={[2, 1, 2, 2, 1, 2, 2]} you lead per={2} />
+          <LaneRow n={1} name="A little, daily" days={[2, 1, 2, 2, 1, 2, 2]} you lead />
         </div>
       </div>
       <div className="graphic-foot">
-        <span>Each pip is 2 points · the habit wins, not the highlight</span>
+        <span>3 hours in one day earns 111 · the habit wins, not the highlight</span>
         <span>Illustration</span>
       </div>
     </Reveal>

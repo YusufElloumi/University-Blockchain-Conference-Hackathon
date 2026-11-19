@@ -16,28 +16,42 @@ const ACTIVITIES: { id: string; label: string; Icon: LucideIcon }[] = [
   { id: "ride", label: "Ride", Icon: Bike },
   { id: "walk", label: "Walk", Icon: PersonStanding },
 ];
-const MINUTES = [10, 30, 60];
-const DAILY_CAP = 6;
+const MINUTES = [20, 40, 90];
+const INTENSITIES = [
+  { id: "easy", label: "Easy", factor: 0.9 },
+  { id: "moderate", label: "Moderate", factor: 1.0 },
+  { id: "hard", label: "Hard", factor: 1.12 },
+];
+const DAY_MINUTES = 180; // past three hours in a day, nothing more is added
 const START_SCORES = [
-  { name: "Maya", points: 11, ticks: [true, true, false, true, true, true, false] },
-  { name: "Jordan", points: 10, ticks: [true, false, true, true, true, false, false] },
-  { name: "You", points: 9, ticks: [true, true, true, false, true, true, false], you: true },
-  { name: "Sam", points: 7, ticks: [false, true, true, false, true, false, false] },
-  { name: "Priya", points: 5, ticks: [true, false, false, true, false, true, false] },
+  { name: "Maya", points: 190, ticks: [true, true, false, true, true, true, false] },
+  { name: "Jordan", points: 172, ticks: [true, false, true, true, true, false, false] },
+  { name: "You", points: 155, ticks: [true, true, true, false, true, true, false], you: true },
+  { name: "Sam", points: 120, ticks: [false, true, true, false, true, false, false] },
+  { name: "Priya", points: 84, ticks: [true, false, false, true, false, true, false] },
 ];
 
-/** The app's real fitness rule (Proof of Sweat v1): one point for every 10 verified minutes. Distance adds nothing. */
-const workoutPoints = (minutes: number) => Math.floor(minutes / 10);
+/** The app's real daily taper (Proof of Sweat v2): the first hour in full, the second at 0.6, the third at 0.25. */
+const effective = (minutes: number) =>
+  Math.min(minutes, 60) + 0.6 * Math.max(0, Math.min(minutes, 120) - 60) + 0.25 * Math.max(0, Math.min(minutes, 180) - 120);
+
+/** Points for a workout added after `before` minutes already done today. With no heart rate or distance in this
+ *  demo, those two signals are neutral, so effort is 0.4 x Oura's intensity + 0.6, exactly as in the app. */
+const workoutPoints = (before: number, minutes: number, factor: number) =>
+  (effective(before + minutes) - effective(before)) * (0.4 * factor + 0.6);
 
 /** Log a pretend workout and watch the sample leaderboard react. */
 export function WorkoutDemo() {
   const [activity, setActivity] = useState("run");
-  const [minutes, setMinutes] = useState(30);
-  const [earned, setEarned] = useState(0); // points you have logged "today" in the demo
+  const [minutes, setMinutes] = useState(40);
+  const [intensity, setIntensity] = useState("moderate");
+  const [done, setDone] = useState(0); // minutes you have logged "today" in the demo
+  const [exact, setExact] = useState(0); // today's points before rounding
   const [note, setNote] = useState("");
 
-  const worth = workoutPoints(minutes);
-  const room = DAILY_CAP - earned;
+  const factor = INTENSITIES.find((i) => i.id === intensity)!.factor;
+  const worth = Math.round(workoutPoints(done, minutes, factor) * 10) / 10;
+  const earned = Math.round(exact);
   const players: PlayerRow[] = START_SCORES.map((p) => ({
     ...p,
     points: p.points + (p.you ? earned : 0),
@@ -59,11 +73,11 @@ export function WorkoutDemo() {
   const rank = players.findIndex((p) => p.is_you) + 1;
 
   function log() {
-    const gained = Math.min(worth, room);
-    if (worth === 0) return setNote("Under 10 minutes doesn't score. Go a little longer.");
-    if (gained === 0) return setNote("That's today's 6-point cap. The rest of the week is still open.");
-    setEarned(earned + gained);
-    const capped = gained < worth ? " (capped at 6 a day)" : "";
+    if (done >= DAY_MINUTES) return setNote("That's three hours today. Nothing more is added; the rest of the week is still open.");
+    const gained = Math.round(exact + workoutPoints(done, minutes, factor)) - earned;
+    setExact(exact + workoutPoints(done, minutes, factor));
+    setDone(done + minutes);
+    const capped = done + minutes > 60 ? " (today's later minutes count for less)" : "";
     const yours = players.find((p) => p.is_you)!.points + gained;
     const ahead = players.filter((p) => !p.is_you && p.points > yours).length;
     const standing = ahead === 0 ? "You take the lead." : ahead === 1 ? "One more and you're level with the leader." : "You're closing in.";
@@ -96,12 +110,22 @@ export function WorkoutDemo() {
             ))}
           </div>
         </div>
+        <div className="demo-field">
+          <span>Oura intensity</span>
+          <div className="chips">
+            {INTENSITIES.map((i) => (
+              <button key={i.id} type="button" className={intensity === i.id ? "chip on" : "chip"} aria-pressed={intensity === i.id} onClick={() => setIntensity(i.id)}>
+                {i.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="demo-worth">
           <b>{worth}</b>
           <span>
-            point{worth === 1 ? "" : "s"} for this workout
+            Sweat Points for this workout
             <small>
-              1 point per 10 minutes · in the app, workouts come from your Oura Ring
+              about 1 per minute × effort {(0.4 * factor + 0.6).toFixed(3)} · in the app, workouts come from your Oura Ring
             </small>
           </span>
         </div>
@@ -113,7 +137,8 @@ export function WorkoutDemo() {
             <button
               className="btn btn-text"
               onClick={() => {
-                setEarned(0);
+                setExact(0);
+                setDone(0);
                 setNote("");
               }}
             >
@@ -138,12 +163,14 @@ export function WorkoutDemo() {
           </div>
         </div>
         <Leaderboard players={players} form picks={false} />
-        <div className="demo-cap" aria-label={`${earned} of ${DAILY_CAP} points earned today`}>
+        <div className="demo-cap" aria-label={`${done} minutes and ${earned} points today`}>
           <span>Today</span>
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <i key={i} className={i < earned ? "on" : ""} />
+          {[0, 1, 2].map((i) => (
+            <i key={i} className={done > i * 60 ? "on" : ""} />
           ))}
-          <span>{earned}/6 pts</span>
+          <span>
+            {done} min · {earned} pts
+          </span>
         </div>
       </div>
     </div>
@@ -154,13 +181,13 @@ export function WorkoutDemo() {
 
 const STORY = [
   { title: "Monday morning.", text: "Five friends, one leaderboard. Everyone starts level." },
-  { title: "Day one.", text: "You and Maya both bank two points. Game on." },
-  { title: "Day two.", text: "Maya edges ahead by one." },
+  { title: "Day one.", text: "You and Maya both get on the board. Game on." },
+  { title: "Day two.", text: "Maya edges ahead." },
   { title: "Day three.", text: "She takes a rest day. You don't, and the lead is yours." },
   { title: "Day four.", text: "You skip one. She has a big day and takes it straight back." },
-  { title: "Day five.", text: "The gap holds at two. Jordan is closing." },
-  { title: "Day six.", text: "One point in it, with a day to go." },
-  { title: "Final day.", text: "Maya wins the week by a single point. Rematch?" },
+  { title: "Day five.", text: "The gap holds. Jordan is closing." },
+  { title: "Day six.", text: "Almost nothing in it, with a day to go." },
+  { title: "Final day.", text: "Maya wins the week by a whisker. Rematch?" },
 ];
 
 const total = (days: number[], upto: number) => days.slice(0, upto).reduce((a, b) => a + b, 0);

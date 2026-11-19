@@ -1,5 +1,10 @@
 # Proof of Sweat
 
+> New challenges use **v2** (effort-weighted Sweat Points and an Evidence Index): see
+> [PROOF_OF_SWEAT_V2.md](PROOF_OF_SWEAT_V2.md). This page describes v1 and everything v2 shares with it.
+> Since the locked-rules upgrade, the program also stores each challenge's rules hash and checks the
+> verifier's signature at payout; where section F says otherwise, the v2 page is current.
+
 How Rival turns a workout recorded by an Oura Ring into a checked score, and how that score reaches a
 Solana-settled prize pool. Written for someone who knows some computer science and physiology but is
 not a blockchain engineer.

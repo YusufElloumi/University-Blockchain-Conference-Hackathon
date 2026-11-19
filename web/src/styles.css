@@ -8499,3 +8499,558 @@ input[type="checkbox"] {
 .rules-match.bad {
   color: var(--danger);
 }
+
+/* =========================================================================================
+   26. Proof of Sweat v2 receipt: evidence bar, daily bands, effort gauges, formula.
+   Blue = evidence, green = points. Hatched = not observed (never shown as a failure).
+   ========================================================================================= */
+
+.sweat-receipt.v2 {
+  gap: 20px;
+}
+
+.sweat-wordmark {
+  font-family: var(--caps);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.sweat-wordmark em {
+  font-size: 24px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--accent);
+}
+
+.sweat-head-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sweat-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.sweat-ribbon > div {
+  flex: 1 1 96px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--line);
+  margin-right: -1px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: -1px;
+}
+
+.sweat-ribbon dt {
+  font-family: var(--caps);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-ribbon dd {
+  margin: 4px 0 0;
+  font-family: var(--caps);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+}
+
+.sweat-ribbon dd.word {
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+
+.sweat-ribbon dd small {
+  margin-left: 3px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.sweat-ribbon .pts {
+  background: var(--green-soft);
+}
+
+.sweat-ribbon .pts dd {
+  color: var(--green);
+}
+
+.sweat-block {
+  display: grid;
+  gap: 12px;
+}
+
+.sweat-block h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-family: var(--caps);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.sweat-block h4 span {
+  font-family: "Instrument Serif", serif;
+  font-style: italic;
+  font-size: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-3);
+}
+
+.sweat-block .fine {
+  margin: 0;
+}
+
+/* The 100-point bar: four segments as wide as their weights, each filled by its score. */
+.sweat-evidence-bar {
+  display: flex;
+  gap: 3px;
+  height: 14px;
+}
+
+.sweat-evidence-bar .seg {
+  position: relative;
+  flex-basis: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+.sweat-evidence-bar .seg i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transform-origin: left;
+  animation: sweat-grow 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.sweat-evidence-bar .seg.integrity i,
+.sweat-parts .integrity summary > i {
+  background: var(--accent-bright);
+  opacity: 0.75;
+}
+
+.sweat-evidence-bar .seg.movement i,
+.sweat-parts .movement summary > i {
+  background: var(--green);
+  opacity: 0.7;
+}
+
+.sweat-evidence-bar .seg.physiological i,
+.sweat-parts .physiological summary > i {
+  background: var(--green);
+}
+
+.sweat-evidence-bar .seg.unavailable,
+.sweat-evidence-bar .seg.pending {
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 5px, transparent 5px 9px);
+  outline: 1px dashed var(--line);
+  outline-offset: -1px;
+}
+
+.sweat-evidence-bar .seg.failed {
+  background: rgba(255, 120, 100, 0.25);
+}
+
+@keyframes sweat-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.sweat-parts {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sweat-parts li {
+  border-bottom: 1px solid var(--line);
+}
+
+.sweat-parts summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+}
+
+.sweat-parts summary::-webkit-details-marker {
+  display: none;
+}
+
+.sweat-parts summary > i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.sweat-parts summary span {
+  flex: 1;
+}
+
+.sweat-parts summary em {
+  font-family: var(--caps);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-parts li.failed summary em {
+  color: #ff9c8f;
+}
+
+.sweat-parts summary b {
+  min-width: 52px;
+  text-align: right;
+  font-family: var(--caps);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.sweat-parts summary b small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.sweat-parts details p {
+  margin: 0 0 10px 19px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+/* Daily bands: this workout's minutes in each band, and what they are worth. */
+.sweat-bands {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(96px, 1.1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.sweat-band {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  text-align: center;
+  color: var(--text-3);
+}
+
+.sweat-band .bar {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 64px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.sweat-band .bar i {
+  width: 100%;
+  background: var(--green);
+  transform-origin: bottom;
+  animation: sweat-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.sweat-band:nth-child(2) .bar i {
+  opacity: 0.65;
+}
+
+.sweat-band:nth-child(3) .bar i {
+  opacity: 0.4;
+}
+
+.sweat-band.over .bar i {
+  background: var(--text-3);
+  opacity: 0.4;
+}
+
+@keyframes sweat-rise {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+.sweat-band b {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.sweat-band.on b {
+  color: var(--text);
+}
+
+.sweat-band span:not(.bar) {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.sweat-band small,
+.sweat-band-total small,
+.sweat-formula small,
+.sweat-gauge-head small,
+.sweat-day span {
+  font-family: var(--caps);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sweat-band-total {
+  display: grid;
+  gap: 4px;
+  align-self: stretch;
+  align-content: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.sweat-band-total b {
+  font-family: var(--caps);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+}
+
+/* Effort gauges: the real 0.85 to 1.25 scale with 1.00 marked. */
+.sweat-gauges {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.sweat-gauge {
+  display: grid;
+  gap: 7px;
+}
+
+.sweat-gauge-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.sweat-gauge-head > span {
+  flex: 1;
+}
+
+.sweat-gauge-head em {
+  font-family: var(--caps);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sweat-gauge.unavailable .sweat-gauge-head em {
+  color: var(--text-3);
+  background: var(--surface-2);
+}
+
+.sweat-gauge-head b {
+  min-width: 58px;
+  text-align: right;
+  font-family: var(--caps);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.sweat-gauge.up .sweat-gauge-head b {
+  color: var(--green);
+}
+
+.sweat-gauge-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.sweat-gauge-track i {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+
+.sweat-gauge-track .fill {
+  border-radius: 999px;
+  background: var(--green);
+  opacity: 0.55;
+}
+
+.sweat-gauge.down .sweat-gauge-track .fill {
+  background: var(--text-3);
+}
+
+.sweat-gauge-track .neutral {
+  top: -4px;
+  width: 1px;
+  height: 16px;
+  background: var(--text-3);
+}
+
+.sweat-gauge-track .dot {
+  top: -3px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.sweat-gauge.up .sweat-gauge-track .dot {
+  background: var(--green);
+}
+
+.sweat-gauge.unavailable .sweat-gauge-track .dot {
+  background: var(--text-3);
+}
+
+.sweat-gauge p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.sweat-formula {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.sweat-formula > div {
+  display: grid;
+  gap: 4px;
+}
+
+.sweat-formula code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.sweat-formula code b {
+  font-size: 15px;
+  color: var(--green);
+}
+
+.sweat-oneline {
+  margin: 0;
+  font-family: "Instrument Serif", serif;
+  font-style: italic;
+  font-size: 20px;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+/* Points by challenge day, in the summary card. */
+.sweat-days {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  height: 92px;
+  overflow-x: auto;
+}
+
+.sweat-day {
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  gap: 2px;
+  justify-items: center;
+  flex: 0 0 44px;
+  height: 100%;
+}
+
+.sweat-day i {
+  align-self: end;
+  width: 100%;
+  border-radius: 5px 5px 2px 2px;
+  background: var(--green);
+  opacity: 0.8;
+}
+
+.sweat-day b {
+  font-family: var(--caps);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweat-evidence-bar .seg i,
+  .sweat-band .bar i {
+    animation: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .sweat-bands {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .sweat-band-total {
+    grid-column: 1 / -1;
+    grid-auto-flow: column;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .sweat-gauge-head {
+    flex-wrap: wrap;
+  }
+
+  .sweat-ribbon dd {
+    font-size: 24px;
+  }
+}

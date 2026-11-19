@@ -60,7 +60,7 @@ const PRIVACY: Doc = {
           <li>Other players see your points, never your workout details.</li>
           <li>
             If you connect an Oura account, Rival reads your workouts and heart rate to check and score them. It keeps a small
-            record of each workout and no heart-rate readings.
+            record of each workout: no heart-rate readings, only coverage counts and one summary number per workout.
           </li>
           <li>Workout and health data never goes on the blockchain and is never sent to any AI service.</li>
           <li>The blockchain holds only wallet addresses, test-money movements, winners and a scrambled fingerprint (hash) of the final scores. It is public and permanent.</li>
@@ -84,8 +84,9 @@ const PRIVACY: Doc = {
           <h3>Workouts imported from Oura</h3>
           <p>
             Only if you connect Oura. For each workout we keep: its category (run, walk and so on), Oura's own activity name and how
-            Oura says it was recorded, its start and end time, its distance if there is one, the result of each check, and how many
-            minutes of it had heart-rate measurements. Details are in the Oura section below.
+            Oura says it was recorded, its start and end time, its distance if there is one, Oura's intensity label (easy, moderate or
+            hard), the result of each check, how many minutes of it had heart-rate measurements, and one summary number: the
+            middle (median) heart-rate value recorded during it. Details are in the Oura section below.
           </p>
           <h3>Workouts you log in the app</h3>
           <p>
@@ -102,7 +103,7 @@ const PRIVACY: Doc = {
           <p>League organizers can upload a stat sheet. It holds player names, jersey numbers, teams, goals, assists and game dates.</p>
           <h3>What we do not collect</h3>
           <p>
-            We do not store heart-rate readings, calories, Oura's intensity estimate, or Oura's own workout IDs. We never request
+            We do not store the series of heart-rate readings, calories, or Oura's own workout IDs. We never request
             sleep, readiness, GPS routes or location. We receive nothing from Strava or any other fitness service. We use no
             analytics, advertising or tracking tools.
           </p>
@@ -130,13 +131,17 @@ const PRIVACY: Doc = {
               taken during it.
             </li>
             <li>
-              <b>What we keep.</b> A small record per workout, listed above. Heart-rate measurements are counted and then discarded:
-              we keep only how many minutes of the workout they cover, never the readings. Oura's workout ID is replaced by a one-way
+              <b>What we keep.</b> A small record per workout, listed above. Heart-rate measurements are reduced to counts and one
+              median per workout, then discarded: we never keep the readings themselves. For each challenge you play we also keep
+              one "personal reference": the typical value across your earlier workouts and how many were used, fixed when the
+              challenge starts. It is not a resting or maximum heart rate and is never shown to anyone, including you. Oura's workout ID is replaced by a one-way
               reference used to stop the same workout being counted twice.
             </li>
             <li>
               <b>Why.</b> To check each workout against published rules and turn eligible minutes into challenge points. Heart rate
-              is used only to describe how strong the recording's evidence is. It never changes your points.
+              is used in two ways: to describe how complete the recording's evidence is, and, in newer challenges, as one of three
+              bounded effort signals, where your session is compared only with your own earlier workouts. There is no pulse target,
+              and a missing heart rate is treated as neutral. Nothing here is medical advice or a health assessment.
             </li>
             <li>
               <b>Who sees it.</b> Only you see your workouts and their checks. Other players see your points, and whether your Oura
@@ -149,7 +154,8 @@ const PRIVACY: Doc = {
             <li>
               <b>How long.</b> Imported workouts are deleted automatically 7 days after the last challenge that used them has ended,
               or 7 days after the workout if no challenge used it. This clean-up runs with our scheduled job; if that job is not
-              running, the records stay until you disconnect.
+              running, the records stay until you disconnect. One exception: workouts from the 30 days before a challenge you
+              joined are kept until that challenge starts, because they are what your personal reference is built from.
             </li>
             <li>
               <b>Disconnecting.</b> The Disconnect button on your dashboard asks Oura to revoke Rival's access, then deletes the
@@ -441,10 +447,13 @@ const TERMS: Doc = {
               format (for example winner takes all, podium, goal or teams) is fixed when it is created.
             </li>
             <li>
-              Points follow the rules shown in each challenge. New fitness challenges use Proof of Sweat: one point for every 10
-              minutes of exercise recorded by your connected Oura account that passes the checks, up to 6 points per day. Days are
-              24-hour blocks from the challenge start. Distance, calories and heart rate never add points. Challenges created
-              earlier keep the rules they started with.
+              Points follow the rules locked into each challenge when it is created. New fitness challenges use Proof of Sweat v2:
+              about one Sweat Point for each minute of exercise recorded by your connected Oura account that passes the checks.
+              In each 24-hour block from the challenge start, the first hour counts in full, the second at 0.6, the third at 0.25
+              and nothing after that. Each workout is multiplied by an effort factor between 0.85 and 1.25, built from Oura's
+              intensity label, your heart rate relative to your own earlier workouts, and pace where the sport has one. A signal
+              that is unavailable counts as neutral. A day's total is rounded to a whole number. These are game rules, not exercise
+              advice. Challenges created earlier keep the rules they started with.
             </li>
             <li>
               When a challenge ends, scores are fixed after a short wait (30 minutes by default) so rings can sync, then our server

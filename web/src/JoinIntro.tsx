@@ -22,6 +22,7 @@ import {
  */
 export type JoinIntroProps = {
   sweat?: boolean; // Proof of Sweat: points only from Oura-verified workouts
+  sweatGeneration?: number; // 2: effort-weighted Sweat Points
   scoring: "fitness" | "league_stats";
   weights: StatWeights | null;
   hasPicks: boolean;
@@ -75,7 +76,13 @@ export default function JoinIntro(props: JoinIntroProps) {
         Icon,
         text: `1 ${one} = ${pts(props.weights![key])}`,
       }))
-    : props.sweat
+    : props.sweat && props.sweatGeneration === 2
+      ? [
+          { Icon: Timer, text: "1 verified min ≈ 1 Sweat Point" },
+          { Icon: ChevronsUp, text: "Weighted by effort, ×0.85 to ×1.25" },
+          { Icon: ShieldCheck, text: "Oura Ring workouts only" },
+        ]
+      : props.sweat
       ? [
           { Icon: Timer, text: "10 verified min = 1 pt" },
           { Icon: ChevronsUp, text: "Up to 6 pts a day" },
