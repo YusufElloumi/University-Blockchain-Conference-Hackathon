@@ -334,7 +334,7 @@ Once anyone pays, the rules and the payout split cannot change, and the program 
 - [x] A. Canonical ruleset (`api/rules.py`, `POST /rules`), hash locked in a `Rules` PDA at creation; `join_challenge(expected_rules_hash)` refuses other hashes; settlement refuses a changed rules version (refund instead). Verified: program tests, API tests, devnet smoke test (wrong-hash join refused).
 - [x] B. Payout terms stored as values; `settle_split` recomputes podium shares from the locked split; `settle` only for equal formats. Verified: program tests (wrong and right podium splits, ties, fewer players than places, wrong kind both ways).
 - [x] C. Verifier's Ed25519 v2 result checked through the instructions sysvar in the payout transaction; `chain.py` sends both instructions; v2 proof file; browser check rebuilds the message and reads the payout transaction. Verified: program tests (no signature, wrong key, other challenge, other rules, tampered message), shared byte fixture in Python/TS/Rust tests, devnet smoke test (unsigned payout refused, signed payout paid), `chain.py end-early` + `settle` on devnet challenge `E1bfFTPEiQELQNuMBxxYaZ6QWJnP7hZKTqLX6DnDRsMm`.
-- [x] Program upgraded on devnet (Nov 18 10:45 PM CST); fresh demo challenge `8ciBFCVdQcC21RpC6ot83zHPfPiRXvGh44M3z4aMSbGf`.
+- [x] Program upgraded on devnet (Nov 18 10:45 PM CST); fresh demo challenge `G82rQjE5TGQubRXaYa1e3h8Lmu7djgmVK1ULNXqoJWji` (Proof of Sweat rules; replaced `8ciBF...` after merging Proof of Sweat v1).
 - [ ] Click-through in the browser: create (each format), join, settle through the API, "Check result" on a v2 proof. Needs a real sign-in; not done. Needs `VERIFIER_KEYPAIR` on Render.
 
 ## Stage 8 - Optional: Grok (Thu, 2-3 h) - bounty-only
