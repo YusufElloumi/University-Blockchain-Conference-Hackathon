@@ -113,7 +113,7 @@ What each numbered flow does:
 | How can a player check a result? (Proof of Effort, Nov 18) | A separate **verifier key** (`5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway`) signs each result with Ed25519: challenge, program, network, rules version and fingerprint, score-sheet hash, payout shares, time, nonce. The browser checks the signature against the published key and re-hashes the score sheet against the `score_hash` stored onchain. `python attest.py verify <file>` does the same from a terminal. The proof stays offchain and holds no fitness data. |
 | What does a proof not show? | That a workout happened. It shows our verifier approved the result under the named rules. Since Nov 19 (locked rules, below) the program checks the signature onchain before paying. |
 | Who else is trusted? | Strava and the watch for the data; Privy for wallet custody; our server not to leak the oracle key. |
-| What would we add later? | Independent verifier hardware (TEEs) so the signing key does not live beside the payout key, a dispute window before payout, two-of-three signers (or a group vote) on results, and an independent data attestation service. |
+| What would we add later? | Solana Confidential Compute once its onchain verifier is public: scoring and the verifier key in a confidential VM, and the program checks the key's attested record before paying (plan in the README, "Planned: Solana Confidential Compute"), a dispute window before payout, two-of-three signers (or a group vote) on results, and an independent data attestation service. |
 
 The treasury key (test funds) and the oracle key are separate so that leaking one does not expose the other. Both live only in `.env` / host secrets.
 

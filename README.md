@@ -203,9 +203,31 @@ Each workout also gets a state in each challenge, shown only to its owner: **Pas
 
 ### What we'd build next
 
-- **Independent verifier hardware:** run the verifier key and scoring in hardware-isolated computers (TEEs), so the signing key is not held by the same server as the payout key.
+- **Solana Confidential Compute for the verifier** (planned, not built; details below).
 - **A dispute window:** a set time between the signed result and the payout in which players can challenge it.
 - Verified activity data, more than one signer on results, and an audit of the program before any real money.
+
+### Planned: Solana Confidential Compute (when its onchain verifier is public)
+
+**The gap it closes.** Today the program pays only what the verifier key signs (see "Locked rules"), so the verifier key is the one that matters. That key sits on our server. Players trust that we ran the published scoring code and did not sign a made-up result.
+
+**What it is.** A TEE (trusted execution environment) is a sealed area of a processor: code runs inside it, nobody outside can change or read it, and the chip signs a report (an *attestation*) naming the exact code that is running. [Solana Confidential Compute](https://solana.ai/confidential-compute) (Solana Foundation and Nito, devnet beta, launched Nov 13, 2026, unaudited) connects that report to Solana: a key is created inside a confidential VM (Intel TDX or AMD SEV-SNP), the hardware report ties it to a recent Solana slot, and an onchain program records the key, the hardware type and an expiry date. Other programs can then look the key up.
+
+**How Rival would use it.**
+
+1. Move scoring (the same `api/sweat3.py`, unchanged) and the verifier signing into a confidential VM. The verifier key is created there and never leaves.
+2. Register that key with the Confidential Compute program.
+3. New challenges lock, in their `Rules` account, both the verifier key and the approved code fingerprint (a new `Rules` version; older challenges keep settling as they do today).
+4. At payout the program does what it does now (checks the Ed25519 signature over the result) and also reads the Confidential Compute record: the key is registered, not expired, and running the locked code fingerprint.
+5. Later step: the enclave fetches workouts from Oura itself, so the server cannot add or change workout rows on the way in.
+
+**What changes for a player.** Instead of trusting Rival's server, they trust the chip maker's attestation and the open-source scoring code. Rival could no longer sign a result the published code did not produce.
+
+**What it still does not prove.** That a workout happened (Oura's record is a device recording, not cryptographic proof), or that Oura's data is right. Solana still never sees or checks a workout: it checks that the signer is attested hardware running known code.
+
+**Why it is not built yet.** As of Nov 19, 2026 the public release is a starter app ([Confidential Chat](https://github.com/solana-foundation/templates/tree/main/community/confidential-chat)) that checks its enclave in the browser and does not use the onchain program. We could not find the onchain verifier's SDK or program ID in public code, and the listed environments (Google Cloud Confidential VMs, AWS Nitro Enclaves, Google Confidential Space) are paid. We will integrate it once the verifier program is published.
+
+**Design points we already know.** The `Rules` account locks the verifier key when a challenge is created, so the enclave's key must outlive the challenge (or be re-attested before its record expires); a restart that creates a new key would leave open challenges refund-only. The v1, v2 and v3 scoring rules do not change: a TEE changes where the code runs, not what it computes.
 
 ## What is real and what is simulated
 
