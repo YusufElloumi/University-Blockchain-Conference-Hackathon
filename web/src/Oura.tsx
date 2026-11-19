@@ -134,7 +134,7 @@ export default function OuraCard({ session }: { session: Session }) {
 
       <p className="oura-line">
         {connected
-          ? `Linked${since ? ` since ${since}` : ""}. Rival doesn't read any Oura data yet; workout checks come later.`
+          ? `Linked${since ? ` since ${since}` : ""}. Your Oura data isn't used for points yet; workout checks come later.`
           : "Link your ring for Proof of Sweat. Rival will only ask to see workouts and heart rate."}
       </p>
 
@@ -174,6 +174,136 @@ export default function OuraCard({ session }: { session: Session }) {
 
       {note && !error && <p className="fine oura-note" role="status">{note}</p>}
       {error && <p className="error-text" role="alert">{error}</p>}
+
+      {connected && !confirming && <OuraDiagnostic call={call} />}
     </section>
+  );
+}
+
+/* ---------- TEMPORARY diagnostic (remove before Proof of Sweat ships) ----------
+   Shows what Oura's API returns for the signed-in owner's own account, via GET /integrations/oura/workouts.
+   Deliberately leaves out workout IDs, times, calories, distances and every heart-rate value: only field
+   names, classifications and sample counts. Nothing is saved; the summary lives in this card until reload. */
+
+type HeartRateCheck = {
+  status: string;
+  reason?: string;
+  sample_count?: number;
+  workout_minutes?: number;
+  minutes_with_samples?: number;
+  coverage_pct?: number;
+  sources?: Record<string, number>;
+};
+
+type WorkoutCheck = {
+  source: string | null;
+  intensity: string | null;
+  missing_fields: string[];
+  undocumented_fields: string[];
+  heart_rate?: HeartRateCheck;
+};
+
+type OuraReport = {
+  window: { days: number };
+  workouts_found: number;
+  workouts_shown: number;
+  documented_fields: { required: string[]; optional: string[] };
+  field_presence: Record<string, number>;
+  workouts: WorkoutCheck[];
+};
+
+const tally = (values: (string | null)[]) =>
+  Object.entries(
+    values.reduce<Record<string, number>>((all, v) => ({ ...all, [v ?? "none"]: (all[v ?? "none"] ?? 0) + 1 }), {}),
+  )
+    .map(([name, n]) => `${name} ×${n}`)
+    .join(", ") || "—";
+
+function OuraDiagnostic({ call }: { call: Session["call"] }) {
+  const [report, setReport] = useState<OuraReport | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  async function check() {
+    setChecking(true);
+    setProblem(null);
+    try {
+      setReport(await call<OuraReport>("GET", "/integrations/oura/workouts?days=30&limit=10"));
+    } catch (e) {
+      setProblem(message(e));
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  const shown = report?.workouts_shown ?? 0;
+  const fields = report ? [...report.documented_fields.required, ...report.documented_fields.optional] : [];
+  const undocumented = report ? [...new Set(report.workouts.flatMap((w) => w.undocumented_fields))] : [];
+
+  return (
+    <div className="oura-diag">
+      <div className="oura-diag-head">
+        <span className="oura-diag-tag">Diagnostic · temporary</span>
+        <button className="btn btn-quiet btn-sm" onClick={check} disabled={checking}>
+          {checking ? "Checking..." : report ? "Check again" : "Check Oura data"}
+        </button>
+      </div>
+      <p className="fine">Only you see this. It reads your last 30 days from Oura and shows what kinds of data came back. Nothing is saved.</p>
+
+      {problem && <p className="error-text" role="alert">{problem}</p>}
+
+      {report && (
+        <div className="oura-diag-body" role="status">
+          <p className="oura-diag-total">
+            <b>{report.workouts_found}</b> workout{report.workouts_found === 1 ? "" : "s"} found in {report.window.days} days
+            {report.workouts_found > shown && ` · newest ${shown} checked`}
+          </p>
+
+          {shown > 0 && (
+            <>
+              <h4>Fields returned</h4>
+              <ul className="oura-diag-fields">
+                {fields.map((f) => {
+                  const n = report.field_presence[f] ?? 0;
+                  return (
+                    <li key={f} className={n === shown ? "all" : n === 0 ? "none" : "some"}>
+                      <code>{f}</code> {n}/{shown}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="fine">
+                Undocumented fields: {undocumented.length ? undocumented.map((f) => <code key={f}>{f} </code>) : "none"}
+              </p>
+
+              <h4>Classifications</h4>
+              <p className="fine">Source: {tally(report.workouts.map((w) => w.source))}</p>
+              <p className="fine">Intensity: {tally(report.workouts.map((w) => w.intensity))}</p>
+
+              <h4>Per workout</h4>
+              <ol className="oura-diag-list">
+                {report.workouts.map((w, i) => {
+                  const hr = w.heart_rate;
+                  return (
+                    <li key={i}>
+                      <span className="oura-diag-row">
+                        <b>{w.source ?? "—"}</b> · {w.intensity ?? "—"}
+                      </span>
+                      <span className="fine">
+                        {hr?.status === "ok"
+                          ? `Heart rate: ${hr.sample_count} samples · ${hr.minutes_with_samples}/${hr.workout_minutes} min covered (${hr.coverage_pct}%)` +
+                            (hr.sources && Object.keys(hr.sources).length ? ` · ${Object.keys(hr.sources).join(", ")}` : "")
+                          : `Heart rate: ${hr?.status ?? "not checked"}${hr?.reason ? ` (${hr.reason})` : ""}`}
+                      </span>
+                      {w.missing_fields.length > 0 && <span className="fine">Missing: {w.missing_fields.join(", ")}</span>}
+                    </li>
+                  );
+                })}
+              </ol>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
