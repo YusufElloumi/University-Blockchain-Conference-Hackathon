@@ -88,6 +88,7 @@ import scoring
 import secretbox
 import settlement
 import sweat
+import sweat2
 import treasury
 
 log = logging.getLogger("loser_buys")
@@ -636,7 +637,7 @@ def add_activity(
     start = db.utc(body.start) if body.start else now
     if start > now:
         raise HTTPException(400, "An activity cannot start in the future.")
-    if config.NEW_CHALLENGE_RULES == sweat.TEMPLATE and now - start > timedelta(minutes=10):
+    if config.NEW_CHALLENGE_RULES in (sweat.TEMPLATE, sweat2.TEMPLATE) and now - start > timedelta(minutes=10):
         # Hand-entered workouts are personal notes here and can never be dated back into a challenge.
         raise HTTPException(400, "A workout logged by hand counts from now. It can't be dated in the past.")
     try:
@@ -713,8 +714,11 @@ def app_config() -> dict:
         "oracle": config.ORACLE_PUBLIC_KEY,
         "usdc_mint": config.USDC_MINT,
         # Rules a challenge created now will use (fixed at creation).
-        "new_challenge_rules": {"proof_of_sweat": config.NEW_CHALLENGE_RULES == sweat.TEMPLATE,
-                                "summary": sweat.SUMMARY if config.NEW_CHALLENGE_RULES == sweat.TEMPLATE else None},
+        "new_challenge_rules": {
+            "proof_of_sweat": config.NEW_CHALLENGE_RULES in (sweat.TEMPLATE, sweat2.TEMPLATE),
+            "generation": {sweat.TEMPLATE: 1, sweat2.TEMPLATE: 2}.get(config.NEW_CHALLENGE_RULES),
+            "summary": {sweat.TEMPLATE: sweat.SUMMARY, sweat2.TEMPLATE: sweat2.SUMMARY}.get(config.NEW_CHALLENGE_RULES),
+        },
         "fitness": {
             "source": provider.name,
             "label": provider.label,
@@ -1216,8 +1220,9 @@ def oura_sync_now(user: db.User = Depends(current_user), session: Session = Depe
     return {**summary, "status": oura.status(session, user.id)}
 
 
-def _row_view(row: db.ImportedActivity, line: sweat.Line | None) -> dict:
-    """One imported workout for its owner. `line` is its result in a challenge, when one was asked for."""
+def _row_view(row: db.ImportedActivity, line, detail: dict | None = None) -> dict:
+    """One imported workout for its owner. `line` is its result in a challenge, when one was asked for;
+    `detail` is the v2 Evidence Index and score breakdown (scores.sweat2_detail)."""
     checks = [{"code": c.code, "result": c.result, "reason": c.reason} for c in oura_sync.checks_of(row)]
     if not checks and row.status == "pending":
         checks = [{"code": "evidence", "result": sweat.PENDING, "reason": None}]
@@ -1245,7 +1250,9 @@ def _row_view(row: db.ImportedActivity, line: sweat.Line | None) -> dict:
         "assurance": row.assurance if result == sweat.VERIFIED else None,
         "reason": reason,
         "eligible_minutes": line.eligible_minutes if line else None,
-        "points": line.points if line else None,
+        "points": (float(line.points) if detail else line.points) if line else None,
+        "v2": detail,
+        **({"assurance": detail["evidence"]["label"]} if detail and result == sweat.VERIFIED else {}),
         "heart_rate_coverage_pct": coverage,
         "checks": checks,
     }
@@ -1281,12 +1288,27 @@ def my_sweat(
             reply["final"] = True
             reply["receipts"] = [{"commitment": r.commitment, "canonical": r.payload, "receipt": json.loads(r.payload)}
                                  for r in saved]
-            reply["points"] = sum(r["receipt"]["points"] for r in reply["receipts"])
-            reply["eligible_minutes"] = sum(r["receipt"]["eligible_minutes"] for r in reply["receipts"])
+            # Totals come from the settled score sheet (v2 rounds per day, so receipts alone don't add up to it).
+            section = (json.loads(found.score_sheet or "{}").get("proof_of_sweat") or {}).get("participants", [])
+            own = next((p for p in section if p["wallet"] == user.wallet_address), None)
+            reply["points"] = own["fitness_points"] if own else 0
+            reply["eligible_minutes"] = own["eligible_minutes"] if own else 0
         else:
             sheet = scores.sweat_sheet(session, found, user.id)
             rows = scores.imported_rows(session, found, user.id)
-            reply["workouts"] = [_row_view(row, sheet.lines.get(oura_sync.as_workout(row).ref))
-                                 for row in reversed(rows)]
+            reference, frozen = scores.reference_of(session, found, user.id) if scores.is_sweat2(found) else (None, False)
+
+            def view(row: db.ImportedActivity) -> dict:
+                line = sheet.lines.get(oura_sync.as_workout(row).ref)
+                return _row_view(row, line, scores.sweat2_detail(row, line, reference) if scores.is_sweat2(found) else None)
+
+            reply["workouts"] = [view(row) for row in reversed(rows)]
             reply["points"], reply["eligible_minutes"] = sheet.total, sheet.eligible_minutes
+            if scores.is_sweat2(found):
+                # Whether a personal reference exists and how many workouts are behind it. Never its value.
+                reply["reference"] = {"frozen": frozen, "available": reference is not None,
+                                      "workouts": reference["workouts"] if reference else 0}
+                reply["days"] = [{"day": d.day, "minutes": d.minutes, "points": d.points,
+                                  "effective_minutes": str(sweat2.effective_minutes(d.seconds / 60).quantize(sweat2.D("0.01")))}
+                                 for d in sorted(sheet.days.values(), key=lambda d: d.day)]
     return JSONResponse(reply, headers={"Cache-Control": "no-store, private"})

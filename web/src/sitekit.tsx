@@ -117,7 +117,7 @@ export const STEPS = [
   },
   {
     title: "Move, and earn points",
-    text: "Every 10 minutes your Oura Ring records earns a point, up to 6 a day, so showing up all week beats one big effort.",
+    text: "Each minute your Oura Ring records earns about a Sweat Point, weighted by effort. A day's first hour counts in full and then tapers, so showing up all week beats one big effort.",
   },
   {
     title: "Win the week",

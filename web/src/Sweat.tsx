@@ -44,12 +44,64 @@ type Workout = {
   heart_rate_coverage_pct?: number | null;
   checks: CheckRow[];
   commitment?: string; // final receipts only: the hash listed in the score sheet
+  v2?: V2Detail | null; // Proof of Sweat v2: Evidence Index and Sweat Score breakdown
+};
+
+type FactorView = {
+  value: string;
+  state: "measured" | "provider_estimated" | "unavailable";
+  reason: string | null;
+  bonus?: string; // this signal's part of the potential effort bonus, in points
+  relative_percent?: number; // heart: this session against the player's own reference
+  reference_workouts?: number;
+  speed_kmh?: number;
+};
+
+type EvidencePart = {
+  key: "provenance" | "integrity" | "movement" | "physiological";
+  max: number;
+  points: number;
+  state: "full" | "partial" | "unavailable" | "failed" | "pending";
+  reason: string | null;
+  sub?: Record<string, number>;
+};
+
+/** What the server works out for one workout under v2 rules (api/sweat2.py). No heart-rate readings. */
+type V2Detail = {
+  intensity: string | null;
+  distance_km: number | null;
+  evidence: {
+    index: number;
+    parts: EvidencePart[];
+    label: "strong" | "limited" | "pending" | "rejected";
+    limits: string[];
+    reliability?: string; // share of the effort bonus this index supports, e.g. "0.85"
+  };
+  score: {
+    eligible_minutes: number;
+    band_minutes: number[]; // this workout's minutes in each daily band; the last entry is past the cap
+    band_weights: string[];
+    effective_minutes: string;
+    factors: { provider: FactorView; heart: FactorView; movement: FactorView };
+    weights: { provider: string; heart: string; movement: string };
+    multiplier: string;
+    base_points?: string; // effective minutes: what duration alone earns
+    potential_bonus?: string; // what the effort signals suggest on top (can be negative)
+    reliability?: string;
+    adjusted_bonus?: string; // potential bonus x reliability: what actually counts
+    contribution: string;
+  };
 };
 
 type FinalReceipt = {
   commitment: string;
   canonical: string;
-  receipt: Omit<Workout, "key" | "start" | "commitment"> & { rules_version: string };
+  // v2 receipts (schema 2) carry the breakdown at the top level and points as an exact decimal string.
+  receipt: Omit<Workout, "key" | "start" | "commitment" | "points" | "v2"> & {
+    rules_version: string;
+    schema?: number;
+    points: number | string;
+  } & Partial<V2Detail>;
 };
 
 export type SweatReply = {
@@ -57,7 +109,10 @@ export type SweatReply = {
   available: boolean;
   last_sync_at: string | null;
   last_sync_error: string | null;
-  rules: { version: string; sha256: string | null; summary: string } | null;
+  rules: { version: string; sha256: string | null; summary: string; generation?: number } | null;
+  /** v2: whether the player's personal heart-rate reference exists for this challenge. Never its value. */
+  reference?: { frozen: boolean; available: boolean; workouts: number };
+  days?: { day: number; minutes: number; points: number; effective_minutes: string }[];
   final: boolean;
   eligible_minutes: number | null;
   points: number | null;
@@ -183,7 +238,9 @@ function receiptLines(w: Workout): Line[] {
       result: by.scoring?.result ?? (w.result === "rejected" ? "failed" : null),
       detail:
         w.result === "verified"
-          ? `${w.eligible_minutes ?? 0} eligible minutes. 1 point per 10 minutes, up to 6 a day across all your workouts.`
+          ? w.v2
+            ? `${w.eligible_minutes ?? 0} eligible minutes, weighted by the day's bands and this workout's effort multiplier. See the breakdown above.`
+            : `${w.eligible_minutes ?? 0} eligible minutes. 1 point per 10 minutes, up to 6 a day across all your workouts.`
           : w.result === "pending"
             ? "Points are added once the checks finish."
             : "No points: a required check did not pass.",
@@ -227,6 +284,325 @@ const SYNC_ERROR: Record<string, string> = {
   error: "The last sync didn't finish. Your points are unchanged.",
 };
 
+const fmtPoints = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+const PART_INFO: Record<EvidencePart["key"], { label: string; what: string }> = {
+  provenance: {
+    label: "Provenance",
+    what: "An authorized Oura record from a recorded source. Full marks for Oura's own sources; fewer for a third-party heart-rate source.",
+  },
+  integrity: {
+    label: "Timing and integrity",
+    what: "Valid times, inside this challenge, at least 10 minutes, and not counted twice. A partly overlapping workout scores a little lower.",
+  },
+  movement: {
+    label: "Movement",
+    what: "Distance and time agree with the activity type. With no usable distance this is \"not observed\" (7 of 15), which is not a mark against you.",
+  },
+  physiological: {
+    label: "Heart-rate signal",
+    what: "How much of the workout has usable heart-rate samples (15), whether any were recorded as exercise (5), how well they are spread (3), and whether all were clean (2). No samples is \"not observed\" (0 of 25), not evidence of anything.",
+  },
+};
+
+const FACTOR_REASON: Record<string, string> = {
+  easy: "Oura labelled this session easy.",
+  moderate: "Oura labelled this session moderate. Oura can use this label by default when it has little to go on.",
+  hard: "Oura labelled this session hard.",
+  no_intensity: "Oura gave no intensity label, so this factor is neutral.",
+  no_heart_rate: "No heart-rate samples for this workout, so this factor is neutral.",
+  not_enough_heart_rate: "Too few heart-rate samples recorded as exercise to say anything, so this factor is neutral.",
+  no_personal_reference: "You don't have enough earlier workouts with heart rate to compare against yet, so this factor is neutral.",
+  no_pace_for_category: "Pace doesn't mean much for this kind of activity, so this factor is neutral.",
+  no_distance: "No distance was recorded, so this factor is neutral.",
+};
+
+const STATE_WORD: Record<FactorView["state"], string> = {
+  measured: "Measured",
+  provider_estimated: "Oura's estimate",
+  unavailable: "Neutral fallback",
+};
+
+function factorLine(key: "provider" | "heart" | "movement", f: FactorView): string {
+  if (key === "heart" && f.state === "measured") {
+    const pct = f.relative_percent ?? 0;
+    const side = pct === 0 ? "level with" : pct > 0 ? `${pct}% above` : `${-pct}% below`;
+    return `Your heart rate this session was ${side} your own usual workout level (from ${f.reference_workouts} earlier workouts). Never an absolute pulse target.`;
+  }
+  if (key === "movement" && f.state === "measured") return `Average ${f.speed_kmh} km/h, placed in this activity's own pace bands.`;
+  return FACTOR_REASON[f.reason ?? ""] ?? "";
+}
+
+/** A factor on its real scale, with the neutral 1.00 marked. */
+function Gauge({ label, weight, f, line }: { label: string; weight: string; f: FactorView; line: string }) {
+  const [lo, hi] = [0.85, 1.25];
+  const value = Number(f.value);
+  const at = (v: number) => `${Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100))}%`;
+  const from = Math.min(1, value);
+  const to = Math.max(1, value);
+  return (
+    <div className={`sweat-gauge ${f.state}${value > 1 ? " up" : value < 1 ? " down" : ""}`}>
+      <div className="sweat-gauge-head">
+        <span>
+          {label} <small>weight {weight}</small>
+        </span>
+        <em>{STATE_WORD[f.state]}</em>
+        <b>
+          ×{f.value}
+          {f.bonus != null && <small>{signed(f.bonus)} pts</small>}
+        </b>
+      </div>
+      <div className="sweat-gauge-track" role="img" aria-label={`${label} factor ${f.value}; 1.00 is neutral`}>
+        <i className="fill" style={{ left: at(from), width: `calc(${at(to)} - ${at(from)})` }} />
+        <i className="neutral" style={{ left: at(1) }} />
+        <i className="dot" style={{ left: at(value) }} />
+      </div>
+      <p>{line}</p>
+    </div>
+  );
+}
+
+const signed = (text: string) => (Number(text) > 0 ? `+${text}` : Number(text) === 0 ? "0.00" : text.replace("-", "−"));
+
+const BAND_LABEL = ["Day's 1st hour", "2nd hour", "3rd hour", "Past 3 hours"];
+
+/** The v2 receipt: evidence on one side, score on the other, never mixed. */
+function ReceiptV2(props: {
+  w: Workout;
+  name: string;
+  status: ReturnType<typeof statusOf>;
+  lines: Line[];
+  rulesVersion: string | null;
+}) {
+  const { w, name, status, lines } = props;
+  const { evidence, score } = w.v2!;
+  const verified = w.result === "verified";
+  const f = score.factors;
+  const maxBand = Math.max(1, ...score.band_minutes);
+  const base = score.base_points ?? score.effective_minutes;
+  const potential = score.potential_bonus ?? "0.00";
+  const adjusted = score.adjusted_bonus ?? "0.00";
+  const share = Math.round(Number(score.reliability ?? evidence.reliability ?? 1) * 100);
+  const withheld = Math.abs(Number(potential)) - Math.abs(Number(adjusted));
+  const scale = Math.max(1, Number(base) + Math.max(0, Number(potential)));
+  const fallbacks = (["provider", "heart", "movement"] as const).filter((k) => f[k].state === "unavailable").length;
+  return (
+    <div className="sweat-receipt v2">
+      <div className="sweat-receipt-head">
+        <span className="sweat-wordmark">
+          Proof of <em className="serif">sweat.</em>
+        </span>
+        <span className="sweat-head-tags">
+          <span className="sweat-badge">{name}</span>
+          <span className="sweat-badge">Oura</span>
+          <span className={`sweat-badge ${status.tone}`}>{status.label}</span>
+        </span>
+      </div>
+
+      <dl className="sweat-ribbon">
+        <div>
+          <dt>Eligible</dt>
+          <dd>
+            {w.eligible_minutes ?? 0}
+            <small>min</small>
+          </dd>
+        </div>
+        {w.v2!.distance_km != null && w.v2!.distance_km > 0 && (
+          <div>
+            <dt>Distance</dt>
+            <dd>
+              {w.v2!.distance_km}
+              <small>km</small>
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt>Oura intensity</dt>
+          <dd className="word">{w.v2!.intensity ?? "none"}</dd>
+        </div>
+        <div>
+          <dt>Evidence Index</dt>
+          <dd>
+            {evidence.index}
+            <small>/100</small>
+          </dd>
+        </div>
+        <div className="pts">
+          <dt>Sweat Points</dt>
+          <dd>{verified ? score.contribution : "0"}</dd>
+        </div>
+      </dl>
+
+      <section className="sweat-block">
+        <h4>
+          Evidence assessment <span>how complete the recording is</span>
+        </h4>
+        <div className="sweat-evidence-bar" role="img" aria-label={`Evidence Index ${evidence.index} of 100`}>
+          {evidence.parts.map((p) => (
+            <span key={p.key} className={`seg ${p.key} ${p.state}`} style={{ flexGrow: p.max }}>
+              <i style={{ width: `${(p.points / p.max) * 100}%` }} />
+            </span>
+          ))}
+        </div>
+        <ul className="sweat-parts">
+          {evidence.parts.map((p) => (
+            <li key={p.key} className={`${p.key} ${p.state}`}>
+              <details>
+                <summary>
+                  <i aria-hidden />
+                  <span>{PART_INFO[p.key].label}</span>
+                  <em>
+                    {p.state === "unavailable" ? "Not observed" : p.state === "failed" ? "Failed" : p.state === "pending" ? "Pending" : ""}
+                  </em>
+                  <b>
+                    {p.points}
+                    <small>/{p.max}</small>
+                  </b>
+                </summary>
+                <p>
+                  {PART_INFO[p.key].what}
+                  {p.sub && ` Here: coverage ${p.sub.coverage}/15, exercise-tagged ${p.sub.exercise_tagged}/5, spread ${p.sub.distribution}/3, clean ${p.sub.validity}/2.`}
+                  {p.reason && REASON[p.reason] ? ` ${REASON[p.reason]}` : ""}
+                </p>
+              </details>
+            </li>
+          ))}
+        </ul>
+        <p className="fine">
+          The index adds up rule-based evidence. It is not a probability that the workout happened, and it can't rescue a workout
+          that fails a required check. It never touches your base points: it only sets how much of the effort bonus counts
+          {evidence.reliability ? ` (here ${Math.round(Number(evidence.reliability) * 100)}%)` : ""}.
+        </p>
+      </section>
+
+      {verified && (
+        <section className="sweat-block">
+          <h4>
+            Sweat Score <span>base + evidence-adjusted effort</span>
+          </h4>
+          <div className="sweat-bands">
+            {score.band_minutes.map((m, i) => (
+              <div key={i} className={`sweat-band${m > 0 ? " on" : ""}${i === 3 ? " over" : ""}`}>
+                <span className="bar">
+                  <i style={{ height: `${(m / maxBand) * 100}%` }} />
+                </span>
+                <b>{m > 0 ? `${m} min` : "–"}</b>
+                <span>{BAND_LABEL[i]}</span>
+                <small>×{score.band_weights[i]}</small>
+              </div>
+            ))}
+            <div className="sweat-band-total">
+              <small>Base activity points</small>
+              <b>{base}</b>
+            </div>
+          </div>
+          <p className="fine">
+            Each day's first hour of exercise counts in full, the second at 0.6 and the third at 0.25, in time order across all your
+            workouts that day. A game rule to keep long days from deciding everything, not exercise advice.
+          </p>
+
+          <div className="sweat-gauges">
+            <Gauge label="Oura intensity" weight={score.weights.provider} f={f.provider} line={factorLine("provider", f.provider)} />
+            <Gauge label="Heart rate" weight={score.weights.heart} f={f.heart} line={factorLine("heart", f.heart)} />
+            <Gauge label="Movement" weight={score.weights.movement} f={f.movement} line={factorLine("movement", f.movement)} />
+          </div>
+
+          <div className="sweat-stack" role="img" aria-label={`Base ${base}, effort bonus counted ${adjusted} of ${potential}`}>
+            <i className="base" style={{ width: `${(Number(base) / scale) * 100}%` }} />
+            {Number(adjusted) > 0 && <i className="bonus" style={{ width: `${(Number(adjusted) / scale) * 100}%` }} />}
+            {Number(potential) > 0 && withheld > 0.004 && <i className="held" style={{ width: `${(withheld / scale) * 100}%` }} />}
+          </div>
+          <dl className="sweat-steps">
+            <div>
+              <dt>Base activity points</dt>
+              <dd>{base}</dd>
+            </div>
+            <div className="sub">
+              <dt>Oura intensity</dt>
+              <dd>{signed(f.provider.bonus ?? "0.00")}</dd>
+            </div>
+            <div className="sub">
+              <dt>Heart-rate exertion</dt>
+              <dd>{signed(f.heart.bonus ?? "0.00")}</dd>
+            </div>
+            <div className="sub">
+              <dt>Movement</dt>
+              <dd>{signed(f.movement.bonus ?? "0.00")}</dd>
+            </div>
+            <div>
+              <dt>Potential effort bonus</dt>
+              <dd>{signed(potential)}</dd>
+            </div>
+            <div className="rel">
+              <dt>
+                Evidence reliability <small>Evidence Index {evidence.index}/100</small>
+              </dt>
+              <dd>× {share}%</dd>
+            </div>
+            <div>
+              <dt>Evidence-adjusted bonus</dt>
+              <dd>{signed(adjusted)}</dd>
+            </div>
+            <div className="final">
+              <dt>Sweat Points from this workout</dt>
+              <dd>{score.contribution}</dd>
+            </div>
+          </dl>
+          <p className="sweat-oneline">
+            {Number(potential) === 0
+              ? `Nothing in the effort signals moved this workout off its base of ${base}.`
+              : share === 100
+                ? `The recording backs the effort signals fully, so the whole ${signed(potential)} counts.`
+                : `The evidence scored ${evidence.index}/100, so ${share}% of the ${signed(potential)} effort adjustment counts: ${signed(adjusted)}.`}
+            {fallbacks > 0 && ` ${fallbacks} of 3 signals had no usable data and sit at neutral.`}
+          </p>
+          <p className="fine">
+            Reliability steps: Evidence Index 90+ counts 100% of the effort bonus, 75+ counts 85%, 50+ counts 65%, below that 40%.
+            Base points never depend on the index. Your day's total is rounded to a whole number once, after adding its workouts.
+            Scoring rules for a friendly game, not a measure of fitness or calories.
+          </p>
+        </section>
+      )}
+
+      <section className="sweat-block">
+        <h4>
+          Rules checklist <span>required to count</span>
+        </h4>
+        <ul className="sweat-checks">
+          {lines
+            .filter((line) => line.label !== "Physiological evidence assessed")
+            .map((line) => (
+              <li key={line.label} className={line.result ?? "skipped"}>
+                <ResultIcon result={line.result} />
+                <details>
+                  <summary>
+                    <span>{line.label}</span>
+                    <em>{line.result ? RESULT_WORD[line.result] : "Not assessed"}</em>
+                  </summary>
+                  <p>{line.detail}</p>
+                </details>
+              </li>
+            ))}
+        </ul>
+      </section>
+
+      <p className="fine sweat-foot">
+        {props.rulesVersion ? `Rules ${props.rulesVersion}. ` : ""}
+        Rival's server checked this record from Oura against published rules. That doesn't prove a workout happened.
+        {w.commitment ? (
+          <>
+            {" "}
+            Receipt fingerprint <code>{w.commitment.slice(0, 16)}…</code> is listed in this challenge's final score sheet, whose hash
+            Solana stored at payout. Use "Check result" on this page to verify it.
+          </>
+        ) : (
+          " After the challenge settles, this receipt's fingerprint goes into the signed score sheet whose hash Solana stores."
+        )}
+      </p>
+    </div>
+  );
+}
+
 /** One workout row that opens into its receipt. */
 function WorkoutReceipt({ w, rulesVersion }: { w: Workout; rulesVersion: string | null }) {
   const [open, setOpen] = useState(false);
@@ -247,12 +623,13 @@ function WorkoutReceipt({ w, rulesVersion }: { w: Workout; rulesVersion: string 
           <span className="fine">
             {w.start ? `${when(w.start)} · ` : ""}
             {status.label}
+            {w.v2 && w.result !== "pending" ? ` · Evidence ${w.v2.evidence.index}` : ""}
           </span>
         </span>
         <span className="sweat-row-points">
           {w.result === "verified" ? (
             <>
-              <b>+{w.points ?? 0}</b>
+              <b>+{fmtPoints(w.points ?? 0)}</b>
               <small>pt{w.points === 1 ? "" : "s"}</small>
             </>
           ) : (
@@ -262,7 +639,8 @@ function WorkoutReceipt({ w, rulesVersion }: { w: Workout; rulesVersion: string 
         <ChevronDown className="sweat-chevron" size={16} aria-hidden />
       </button>
 
-      {open && (
+      {open && w.v2 && <ReceiptV2 w={w} name={name} status={status} lines={lines} rulesVersion={rulesVersion} />}
+      {open && !w.v2 && (
         <div className="sweat-receipt">
           <div className="sweat-receipt-head">
             <span className="sweat-receipt-title">
@@ -361,9 +739,15 @@ export default function SweatWorkouts(props: {
   if (data === null) return <Skeleton rows={3} height={64} />;
 
   const workouts: Workout[] = data.final
-    ? data.receipts.map((r, i) => ({ ...r.receipt, key: i, commitment: r.commitment }))
+    ? data.receipts.map((r, i) => {
+        const { evidence, score, intensity, distance_km, points, ...rest } = r.receipt;
+        const v2 = evidence && score ? { evidence, score, intensity: intensity ?? null, distance_km: distance_km ?? null } : null;
+        return { ...rest, points: Number(points), v2, key: i, commitment: r.commitment } as Workout;
+      })
     : data.workouts;
   const counted = workouts.filter((w) => w.result === "verified");
+  const isV2 = data.rules?.generation === 2;
+  const topDay = Math.max(1, ...(data.days ?? []).map((d) => d.points));
 
   return (
     <div className="workouts sweat">
@@ -380,7 +764,7 @@ export default function SweatWorkouts(props: {
         <div className="sweat-totals">
           <div>
             <b>{data.points ?? 0}</b>
-            <span>fitness points</span>
+            <span>{isV2 ? "Sweat Points" : "fitness points"}</span>
           </div>
           <div>
             <b>{data.eligible_minutes ?? 0}</b>
@@ -391,6 +775,27 @@ export default function SweatWorkouts(props: {
             <span>workout{counted.length === 1 ? "" : "s"} counted</span>
           </div>
         </div>
+
+        {isV2 && !!data.days?.length && (
+          <div className="sweat-days" aria-label="Sweat Points by challenge day">
+            {data.days.map((d) => (
+              <div key={d.day} className="sweat-day" title={`${d.minutes} min, ${d.effective_minutes} effective`}>
+                <i style={{ height: `${Math.max(6, (d.points / topDay) * 100)}%` }} />
+                <b>{d.points}</b>
+                <span>Day {d.day + 1}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {isV2 && data.reference && !data.final && data.connected && (
+          <p className="fine">
+            {data.reference.available
+              ? `Heart-rate effort is compared with your own ${data.reference.workouts} earlier workouts, fixed when this challenge started.`
+              : data.reference.frozen
+                ? "There weren't enough earlier workouts with heart rate to build your personal reference, so the heart-rate factor stays neutral (1.00) in this challenge."
+                : "Your personal heart-rate reference is set once the challenge has started and your workouts have synced."}
+          </p>
+        )}
 
         {data.final ? (
           <p className="fine">Final. These receipts are fixed, and each one's fingerprint is in the settled score sheet.</p>

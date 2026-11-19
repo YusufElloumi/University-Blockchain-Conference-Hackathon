@@ -22,7 +22,7 @@ export type AppConfig = {
   usdc_mint: string;
   fitness: { source: string; label: string; can_add: boolean; types: string[] };
   /** Rules a challenge created now will use. Proof of Sweat: points come only from Oura-verified workouts. */
-  new_challenge_rules?: { proof_of_sweat: boolean; summary: string | null };
+  new_challenge_rules?: { proof_of_sweat: boolean; summary: string | null; generation?: number | null };
   pick_themes: { id: string; label: string }[];
   max_pick_points: number;
 };
@@ -49,7 +49,7 @@ export type ChallengeView = {
   format_config: FormatConfig;
   format_summary: string; // one plain sentence
   /** Which fitness rules apply, fixed at creation. */
-  rules?: { name: string; version: string; sha256: string | null; proof_of_sweat: boolean; summary: string };
+  rules?: { name: string; version: string; sha256: string | null; proof_of_sweat: boolean; summary: string; generation?: number };
   // The ruleset locked onchain at creation (api/rules.py). The browser hashes `ruleset` itself.
   ruleset: string | null; // canonical JSON text; null for challenges from before rules were locked
   rules_hash: string | null;

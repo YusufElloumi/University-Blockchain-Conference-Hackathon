@@ -465,7 +465,19 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
               </div>
             ) : (
               <ul className="rule-list">
-                {sweatRules ? (
+                {sweatRules && config.new_challenge_rules?.generation === 2 ? (
+                  <>
+                    <li>
+                      <b>+1</b> about a point per Oura-verified minute
+                    </li>
+                    <li>
+                      <b>×</b> weighted by effort, 0.85 to 1.25
+                    </li>
+                    <li>
+                      <b>60</b> minutes a day count in full, then less
+                    </li>
+                  </>
+                ) : sweatRules ? (
                   <>
                     <li>
                       <b>+1</b> every 10 Oura-verified minutes

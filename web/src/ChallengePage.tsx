@@ -541,6 +541,7 @@ export default function ChallengePage(props: { address: string; session: Session
       {intro && (
         <JoinIntro
           sweat={!!state?.challenge?.rules?.proof_of_sweat}
+          sweatGeneration={state?.challenge?.rules?.generation}
           scoring={state?.challenge?.scoring_source ?? "fitness"}
           weights={state?.challenge?.stat_weights ?? null}
           hasPicks={!!state?.challenge?.round_hours}
@@ -892,7 +893,10 @@ function Table({ state, phase }: { state: ChallengeState | null; phase: Phase })
       {(phase === "joining" || form) && (
         <p className="fine board-note">
           {phase === "joining" ? "Scoring starts when the challenge does." : `Form shows active days${days > 7 ? " (last 7)" : ""}.`}
-          {sweat && " Fitness points come only from Oura-verified workouts: 1 per 10 minutes, up to 6 a day."}
+          {sweat &&
+            (state.challenge?.rules?.generation === 2
+              ? " Sweat Points come only from Oura-verified workouts: about 1 per minute, weighted by effort."
+              : " Fitness points come only from Oura-verified workouts: 1 per 10 minutes, up to 6 a day.")}
           {sweat && state.sweat?.awaiting_final_sync && " Final scores are pending while workouts finish syncing."}
         </p>
       )}

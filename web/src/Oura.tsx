@@ -171,7 +171,7 @@ export default function OuraCard({ session }: { session: Session }) {
 
       <p className="oura-line">
         {connected
-          ? `Linked${since ? ` since ${since}` : ""}. Workouts your ring records earn your challenge points: 1 point per 10 verified minutes.`
+          ? `Linked${since ? ` since ${since}` : ""}. Workouts your ring records earn your challenge points, checked by Proof of Sweat.`
           : "Link your ring to earn challenge points. Rival reads workouts and heart rate only, and other players see just your points."}
       </p>
 

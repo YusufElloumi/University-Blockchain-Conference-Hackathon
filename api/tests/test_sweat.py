@@ -255,7 +255,7 @@ def test_normalize_keeps_only_what_is_needed_in_utc():
     assert fields["start_time"] == datetime(2026, 11, 17, 13, 0, tzinfo=timezone.utc) and fields["minutes"] == 40
     assert fields["distance_km"] == 8.123 and fields["activity_type"] == "run" and fields["provider_source"] == "confirmed"
     assert "wk-synthetic-1" not in str(fields) and len(fields["provider_ref"]) == 64
-    assert not {"calories", "intensity", "label", "id"} & set(fields)
+    assert not {"calories", "label", "id"} & set(fields) and fields["intensity"] == "moderate"  # v2 scores with the label
 
 
 def test_normalize_handles_offsets_midnight_and_daylight_saving():

@@ -168,6 +168,10 @@ class Participant(Base):
     stat_name: Mapped[str | None]  # league stats: this player's name on the uploaded stat sheet
     team: Mapped[int | None]  # teams format: index of the team they picked when joining
     final_sync_attempts: Mapped[int | None]  # Proof of Sweat: tries at the last sync before settlement (bounded)
+    # Proof of Sweat v2: the player's "personal observed workout reference" for this challenge (JSON: a median
+    # of earlier workouts' medians and how many), frozen once at or after the start. NULL text = none available.
+    hr_reference: Mapped[str | None]
+    hr_reference_at: Mapped[datetime | None]  # when it was frozen; it never changes afterwards
     joined_at: Mapped[datetime] = mapped_column(default=_now)
 
 
@@ -288,6 +292,13 @@ class ImportedActivity(Base):
     hr_bins_total: Mapped[int | None]
     hr_bins_covered: Mapped[int | None]
     hr_attempts: Mapped[int] = mapped_column(default=0)
+    # Proof of Sweat v2 (api/sweat2.py). Still no heart-rate series: counts, flags and one median per workout.
+    intensity: Mapped[str | None]  # the provider's own label: easy, moderate or hard
+    hr_usable: Mapped[int | None]  # usable samples
+    hr_quarters: Mapped[int | None]  # quarters of the workout that hold a usable sample (0-4)
+    hr_tagged_bins: Mapped[int | None]  # minutes with a sample recorded as exercise
+    hr_warning: Mapped[bool | None]  # some samples were malformed and dropped
+    hr_median: Mapped[int | None]  # median of per-minute medians of exercise-tagged samples; deleted with the row
     missing_syncs: Mapped[int] = mapped_column(default=0)  # complete syncs in a row that did not return it
     rules_version: Mapped[str | None]
     first_seen_at: Mapped[datetime] = mapped_column(default=_now)

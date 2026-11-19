@@ -392,10 +392,10 @@ function HowPage({ go, onLogin }: Nav) {
           <div className="chapter-visual" aria-hidden>
             <ul className="demo-rules">
               <li>
-                <b>+1</b> every 10 verified minutes
+                <b>+1</b> about a point per verified minute
               </li>
               <li>
-                <b>6</b> points a day, at most
+                <b>×</b> weighted by effort, 0.85 to 1.25
               </li>
               <li>
                 <b>Oura</b> workouts only, checked by Proof of Sweat

@@ -66,7 +66,8 @@ export function LockedRulesCard({ info, ruleset }: { info: ChallengeInfo; rulese
   const r = JSON.parse(ruleset) as Ruleset;
   const matches = hash === null ? null : hash === info.rules.rulesHash;
   const lockedLine = payoutLockedLine(info);
-  const sweat = r.scoring.name === "proof_of_sweat_v1";
+  const sweat = !!r.scoring.name?.startsWith("proof_of_sweat");
+  const sweat2 = r.scoring.name === "proof_of_sweat_v2";
   const rows: [string, string][] = [
     [
       "Scoring",
@@ -76,7 +77,9 @@ export function LockedRulesCard({ info, ruleset }: { info: ChallengeInfo; rulese
             .map(([k, v]) => `${v} per ${k.replace(/s$/, "")}`)
             .join(", ")})`
         : sweat
-          ? `Proof of Sweat: Oura-verified exercise only (${r.scoring.version})`
+          ? sweat2
+            ? `Proof of Sweat: Oura-verified minutes weighted by effort, first hour a day in full (${r.scoring.version})`
+            : `Proof of Sweat: Oura-verified exercise only, 1 point per 10 minutes (${r.scoring.version})`
           : `Daily Mover rules (${r.scoring.version})`,
     ],
     [

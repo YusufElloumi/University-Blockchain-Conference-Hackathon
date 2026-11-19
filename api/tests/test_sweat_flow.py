@@ -168,11 +168,12 @@ def test_a_real_looking_workout_becomes_verified_points(client, challenge, sweat
         "duplicate": "passed", "scoring": "passed"}
 
     [row] = rows()
-    assert "oura-id" not in row.provider_ref and row.rules_version == "proof-of-sweat-v1"
+    assert "oura-id" not in row.provider_ref and row.intensity == "moderate"
     assert (row.hr_bins_total, row.hr_bins_covered) == (40, 40)
     stored = json.dumps({c.name: str(getattr(row, c.name)) for c in row.__table__.columns})
-    assert "147.25" not in stored and "4321.5" not in stored and "moderate" not in stored  # no bpm, calories, intensity
-    assert not [c.name for c in row.__table__.columns if "bpm" in c.name or "calor" in c.name or "intens" in c.name]
+    assert "147.25" not in stored and "4321.5" not in stored  # no heart-rate readings and no calories
+    assert not [c.name for c in row.__table__.columns if "bpm" in c.name or "calor" in c.name or "series" in c.name]
+    assert row.hr_median == 147  # one summary number per workout (the middle value), used by v2's effort factor
 
 
 def test_syncing_again_never_adds_rows_or_points(client, challenge, sweat_world):
