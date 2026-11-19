@@ -7950,6 +7950,8 @@ input[type="checkbox"] {
 .oura-diag-row b {
   color: var(--text);
   font-weight: 600;
+}
+
 /* Custom challenge length: a number next to an hours/days switch. */
 .length-input {
   display: grid;

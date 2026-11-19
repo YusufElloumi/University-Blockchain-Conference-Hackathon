@@ -8,7 +8,7 @@ import { DemoBanner, Wordmark } from "./ui";
 
 export type LegalDoc = "privacy" | "terms";
 
-const UPDATED = "18 November 2026";
+const UPDATED = "19 November 2026";
 const CONTACT = "shaanbhasin64@gmail.com";
 
 // Addresses are relative so the pages work at /privacy, /privacy/ and under any folder.
@@ -178,6 +178,12 @@ const PRIVACY: Doc = {
               <b>League organizers:</b> the stat sheets they upload and which player is matched to which sheet name.
             </li>
             <li>
+              <b>Rival admins:</b> the Rival team members on our admin list can open any challenge, including private and league
+              ones, and can end it early so it pays out by the current standings. We use this to run demos and fix stuck
+              challenges. An admin who is not playing sees the challenge's details and feed, not its leaderboard, and never sees your
+              workouts.
+            </li>
+            <li>
               <b>Anyone:</b> information on the public blockchain (next section) and the details of public events listed for anyone
               to join.
             </li>
@@ -253,8 +259,9 @@ const PRIVACY: Doc = {
               prototype database may be reset or deleted after the hackathon.
             </li>
             <li>
-              <b>Removing your workouts.</b> Our server can delete your logged workouts and your points in challenges that have not
-              finished, but there is no button for this in the app yet. Ask us using the contact details below and we will do it.
+              <b>Deleting your workouts.</b> Use <b>Delete my workouts</b> on your home screen in the app. It deletes every workout
+              you have logged and your points in challenges that have not finished. You stay in those challenges with zero points.
+              It cannot be undone.
             </li>
             <li>
               <b>Finished challenges.</b> Final score sheets and result receipts are kept so results stay checkable.
@@ -396,7 +403,8 @@ const TERMS: Doc = {
               format (for example winner takes all, podium, goal or teams) is fixed when it is created.
             </li>
             <li>
-              Points follow the rules shown in the app. Today: a workout of 20 minutes or more earns a point, every 5 km earns a point,
+              Points follow the rules shown in the app. Today: 20 or more active minutes in a day earns a point (minutes from all your
+              workouts that day add up), every 5 km earns a point,
               and at most 3 points count per day. Days are 24-hour blocks from the challenge start.
             </li>
             <li>

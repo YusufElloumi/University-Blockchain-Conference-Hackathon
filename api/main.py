@@ -328,9 +328,13 @@ def _is_invited(session: Session, challenge: db.Challenge, user: db.User) -> boo
 
 
 def _can_see(session: Session, challenge: db.Challenge, user: db.User) -> bool:
-    """Public events are open to everyone. League and private events need an invite (or being in them)."""
+    """Public events are open to everyone. League and private events need an invite (or being in them).
+
+    Rival admins (ADMIN_EMAILS) can open any event, to run demos and end stuck challenges. The legal pages say so.
+    """
     return (
         _mode(challenge) == "public"
+        or _is_admin(user)
         or challenge.creator_id == user.id
         or _is_player(session, challenge, user)
         or _is_invited(session, challenge, user)

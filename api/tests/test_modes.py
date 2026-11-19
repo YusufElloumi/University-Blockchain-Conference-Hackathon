@@ -138,3 +138,17 @@ def test_events_from_before_play_modes_count_as_private(client):
 def test_an_event_made_outside_the_app_is_recorded_as_public(client):
     assert join(client, CHALLENGE).status_code == 200
     assert client.get(f"/challenges/{CHALLENGE}/state", headers=make_token("zoe")).json()["challenge"]["mode"] == "public"
+
+
+@pytest.mark.parametrize("mode,extra", [("private", {}), ("league", {"organizer_name": "Club"})])
+def test_rival_admins_can_open_any_event(client, joining, monkeypatch, mode, extra):
+    """Admins (ADMIN_EMAILS) can open invite-only events to run demos; the legal pages say so."""
+    import config
+    address = PRIVATE if mode == "private" else LEAGUE
+    create(client, address, mode, **extra)
+    assert client.get(f"/challenges/{address}/state", headers=make_token("sam")).status_code == 404
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"sam@example.com"})
+    assert client.get(f"/challenges/{address}/state", headers=make_token("sam")).status_code == 200
+    # Points were shared with the group only, so an admin who is not playing still cannot read the leaderboard.
+    assert client.get(f"/challenges/{address}/state", headers=make_token("sam")).json()["players"] is None
+    assert client.get(f"/challenges/{address}/leaderboard", headers=make_token("sam")).status_code == 403

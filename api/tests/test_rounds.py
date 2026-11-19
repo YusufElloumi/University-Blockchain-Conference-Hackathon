@@ -19,8 +19,8 @@ def z(moment: datetime) -> str:
 
 
 def game(ticker, sport="basketball", league="Pro Basketball", hours=2, sides=(("Home", "0.59", "0.61"), ("Away", "0.39", "0.41")),
-         volume="100", scope="full_contest", winner=None, status="active"):
-    starts = NOW + timedelta(hours=hours)
+         volume="100", scope="full_contest", winner=None, status="active", at=None):
+    starts = (at or NOW) + timedelta(hours=hours)
     path = ["Sports", "Soccer", league] if sport == "soccer" else ["Sports", league]
     return {
         "ticker": ticker, "title": f"{ticker} game", "category": "Sports", "status": status,
@@ -114,15 +114,20 @@ def choose(themes, number=0, end_hours=24 * 5, start=NOW, now=NOW, used=()):
 
 
 def test_same_day_beats_later_and_big_leagues_rank_higher(gemini):
+    # "Same day" is a Central-time calendar day, so the test runs at a fixed 6 AM Central (it used to fail in the evening).
+    morning = (NOW.astimezone(pickrounds.CENTRAL).replace(hour=6, minute=0, second=0, microsecond=0)
+               + timedelta(days=1)).astimezone(timezone.utc)
     gemini["events"] = [
-        game("CBB", league="College Basketball", hours=3),
-        game("NBA", hours=4),
-        game("NBA_TOMORROW", hours=26),
+        game("CBB", league="College Basketball", hours=3, at=morning),
+        game("NBA", hours=4, at=morning),
+        game("NBA_TOMORROW", hours=26, at=morning),
     ]
-    assert choose(["basketball"])["ticker"] == "NBA"
-    gemini["events"] = [game("CBB", league="College Basketball", hours=3), game("NBA_TOMORROW", hours=26)]
+    assert choose(["basketball"], start=morning, now=morning, end_hours=24 * 7)["ticker"] == "NBA"
+    gemini["events"] = [game("CBB", league="College Basketball", hours=3, at=morning),
+                        game("NBA_TOMORROW", hours=26, at=morning)]
     pickrounds._cache.clear()
-    picked = pickrounds.choose_market(["basketball"], 0, (NOW, NOW + timedelta(days=7)), NOW + timedelta(days=7), set(), NOW)
+    picked = pickrounds.choose_market(["basketball"], 0, (morning, morning + timedelta(days=7)), morning + timedelta(days=7),
+                                      set(), morning)
     assert picked["ticker"] == "CBB"  # today's game first, even from a smaller league
 
 
