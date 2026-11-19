@@ -111,11 +111,49 @@ What each numbered flow does:
 | What can it not do? | Send funds to an outsider (winners must be in the player list), take a cut, settle before the end time without the visible `end_early` event, or trap funds (the refund timeout). |
 | What makes lying detectable? | `settle` records a hash of the final score sheet, so the published scores cannot be quietly changed afterwards, and every settlement is a public transaction. |
 | How can a player check a result? (Proof of Effort, Nov 18) | A separate **verifier key** (`5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway`) signs each result with Ed25519: challenge, program, network, rules version and fingerprint, score-sheet hash, payout shares, time, nonce. The browser checks the signature against the published key and re-hashes the score sheet against the `score_hash` stored onchain. `python attest.py verify <file>` does the same from a terminal. The proof stays offchain and holds no fitness data. |
-| What does a proof not show? | That a workout happened. It shows our verifier approved the result under the named rules. The program does not check the signature yet (the oracle signs the transaction); checking it onchain with Solana's Ed25519 program is the next step. |
+| What does a proof not show? | That a workout happened. It shows our verifier approved the result under the named rules. Since Nov 19 (locked rules, below) the program checks the signature onchain before paying. |
 | Who else is trusted? | Strava and the watch for the data; Privy for wallet custody; our server not to leak the oracle key. |
-| What would we add later? | A 24-hour dispute window before payout, two-of-three signers (or a group vote) on results, and an independent data attestation service. |
+| What would we add later? | Independent verifier hardware (TEEs) so the signing key does not live beside the payout key, a dispute window before payout, two-of-three signers (or a group vote) on results, and an independent data attestation service. |
 
 The treasury key (test funds) and the oracle key are separate so that leaking one does not expose the other. Both live only in `.env` / host secrets.
+
+### Locked rules and onchain-checked results (Nov 19)
+
+**Accounts.** Each challenge has a `Rules` PDA at seeds `["rules", challenge]`, created by `create_challenge` and never written again:
+
+| Offset (after 8-byte discriminator) | Field |
+|---|---|
+| 0..32 | `challenge` |
+| 32..64 | `rules_hash`: SHA-256 of the canonical ruleset text (`api/rules.py`, sorted keys, compact, ASCII) |
+| 64..96 | `verifier`: the only key whose signed result can be paid |
+| 96 | `payout`: 0 winner takes all, 1 podium, 2 goal, 3 teams |
+| 97..103 | `split_bps`: three u16 (podium places in basis points; zeros otherwise) |
+| 103 | `bump` |
+
+The `Challenge` account layout did not change, so older challenges stay readable; without a `Rules` account they cannot be settled and are refund-only.
+
+**Join.** `join_challenge(expected_rules_hash)` fails with `RulesMismatch` unless the hash equals `rules.rules_hash`. The web app passes the SHA-256 of the ruleset text it displayed, computed in the browser.
+
+**Signed result (v2 message).** All integers little-endian.
+
+| Bytes | Field |
+|---|---|
+| 0..24 | ASCII `rival.proof-of-effort.v2` |
+| 24..56 | program ID |
+| 56..88 | challenge address |
+| 88..120 | rules hash (must equal the locked one) |
+| 120..152 | score-sheet SHA-256 (stored in the challenge at payout) |
+| 152 | winner count `n` (1-8) |
+| 153..153+32n | winner wallets, in rank order |
+| then 2n bytes | shares, u16 basis points each, adding to 10,000 |
+
+Total `153 + 34n` bytes. Builders: `api/attest.py` (`message_v2`), `onchain/shared/proofMessage.ts` (tests, scripts, web), parser in `programs/loser_buys/src/proof.rs`. Shared fixture: `onchain/shared/proof_v2_fixture.json`.
+
+**Payout transaction.** Two instructions: (1) Solana's Ed25519 program (`Ed25519SigVerify111111111111111111111111111`) with one signature whose public key, signature and message are all inside that same instruction (instruction indices `0xFFFF`); (2) `settle` or `settle_split`. The program loads the previous instruction from the instructions sysvar and refuses (`MissingSignatureCheck`, `WrongVerifier`, `InvalidSignedResult`) unless it is that Ed25519 check, by the locked verifier, over a message for this program, this challenge and the locked rules hash. Winners, shares and the score hash come from the message, which keeps an 8-winner payout under Solana's 1,232-byte limit when the oracle pays its own fee.
+
+**Shares.** `settle` is only for equal formats and requires `shares[i] = 10000 / n` with the remainder to the first winner. `settle_split(tie_groups)` is only for podiums: the oracle gives the winners in rank order plus the size of each tie group; the program spreads the locked split over the paid places, merges tied places and splits them evenly (remainder to the first), and requires the signed shares to equal the result (`SharesNotAsCommitted`). Amounts are `pool * bps / 10000`, with dust to the first winner.
+
+**Honest limits.** Both the oracle key and the verifier key are held by our server: separate keys for payouts and for signing results, not separate parties. The program enforces the rules, the split and the signature; it cannot check that workouts happened.
 
 ## 5. Strava: what we can and cannot do
 

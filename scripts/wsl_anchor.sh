@@ -40,6 +40,14 @@ if [ "$CMD" = "smoke" ]; then
   node scripts/devnet_smoke.js "$@"
   code=$?
 elif [ "$CMD" = "create-challenge" ]; then
+  # The ruleset (and so the rules hash locked onchain) comes from the API's own code: from RULES_API if
+  # set, otherwise by running api/rules.py with the API's Windows venv through WSL interop.
+  REPO="$(dirname "$SRC")"
+  PY="$REPO/api/.venv/Scripts/python.exe"
+  if [ -z "$RULES_API" ] && [ -z "$RULES_JSON" ] && [ -x "$PY" ]; then
+    RULES_JSON="$(cd "$REPO/api" && "$PY" rules.py default "${LENGTH_HOURS:-168}")" || exit 1
+    export RULES_JSON
+  fi
   node scripts/create_challenge.js "$@"
   code=$?
 elif [ "$CMD" = "join" ]; then

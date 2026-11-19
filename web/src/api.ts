@@ -50,6 +50,18 @@ export type ChallengeView = {
   format_summary: string; // one plain sentence
   /** Which fitness rules apply, fixed at creation. */
   rules?: { name: string; version: string; sha256: string | null; proof_of_sweat: boolean; summary: string };
+  // The ruleset locked onchain at creation (api/rules.py). The browser hashes `ruleset` itself.
+  ruleset: string | null; // canonical JSON text; null for challenges from before rules were locked
+  rules_hash: string | null;
+  payout_terms: { kind: string; split_bps: number[]; label: string } | null;
+};
+
+/** What POST /rules returns: the ruleset for the chosen settings, to lock onchain at creation. */
+export type RulesPreview = {
+  ruleset: string;
+  rules_hash: string;
+  payout: { kind: "winner_takes_all" | "podium" | "goal" | "teams"; split_bps: number[]; kind_index: number };
+  verifier: string;
 };
 
 /** One of "my" events in a mode: joined, created, or invited to. */

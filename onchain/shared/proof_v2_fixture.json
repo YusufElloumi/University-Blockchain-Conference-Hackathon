@@ -1,0 +1,19 @@
+{
+  "_about": "Shared Proof of Sweat v2 message fixture. Checked by api/tests/test_proof.py, onchain/tests/loser_buys.ts (shared/proofMessage.ts, also used by the web app). Never regenerate it to make a test pass: if one language disagrees, that language is wrong.",
+  "program": "FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC",
+  "challenge": "GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc",
+  "rules_hash": "a51ba63d05cc00f99aab05fda905811246ab7e7f70cc684ab317bb0ffba29b30",
+  "score_hash": "0dee86b4d81d0f64d8d6a0a6d1a25b9886157c3da122092e0fe4d6cb18689f93",
+  "winners": [
+    "6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD",
+    "J73KdqANTzJ7P1TMTnd37xNCdXvc3LChG7J8X1XX4XY9",
+    "AYvBmTfVifruj1XMCGu5pJShLWqo9wYEa1gJFd6pT9re"
+  ],
+  "shares_bps": [
+    6000,
+    3000,
+    1000
+  ],
+  "message_hex": "726976616c2e70726f6f662d6f662d6566666f72742e7632d98b5d38104cc199bd0e9b27b7429a555d65f8f61b0c4f1e7901866304e6902703efd50d20f4c8ff08be1353ae83419de49cd8ff4971f77f64d394b74641d293a51ba63d05cc00f99aab05fda905811246ab7e7f70cc684ab317bb0ffba29b300dee86b4d81d0f64d8d6a0a6d1a25b9886157c3da122092e0fe4d6cb18689f93034dae8696f67e9d6f21b8ea9b0728b72b3d4223c3ae5c8eafbeae10cb9b2c37c4fe22c98c4c95afa3f566a34256198b8b1c8014fc530a10ab4027b5886d33dc5e8de65319211c600e59ac5731f532552b4fb7ce97c5fcf87270559e83d3c5817f7017b80be803",
+  "message_length": 255
+}

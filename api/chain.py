@@ -7,10 +7,16 @@ dependencies are `solana` and `solders`.
 Command line (from api/):
     python chain.py show <challenge>
     python chain.py end-early <challenge>
+    python chain.py rules <challenge>
     python chain.py settle <challenge> <winner> [<winner> ...]
-    python chain.py settle-split <challenge> <winner>:<basis points> [...]   (shares add up to 10000)
+    python chain.py settle-split <challenge> <winner>[=<rank>] [...]   (podium; tied players share a rank)
 
-Devnet only. The oracle key is read from the file named by ORACLE_KEYPAIR_PATH.
+Settling needs the verifier's signature as well as the oracle's: each settle transaction starts with
+Solana's Ed25519 signature check of the result, signed by the verifier key named in the challenge's
+rules account, and the program refuses to pay without it. Settling from here signs a bare result
+(score hash of zeros) and is meant for tests; the API signs real results (settlement.py).
+
+Devnet only. Keys are read from the files named by ORACLE_KEYPAIR_PATH and VERIFIER_KEYPAIR_PATH.
 """
 
 from __future__ import annotations
@@ -39,6 +45,9 @@ IDL = json.loads((Path(__file__).parent.parent / "onchain" / "idl" / "loser_buys
 PROGRAM_ID = Pubkey.from_string(os.environ.get("PROGRAM_ID") or IDL["address"])
 RPC_URL = os.environ.get("SOLANA_RPC_URL") or "https://api.devnet.solana.com"
 TOKEN_PROGRAM_ID = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+ED25519_PROGRAM_ID = Pubkey.from_string("Ed25519SigVerify111111111111111111111111111")
+INSTRUCTIONS_SYSVAR_ID = Pubkey.from_string("Sysvar1nstructions1111111111111111111111111")
+PAYOUT_KINDS = ["winner_takes_all", "podium", "goal", "teams"]  # the program's PayoutKind, in order
 ASSOCIATED_TOKEN_PROGRAM_ID = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
 STATUS_NAMES = ["open", "settled", "refunded"]
 
@@ -69,6 +78,51 @@ class Challenge:
     players: list[Pubkey]
     status: str
     score_hash: bytes
+
+
+@dataclass
+class Rules:
+    """The challenge's `Rules` account: fixed at creation, never changed."""
+
+    address: Pubkey
+    challenge: Pubkey
+    rules_hash: bytes
+    verifier: Pubkey
+    payout: str  # one of PAYOUT_KINDS
+    split_bps: list[int]  # podium places in basis points (zeros dropped)
+
+
+def rules_address(challenge: Pubkey) -> Pubkey:
+    return Pubkey.find_program_address([b"rules", bytes(challenge)], PROGRAM_ID)[0]
+
+
+def fetch_rules(client: Client, challenge: Pubkey) -> Rules | None:
+    """The challenge's rules account, or None for challenges created before rules were locked onchain."""
+    address = rules_address(challenge)
+    account = _retry(lambda: client.get_account_info(address, commitment=Confirmed)).value
+    if account is None or account.owner != PROGRAM_ID:
+        return None
+    data = bytes(account.data)[8:]  # skip the account discriminator
+    split = list(struct.unpack_from("<HHH", data, 32 + 32 + 32 + 1))
+    return Rules(
+        address=address,
+        challenge=Pubkey.from_bytes(data[0:32]),
+        rules_hash=data[32:64],
+        verifier=Pubkey.from_bytes(data[64:96]),
+        payout=PAYOUT_KINDS[data[96]],
+        split_bps=[s for s in split if s],
+    )
+
+
+def ed25519_instruction(verifier: Pubkey, signature: bytes, message: bytes) -> Instruction:
+    """Solana's Ed25519 signature-check instruction, laid out as the native program and our program expect:
+    one signature, with the key, signature and message all inside this instruction (index 0xFFFF)."""
+    if len(signature) != 64:
+        raise ValueError("an Ed25519 signature is 64 bytes")
+    key_at, signature_at, message_at = 16, 48, 112
+    this = 0xFFFF
+    header = struct.pack("<BBHHHHHHH", 1, 0, signature_at, this, key_at, this, message_at, len(message), this)
+    return Instruction(ED25519_PROGRAM_ID, header + bytes(verifier) + signature + message, [])
 
 
 def token_account_for(owner: Pubkey, mint: Pubkey) -> Pubkey:
@@ -178,6 +232,8 @@ def _settle_accounts(state: "Challenge", oracle: Keypair, challenge: Pubkey, win
         AccountMeta(oracle.pubkey(), is_signer=True, is_writable=False),
         AccountMeta(challenge, is_signer=False, is_writable=True),
         AccountMeta(state.vault, is_signer=False, is_writable=True),
+        AccountMeta(rules_address(challenge), is_signer=False, is_writable=False),
+        AccountMeta(INSTRUCTIONS_SYSVAR_ID, is_signer=False, is_writable=False),
         AccountMeta(TOKEN_PROGRAM_ID, is_signer=False, is_writable=False),
     ]
     # One token account per winner, in the same order as the winner list.
@@ -190,33 +246,26 @@ def _pubkeys(keys: list[Pubkey]) -> bytes:
     return struct.pack("<I", len(keys)) + b"".join(bytes(k) for k in keys)
 
 
-def settle(client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pubkey], score_hash: bytes) -> str:
-    """Reports the winners and pays out the pool in equal shares. Returns the transaction signature."""
-    if len(score_hash) != 32:
-        raise ValueError("score_hash must be 32 bytes (a SHA-256 digest)")
+def settle(client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pubkey], verifier: Pubkey,
+           message: bytes, signature: bytes) -> str:
+    """Pays the pool in equal shares to the winners in the signed result `message` (attest.message_v2).
+    One transaction: the Ed25519 check of the verifier's signature, then `settle`. Returns its signature."""
     state = fetch_challenge(client, challenge)
-    data = _discriminator("settle") + _pubkeys(winners) + score_hash
-    return _send(client, oracle, Instruction(PROGRAM_ID, data, _settle_accounts(state, oracle, challenge, winners)))
+    pay = Instruction(PROGRAM_ID, _discriminator("settle"), _settle_accounts(state, oracle, challenge, winners))
+    return send_instructions(client, oracle, [ed25519_instruction(verifier, signature, message), pay])
 
 
-def settle_split(
-    client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pubkey], shares_bps: list[int], score_hash: bytes
-) -> str:
-    """Pays the pool in fixed shares (basis points, adding up to 10,000), for example a podium.
+def settle_split(client: Client, oracle: Keypair, challenge: Pubkey, winners: list[Pubkey], tie_groups: list[int],
+                 verifier: Pubkey, message: bytes, signature: bytes) -> str:
+    """Podium payout: the program works out each share from the split locked at creation, using
+    `tie_groups` (how many players share each rank, in order), and pays only if the signed shares match.
     Returns the transaction signature."""
-    if len(score_hash) != 32:
-        raise ValueError("score_hash must be 32 bytes (a SHA-256 digest)")
-    if len(shares_bps) != len(winners) or sum(shares_bps) != 10_000:
-        raise ValueError("need one share per winner, adding up to 10,000 basis points")
+    if sum(tie_groups) != len(winners) or not all(1 <= g <= 8 for g in tie_groups):
+        raise ValueError("tie groups must be 1 to 8 players each and cover every winner")
     state = fetch_challenge(client, challenge)
-    data = (
-        _discriminator("settle_split")
-        + _pubkeys(winners)
-        + struct.pack("<I", len(shares_bps))
-        + b"".join(struct.pack("<H", s) for s in shares_bps)
-        + score_hash
-    )
-    return _send(client, oracle, Instruction(PROGRAM_ID, data, _settle_accounts(state, oracle, challenge, winners)))
+    data = _discriminator("settle_split") + struct.pack("<I", len(tie_groups)) + bytes(tie_groups)
+    pay = Instruction(PROGRAM_ID, data, _settle_accounts(state, oracle, challenge, winners))
+    return send_instructions(client, oracle, [ed25519_instruction(verifier, signature, message), pay])
 
 
 def refund(client: Client, payer: Keypair, challenge: Pubkey) -> str:
@@ -271,19 +320,36 @@ def _main(argv: list[str]) -> None:
     explorer = "https://explorer.solana.com/tx/{}?cluster=devnet"
     if command == "show":
         print(fetch_challenge(client, challenge))
+    elif command == "rules":
+        print(fetch_rules(client, challenge) or "No rules account: created before rules were locked onchain.")
     elif command == "end-early":
         print("end_early:", explorer.format(end_early(client, load_oracle(), challenge)))
-    elif command == "settle":
-        winners = [Pubkey.from_string(w) for w in argv[3:]]
-        score_hash = hashlib.sha256(b"command-line-settle").digest()
-        print("settle:", explorer.format(settle(client, load_oracle(), challenge, winners, score_hash)))
-        print("status now:", fetch_challenge(client, challenge).status)
-    elif command == "settle-split":
-        pairs = [arg.split(":") for arg in argv[3:]]  # <winner>:<basis points>
-        winners = [Pubkey.from_string(w) for w, _ in pairs]
-        score_hash = hashlib.sha256(b"command-line-settle-split").digest()
-        signature = settle_split(client, load_oracle(), challenge, winners, [int(b) for _, b in pairs], score_hash)
-        print("settle_split:", explorer.format(signature))
+    elif command in ("settle", "settle-split"):
+        import attest
+        import formats
+        rules = fetch_rules(client, challenge)
+        if rules is None:
+            sys.exit("This challenge has no rules account, so it cannot be settled. It can be refunded instead.")
+        verifier = load_keypair("VERIFIER")
+        score_hash = hashlib.sha256(b"command-line-" + command.encode()).digest()
+        if command == "settle":
+            winners = [Pubkey.from_string(w) for w in argv[3:]]
+            shares = [b for _, b in formats._equal([str(w) for w in winners])]
+            groups = None
+        else:
+            pairs = [(arg.split("=") + [str(i + 1)])[:2] for i, arg in enumerate(argv[3:])]  # <winner>[=<rank>]
+            winners = [Pubkey.from_string(w) for w, _ in pairs]
+            ranks = [int(r) for _, r in pairs]
+            groups = [ranks.count(r) for r in dict.fromkeys(ranks)]
+            players = len(fetch_challenge(client, challenge).players)
+            shares = formats.podium_shares(rules.split_bps, players, groups)
+        message = attest.message_v2(PROGRAM_ID, challenge, rules.rules_hash, score_hash, winners, shares)
+        signature = bytes(verifier.sign_message(message))
+        if groups is None:
+            sent = settle(client, load_oracle(), challenge, winners, verifier.pubkey(), message, signature)
+        else:
+            sent = settle_split(client, load_oracle(), challenge, winners, groups, verifier.pubkey(), message, signature)
+        print(command.replace("-", "_") + ":", explorer.format(sent), "shares (basis points):", shares)
         print("status now:", fetch_challenge(client, challenge).status)
     else:
         print(__doc__)

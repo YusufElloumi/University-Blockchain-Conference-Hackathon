@@ -7,12 +7,21 @@ transaction.
 
 No fitness data goes onchain: only winner addresses and the salted hash.
 
-Proof of Effort (`attest.py`): before paying out, the verifier key signs the result. The proof is
-kept with the challenge and shown to its players, so anyone of them can check it independently.
+Locked rules (`rules.py`): each challenge commits to a ruleset before anyone pays; its hash and the
+payout terms sit in the challenge's onchain Rules account. Settlement scores with the committed rules
+version or refuses; it never re-scores under rules nobody agreed to.
+
+Proof of Effort (`attest.py`, v2): the verifier key signs the result as a fixed binary message, and
+the settle transaction carries Solana's Ed25519 check of that signature right before `settle` /
+`settle_split`. The program pays only the winners and shares in the signed message, for this
+challenge's rules hash, and (podium) only the shares its locked split gives. The proof is kept with
+the challenge and shown to its players. Challenges created before rules were locked can only be
+refunded (72 hours after the end, or at once if fewer than 2 joined).
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import secrets
@@ -33,6 +42,7 @@ import events
 import formats
 import leaguestats
 import pickrounds
+import rules
 import scores
 import scoring
 import sweat
@@ -41,6 +51,9 @@ from fitness import oura_sync
 log = logging.getLogger("loser_buys")
 _busy: set[str] = set()  # challenges being finished right now, so two requests cannot both pay out
 _busy_lock = threading.Lock()
+
+
+REFUND_TIMEOUT_SECONDS = 72 * 3600  # the program's REFUND_TIMEOUT_SECONDS
 
 
 class NotYet(Exception):
@@ -155,6 +168,7 @@ def build_sheet(session: Session, challenge: db.Challenge, players: list[str], s
         "rules": challenge.template,
         "rules_version": scoring.RULES_VERSION,  # the exact scoring numbers used, by name and by hash
         "rules_sha256": scoring.rules_fingerprint(),
+        "rules_hash": None,  # the onchain rules hash of the locked ruleset; filled in by _finish
         "format": {"name": fmt, **settings},  # fixed at creation; part of the hash
         "scores": [entry(wallet) for wallet in players],
         "salt": secrets.token_hex(16),  # stops anyone guessing the sheet from the hash alone
@@ -244,6 +258,30 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
         if now < state.end_time + grace:
             raise NotYet("Waiting for final workout syncs before the scores are fixed." if is_sweat
                          else "The challenge has not finished yet.")
+        locked = chain.fetch_rules(client, address)
+        ruleset = rules.of(challenge)
+        if locked is None or ruleset is None:
+            # Created before rules were locked onchain: the program cannot pay it out, only refund it.
+            if now < state.end_time + REFUND_TIMEOUT_SECONDS:
+                raise NotYet("This challenge was created before rules were locked onchain, so it can't be paid "
+                             "out. Every entry fee will be refunded 72 hours after it ends.")
+            signature = chain.refund(client, oracle, address)
+            challenge.status, challenge.settle_tx = "refunded", signature
+            result.update(action="refunded", status="refunded", signature=signature)
+            session.commit()
+            return result
+        try:
+            rules.check_current(ruleset)  # never re-score under rules nobody agreed to
+        except rules.RulesError as e:
+            raise NotYet(str(e)) from e
+        named = ruleset["scoring"].get("name") or sweat.LEGACY_TEMPLATE
+        if ruleset["scoring"]["source"] == "fitness" and named != (challenge.template or sweat.LEGACY_TEMPLATE):
+            raise NotYet(f"This challenge locked {named} scoring but is recorded with {challenge.template}. "
+                         "It will not be scored under rules nobody agreed to; it refunds 72 hours after the end.")
+        verifier = attest.load_verifier()
+        if verifier is None or verifier.pubkey() != locked.verifier:
+            raise NotYet("The verifier key named in this challenge's rules is not available, so the result "
+                         "can't be signed. Payout waits until it is.")
         # Prediction rounds: wait for Gemini's results, up to RESULT_WAIT after the end. Then (or at once,
         # for an admin's early end) any round still without a result is void and scores nothing.
         waited = now - state.end_time >= pickrounds.RESULT_WAIT.total_seconds()
@@ -262,19 +300,19 @@ def _finish(session: Session, challenge: db.Challenge, end_now: bool) -> dict:
         # between, so the points that are hashed and sent onchain are exactly the points that are stored.
         session.execute(select(db.Challenge.id).where(db.Challenge.id == challenge.id).with_for_update())
         sheet = build_sheet(session, challenge, [str(p) for p in state.players], sync=sync_states, commit=False)
+        sheet["rules_hash"] = locked.rules_hash.hex()
         payout = payout_of(sheet)  # follows from the sheet alone, so anyone holding it can check the payout
         keys = [Pubkey.from_string(w) for w in payout.wallets]
-        verifier = attest.load_verifier()
-        proof = attest.issue(challenge.address, sheet, payout, verifier) if verifier else None
-        if proof is None:
-            log.warning("VERIFIER_KEYPAIR is not set: settling %s without a Proof of Effort", challenge.address)
-        if payout.equal:
-            signature = chain.settle(client, oracle, address, keys, sheet_hash(sheet))
+        proof = attest.issue_v2(challenge.address, locked.rules_hash, sheet, payout.shares, verifier)
+        message, signed = base64.b64decode(proof["message"]), bytes.fromhex(proof["signature"])
+        if payout.groups is None:
+            signature = chain.settle(client, oracle, address, keys, verifier.pubkey(), message, signed)
         else:
-            signature = chain.settle_split(client, oracle, address, keys, [bps for _, bps in payout.shares],
-                                           sheet_hash(sheet))
+            signature = chain.settle_split(client, oracle, address, keys, payout.groups, verifier.pubkey(),
+                                           message, signed)
+        proof["settle_tx"] = signature
         challenge.status, challenge.settle_tx, challenge.score_sheet = "settled", signature, json.dumps(sheet)
-        challenge.attestation = json.dumps(proof) if proof else None
+        challenge.attestation = json.dumps(proof)
         result.update(action="settled", status="settled", signature=signature, winners=payout.wallets,
                       note=payout.note)
     session.commit()

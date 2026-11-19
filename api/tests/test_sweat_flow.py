@@ -568,18 +568,20 @@ def test_nothing_private_is_in_the_sheet_the_proof_or_the_transaction(client, ch
 def test_the_signed_proof_binds_the_receipts(client, challenge, fakes, sweat_world):
     published = settle(client, fakes, sweat_world)
     proof, sheet = published["proof"], published["sheet"]
-    payload = json.loads(proof["message"])
-    assert payload["schema"] == 2 and payload["proof_of_sweat"]["receipts"] == 3
-    assert published["proof_problems"] == [] == attest.check(proof, challenge=CHALLENGE, sheet=sheet)
+    # v2 proof (locked rules): the signed bytes name the score-sheet hash, which covers every receipt
+    # commitment; Solana checks that signature at payout. The readable summary is recomputed on checking.
+    assert proof["schema"] == 2 and proof["proof_of_sweat"]["receipts"] == 3
+    assert published["proof_problems"] == [] == attest.check_v2(proof, challenge=CHALLENGE, sheet=sheet)
 
     changed = json.loads(json.dumps(sheet))
     changed["scores"][1]["points"] = 99
-    assert "the score sheet does not match the signed hash" in attest.check(proof, challenge=CHALLENGE, sheet=changed)
+    assert "the score sheet does not match the signed hash" in attest.check_v2(proof, challenge=CHALLENGE, sheet=changed)
     swapped = json.loads(json.dumps(sheet))
     swapped["proof_of_sweat"]["participants"][0]["receipts"][0] = "0" * 64
-    problems = attest.check(proof, challenge=CHALLENGE, sheet=swapped)
-    assert "the workout receipt commitments do not match the signed summary" in problems
-    assert attest.check(proof, challenge=OTHER, sheet=sheet)  # cannot be replayed for another challenge
+    problems = attest.check_v2(proof, challenge=CHALLENGE, sheet=swapped)
+    assert "the score sheet does not match the signed hash" in problems
+    assert "the workout receipt commitments do not match the summary" in problems
+    assert attest.check_v2(proof, challenge=OTHER, sheet=sheet)  # cannot be replayed for another challenge
 
 
 def test_owners_get_receipts_that_match_the_committed_hashes(client, challenge, fakes, sweat_world):

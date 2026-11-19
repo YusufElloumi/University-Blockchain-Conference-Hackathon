@@ -6,14 +6,52 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from solders.pubkey import Pubkey
+from solders.signature import Signature
 from sqlalchemy import select
 
+import attest
 import chain
 import config
+import formats
 import db
 import events
 import settlement
 from test_stage4 import CHALLENGE, WALLETS, board, challenge, client, fakes, make_token, state  # noqa: F401
+
+
+_READ: dict[str, chain.Rules] = {}  # what the pretend chain read, so a payout needs no second database session
+
+
+def stored_rules(address) -> chain.Rules | None:
+    """The onchain Rules account, as create_challenge would have written it for the stored ruleset.
+    (Read once per challenge: opening a session mid-payout would roll back the test's shared connection.)"""
+    if str(address) in _READ:
+        return _READ[str(address)]
+    with db.SessionLocal() as session:
+        row = session.scalar(select(db.Challenge).where(db.Challenge.address == str(address)))
+        text = row.ruleset if row else None
+    if text is None:
+        return None
+    ruleset = json.loads(text)
+    _READ[str(address)] = found = chain.Rules(Pubkey.from_string(str(address)), Pubkey.from_string(str(address)),
+                       hashlib.sha256(text.encode()).digest(), Pubkey.from_string(ruleset["verifier"]),
+                       ruleset["payout"]["kind"], ruleset["payout"]["split_bps"])
+    return found
+
+
+def program_checks(address, winners, verifier, message, signature):
+    """What the program checks before any payout: the Ed25519 signature by the verifier in the rules
+    account, over a v2 message for this program, challenge and rules hash, naming these winners."""
+    rules = stored_rules(address)
+    assert rules is not None, "no Rules account"
+    assert verifier == rules.verifier, "WrongVerifier"
+    assert Signature.from_bytes(signature).verify(verifier, message), "Ed25519 check failed"
+    fields = attest.parse_v2(message)
+    assert fields["program"] == str(chain.PROGRAM_ID) and fields["challenge"] == str(address)
+    assert fields["rules_hash"] == rules.rules_hash.hex(), "InvalidSignedResult"
+    assert [p["wallet"] for p in fields["payout"]] == [str(w) for w in winners]
+    return rules, fields
 
 
 @pytest.fixture(autouse=True)
@@ -21,6 +59,7 @@ def fake_chain(monkeypatch, fakes):
     """A pretend Solana: records what the oracle sent and changes the pretend challenge like the program would."""
     sent = []
     fakes.vault = fakes.mint
+    _READ.clear()
 
     def end_early(client, oracle, address):
         fakes.end_time = int(time.time()) - 1
@@ -28,10 +67,13 @@ def fake_chain(monkeypatch, fakes):
         sent.append(("end_early",))
         return "end-sig"
 
-    def settle(client, oracle, address, winners, score_hash):
+    def settle(client, oracle, address, winners, verifier, message, signature):
         assert time.time() >= fakes.end_time and len(fakes.players) >= 2
+        rules, fields = program_checks(address, winners, verifier, message, signature)
+        assert rules.payout != "podium", "WrongPayoutKind"
+        assert [p["bps"] for p in fields["payout"]] == [b for _, b in formats._equal([str(w) for w in winners])]
         fakes.status = "settled"
-        sent.append(("settle", [str(w) for w in winners], score_hash))
+        sent.append(("settle", [str(w) for w in winners], bytes.fromhex(fields["score_sheet_sha256"])))
         return "settle-sig"
 
     def refund(client, payer, address):
@@ -40,6 +82,7 @@ def fake_chain(monkeypatch, fakes):
         return "refund-sig"
 
     monkeypatch.setattr(chain, "fetch_challenge", lambda client, address: fakes)
+    monkeypatch.setattr(chain, "fetch_rules", lambda client, address: stored_rules(address))
     monkeypatch.setattr(chain, "load_oracle", lambda: object())
     monkeypatch.setattr(chain, "end_early", end_early)
     monkeypatch.setattr(chain, "settle", settle)
@@ -75,7 +118,7 @@ def test_the_hash_sent_onchain_matches_the_published_score_sheet(client, challen
     published = client.get(f"/challenges/{CHALLENGE}/score-sheet", headers=make_token("sam")).json()
     sheet = published["sheet"]
     assert sheet["scores"] == [{"wallet": WALLETS["maya"], "points": 0}, {"wallet": WALLETS["sam"], "points": 2}]
-    assert len(sheet["salt"]) == 32 and set(sheet) == {"challenge", "rules", "rules_version", "rules_sha256", "format", "scores", "salt"}  # no fitness details
+    assert len(sheet["salt"]) == 32 and set(sheet) == {"challenge", "rules", "rules_version", "rules_sha256", "rules_hash", "format", "scores", "salt"}  # no fitness details
     assert sheet["format"] == {"name": "winner_takes_all"}
     recomputed = hashlib.sha256(json.dumps(sheet, sort_keys=True, separators=(",", ":")).encode()).digest()
     assert fake_chain[-1][2] == recomputed and published["sha256"] == recomputed.hex()

@@ -37,7 +37,42 @@ export type ChallengeInfo = {
   mint: PublicKey;
   vault: PublicKey;
   scoreHash: number[]; // SHA-256 of the final score sheet, set by `settle`; all zeros before
+  rules: LockedRules | null; // null: created before rules were locked onchain
 };
+
+/** The challenge's Rules account: written once at creation, never changed. */
+export type LockedRules = {
+  rulesHash: string; // hex SHA-256 of the canonical ruleset text
+  verifier: string;
+  payout: "winner_takes_all" | "podium" | "goal" | "teams";
+  splitBps: number[]; // podium places in basis points
+};
+
+const PAYOUT_KINDS = ["winner_takes_all", "podium", "goal", "teams"] as const;
+const camel = { winner_takes_all: "winnerTakesAll", podium: "podium", goal: "goal", teams: "teams" } as const;
+
+export const toHex = (bytes: ArrayLike<number>) =>
+  Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+/** SHA-256 of a text, as hex. Used to hash the ruleset the player is shown before they pay. */
+export async function sha256Hex(text: string): Promise<string> {
+  return toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))));
+}
+
+export const rulesAddress = (challenge: PublicKey) =>
+  PublicKey.findProgramAddressSync([Buffer.from("rules"), challenge.toBuffer()], program.programId)[0];
+
+export async function fetchRules(challenge: PublicKey): Promise<LockedRules | null> {
+  const r = await program.account.rules.fetchNullable(rulesAddress(challenge));
+  if (!r) return null;
+  const kind = Object.keys(r.payout)[0];
+  return {
+    rulesHash: toHex(r.rulesHash),
+    verifier: r.verifier.toBase58(),
+    payout: PAYOUT_KINDS.find((k) => camel[k] === kind) ?? "winner_takes_all",
+    splitBps: Array.from(r.splitBps).filter((s) => s > 0),
+  };
+}
 
 /** A wallet's balance of the given token in dollars; 0 when it has never held any. */
 export async function tokenBalance(owner: string, mint: PublicKey): Promise<number> {
@@ -51,7 +86,8 @@ export async function tokenBalance(owner: string, mint: PublicKey): Promise<numb
 }
 
 export async function fetchChallenge(address: string): Promise<ChallengeInfo> {
-  const c = await program.account.challenge.fetch(new PublicKey(address));
+  const key = new PublicKey(address);
+  const [c, rules] = await Promise.all([program.account.challenge.fetch(key), fetchRules(key)]);
   const vault = await getAccount(connection, c.vault);
   return {
     address,
@@ -65,18 +101,29 @@ export async function fetchChallenge(address: string): Promise<ChallengeInfo> {
     mint: c.mint,
     vault: c.vault,
     scoreHash: Array.from(c.scoreHash),
+    rules,
   };
 }
 
-/** Builds the unsigned "join this challenge" transaction, as bytes ready for the wallet to sign. */
-export async function buildJoinTransaction(player: string, challenge: ChallengeInfo): Promise<Uint8Array> {
+/**
+ * Builds the unsigned "join this challenge" transaction, as bytes ready for the wallet to sign.
+ * `shownRulesHash` is the hash of the ruleset text this browser showed the player (hashed here, not
+ * taken from the server). The program refuses the deposit unless it equals the hash locked at creation.
+ */
+export async function buildJoinTransaction(
+  player: string,
+  challenge: ChallengeInfo,
+  shownRulesHash: string,
+): Promise<Uint8Array> {
   const playerKey = new PublicKey(player);
+  const key = new PublicKey(challenge.address);
   const tx = await program.methods
-    .joinChallenge()
+    .joinChallenge(Array.from(Buffer.from(shownRulesHash, "hex")))
     .accountsPartial({
       player: playerKey,
-      challenge: new PublicKey(challenge.address),
+      challenge: key,
       vault: challenge.vault,
+      rules: rulesAddress(key),
       playerToken: getAssociatedTokenAddressSync(challenge.mint, playerKey),
       tokenProgram: TOKEN_PROGRAM_ID,
     })
@@ -92,6 +139,11 @@ export type NewChallenge = {
   lengthSeconds: number;
   oracle: string; // the server's address that is allowed to report results
   mint: string;
+  // From POST /rules: locked onchain at creation, never changeable.
+  rulesHash: string; // hex
+  verifier: string; // the key whose signature the program requires at payout
+  payout: LockedRules["payout"];
+  splitBps: number[]; // podium only
 };
 
 /** Builds the unsigned "create a challenge" transaction. Returns it with the new challenge's address. */
@@ -107,6 +159,7 @@ export async function buildCreateTransaction(
     program.programId,
   );
   const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), challenge.toBuffer()], program.programId);
+  const rules = rulesAddress(challenge);
   // Use the network's clock, not this device's, because the program checks times against the network.
   const chainNow = await connection.getBlockTime(await connection.getSlot()).catch(() => null);
   const start = (chainNow ?? Math.floor(Date.now() / 1000)) + options.joinWindowSeconds;
@@ -118,12 +171,18 @@ export async function buildCreateTransaction(
       new BN(start + options.lengthSeconds),
       8,
       new PublicKey(options.oracle),
+      Array.from(Buffer.from(options.rulesHash, "hex")),
+      new PublicKey(options.verifier),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { [camel[options.payout]]: {} } as any,
+      options.splitBps,
     )
     .accountsPartial({
       creator: creatorKey,
       challenge,
       mint: new PublicKey(options.mint),
       vault,
+      rules,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
@@ -155,6 +214,10 @@ export function friendlyError(e: unknown): string {
   const logs = (e as { logs?: string[] } | null)?.logs;
   const text = (e instanceof Error ? e.message : String(e)) + " " + JSON.stringify(logs ?? "");
   if (/AlreadyJoined/.test(text)) return "You're already in this challenge.";
+  if (/RulesMismatch/.test(text))
+    return "The rules you were shown don't match the rules locked for this challenge, so nothing was paid.";
+  if (/AccountNotInitialized.*rules|rules.*AccountNotInitialized/is.test(text))
+    return "This challenge was created before rules were locked, so it can't take new players.";
   if (/JoinClosed/.test(text)) return "This challenge has already started, so joining is closed.";
   if (/ChallengeFull/.test(text)) return "This challenge is full.";
   if (/ChallengeNotOpen/.test(text)) return "This challenge is over.";
@@ -162,6 +225,7 @@ export function friendlyError(e: unknown): string {
     return "You don't have enough in your balance yet. Add devnet USDC first.";
   if (/429|Too Many Requests/i.test(text)) return "The network is busy. Wait a few seconds and try again.";
   if (/InvalidTimes/.test(text)) return "Those dates don't work. Pick a start time a little further away.";
-  if (/longer than usual|still loading|sign in again/.test(text)) return (e as Error).message;
+  if (/longer than usual|still loading|sign in again|before rules were locked|rules shown here/.test(text))
+    return (e as Error).message;
   return "That didn't go through. Please try again.";
 }

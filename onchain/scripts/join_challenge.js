@@ -40,6 +40,9 @@ async function main() {
 
   const challenge = new PublicKey(address);
   const state = await program.account.challenge.fetch(challenge);
+  // The test player quotes whatever rules are locked onchain (a real player's browser hashes the rules it showed).
+  const [rules] = PublicKey.findProgramAddressSync([Buffer.from("rules"), challenge.toBuffer()], program.programId);
+  const locked = await program.account.rules.fetch(rules);
   const buyIn = Number(state.buyIn.toString());
 
   if ((await connection.getBalance(player.publicKey)) < 0.02 * LAMPORTS_PER_SOL) {
@@ -56,11 +59,12 @@ async function main() {
   }
 
   const signature = await program.methods
-    .joinChallenge()
+    .joinChallenge(locked.rulesHash)
     .accountsPartial({
       player: player.publicKey,
       challenge,
       vault: state.vault,
+      rules,
       playerToken: playerToken.address,
       tokenProgram: TOKEN_PROGRAM_ID,
     })

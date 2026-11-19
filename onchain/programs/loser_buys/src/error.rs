@@ -38,4 +38,22 @@ pub enum ErrorCode {
     MathOverflow,
     #[msg("Need one share per winner, adding up to exactly 100%")]
     InvalidShares,
+    #[msg("Rules hash must not be empty")]
+    InvalidRulesHash,
+    #[msg("Payout split must be 2 or 3 places, highest first, adding up to 100% (podium only)")]
+    InvalidSplit,
+    #[msg("These are not the rules this challenge was created with")]
+    RulesMismatch,
+    #[msg("This payout is not allowed by the challenge's format")]
+    WrongPayoutKind,
+    #[msg("The payout shares are not the ones the challenge's rules give")]
+    SharesNotAsCommitted,
+    #[msg("Tie groups must cover the paid places and every winner")]
+    InvalidTieGroups,
+    #[msg("Expected the verifier's Ed25519 signature check right before this instruction")]
+    MissingSignatureCheck,
+    #[msg("The signature check is not by this challenge's verifier")]
+    WrongVerifier,
+    #[msg("The signed result is malformed or for another program, challenge or rules")]
+    InvalidSignedResult,
 }

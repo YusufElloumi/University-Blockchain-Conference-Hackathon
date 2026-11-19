@@ -58,6 +58,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
+import hashlib
 import json
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -81,6 +82,7 @@ import fitness
 from fitness import oura, oura_data, oura_sync
 import leaguestats
 import pickrounds
+import rules
 import scores
 import scoring
 import secretbox
@@ -260,17 +262,27 @@ MAX_PLAYERS = 8  # the program's limit per event (onchain/programs/loser_buys/sr
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
-class NewChallenge(BaseModel):
-    address: str
-    name: str = Field(min_length=1, max_length=60)
+class RuleSettings(BaseModel):
+    """Everything that goes into a challenge's ruleset (rules.py), as chosen on the create screen."""
+
     mode: Literal[MODES] = "private"  # type: ignore[valid-type]
-    organizer_name: str | None = Field(default=None, max_length=60)  # required for league events
     scoring_source: Literal["fitness", "league_stats"] = "fitness"  # league_stats: league events only
     stat_weights: dict[Literal["goals", "assists", "points"], float] | None = None
     pick_themes: list[Literal[tuple(pickrounds.THEMES)]] = Field(default_factory=list)  # type: ignore[valid-type]
     round_hours: Literal[pickrounds.ROUND_CHOICES] | None = None  # type: ignore[valid-type]
     format: Literal[formats.FORMATS] = formats.DEFAULT_FORMAT  # type: ignore[valid-type]
     format_config: dict | None = None  # the format's settings; see formats.clean_config
+
+
+class RulesPreview(RuleSettings):
+    length_seconds: int = Field(gt=0)
+    max_players: int = Field(default=8, ge=2, le=8)
+
+
+class NewChallenge(RuleSettings):
+    address: str
+    name: str = Field(min_length=1, max_length=60)
+    organizer_name: str | None = Field(default=None, max_length=60)  # required for league events
 
 
 class InviteCode(BaseModel):
@@ -288,6 +300,11 @@ class NewActivity(BaseModel):
     minutes: float = Field(gt=0, le=24 * 60)
     distance_km: float = Field(default=0, ge=0, le=1000)
     start: datetime | None = None  # when it began; defaults to now
+
+
+def onchain_rules(address: str) -> chain.Rules | None:
+    """The challenge's onchain Rules account (None for challenges made before rules were locked)."""
+    return chain.fetch_rules(Client(chain.RPC_URL), Pubkey.from_string(address))
 
 
 def onchain_challenge(address: str) -> chain.Challenge:
@@ -381,6 +398,19 @@ def _challenge_view(challenge: db.Challenge) -> dict:
         "format_summary": formats.describe(*formats.of(challenge)),
         # Which fitness rules apply, fixed at creation: Proof of Sweat (Oura-verified) or the earlier rules.
         "rules": scores.rules_of(challenge),
+        **_rules_view(challenge),
+    }
+
+
+def _rules_view(challenge: db.Challenge) -> dict:
+    """The locked ruleset as text (so the browser can hash it itself), its hash, and the payout terms."""
+    if not challenge.ruleset:
+        return {"ruleset": None, "rules_hash": None, "payout_terms": None}
+    ruleset = json.loads(challenge.ruleset)
+    return {
+        "ruleset": challenge.ruleset,
+        "rules_hash": hashlib.sha256(challenge.ruleset.encode()).hexdigest(),
+        "payout_terms": {**ruleset["payout"], "label": rules.describe_payout(ruleset["payout"])},
     }
 
 
@@ -420,24 +450,8 @@ def record_challenge(
     state = onchain_challenge(body.address)
     if str(state.creator) != user.wallet_address:
         raise HTTPException(403, "Only the person who created this challenge can set it up.")
-    # Length is read from the chain, never from the browser.
-    length = timedelta(seconds=state.end_time - state.start_time)
-    if not scoring.MIN_LENGTH <= length <= scoring.MAX_LENGTH:
-        raise HTTPException(400, "A challenge must run for at least 15 minutes and at most 365 days.")
-    days = scoring.day_count(datetime.fromtimestamp(state.start_time, timezone.utc),
-                             datetime.fromtimestamp(state.end_time, timezone.utc))
-    if body.scoring_source == "league_stats" and body.mode != "league":
-        raise HTTPException(400, "League stats scoring is for league events only.")
-    if body.stat_weights and not all(0 <= v <= 10 for v in body.stat_weights.values()):
-        raise HTTPException(400, "Stat weights must be between 0 and 10.")
-    themes = list(dict.fromkeys(body.pick_themes))
-    try:
-        format_config = formats.clean_config(body.format, body.format_config,
-                                             league_stats=body.scoring_source == "league_stats", days=days)
-    except formats.FormatError as e:
-        raise HTTPException(400, str(e)) from e
-    if bool(themes) != bool(body.round_hours):
-        raise HTTPException(400, "Choose at least one theme and how often a round opens, or turn picks off.")
+    ruleset, format_config, themes = _ruleset_for(body, state.end_time - state.start_time, state.max_players)
+    _check_locked(onchain_rules(body.address), ruleset)
     challenge = _register(
         session, body.address, state, body.name.strip(), user.id,
         mode=body.mode, organizer_name=organizer if body.mode == "league" else None,
@@ -451,8 +465,61 @@ def record_challenge(
         # The format is fixed here, before anyone else can join, and never changes afterwards.
         challenge.format = body.format
         challenge.format_config = json.dumps(format_config)
+        challenge.ruleset = rules.canonical(ruleset)  # its hash is locked onchain; checked just above
         session.commit()
     return _challenge_view(challenge)
+
+
+def _ruleset_for(body: RuleSettings, length_seconds: int, max_players: int) -> tuple[dict, dict, list[str]]:
+    """Checks the settings and builds the ruleset. Returns (ruleset, cleaned format settings, themes).
+    `length_seconds` comes from the chain for POST /challenges, never from the browser."""
+    length = timedelta(seconds=length_seconds)
+    if not scoring.MIN_LENGTH <= length <= scoring.MAX_LENGTH:
+        raise HTTPException(400, "A challenge must run for at least 15 minutes and at most 365 days.")
+    epoch = datetime.fromtimestamp(0, timezone.utc)
+    days = scoring.day_count(epoch, epoch + length)
+    if body.scoring_source == "league_stats" and body.mode != "league":
+        raise HTTPException(400, "League stats scoring is for league events only.")
+    if body.stat_weights and not all(0 <= v <= 10 for v in body.stat_weights.values()):
+        raise HTTPException(400, "Stat weights must be between 0 and 10.")
+    themes = list(dict.fromkeys(body.pick_themes))
+    try:
+        format_config = formats.clean_config(body.format, body.format_config,
+                                             league_stats=body.scoring_source == "league_stats", days=days)
+    except formats.FormatError as e:
+        raise HTTPException(400, str(e)) from e
+    if bool(themes) != bool(body.round_hours):
+        raise HTTPException(400, "Choose at least one theme and how often a round opens, or turn picks off.")
+    ruleset = rules.build(
+        mode=body.mode, length_seconds=length_seconds, max_players=max_players, fmt=body.format,
+        format_config=format_config, scoring_source=body.scoring_source,
+        stat_weights=body.stat_weights, pick_themes=themes, round_hours=body.round_hours if themes else None,
+    )
+    return ruleset, format_config, themes
+
+
+def _check_locked(locked: chain.Rules | None, ruleset: dict) -> None:
+    """The onchain Rules account must hold exactly this ruleset's hash, payout terms and our verifier."""
+    if locked is None:
+        raise HTTPException(400, "That challenge has no locked rules onchain. Create it again from the app.")
+    terms = ruleset["payout"]
+    if locked.rules_hash != rules.rules_hash(ruleset):
+        raise HTTPException(400, "The rules locked onchain are not the rules you chose. Create it again.")
+    if locked.payout != terms["kind"] or locked.split_bps != terms["split_bps"]:
+        raise HTTPException(400, "The payout locked onchain does not match the format. Create it again.")
+    if locked.verifier != Pubkey.from_string(config.VERIFIER_PUBLIC_KEY):
+        raise HTTPException(400, "That challenge names a different verifier key.")
+
+
+@app.post("/rules")
+def preview_rules(body: RulesPreview) -> dict:
+    """Public and pure: the ruleset for these settings, its hash, and the payout terms to lock onchain.
+
+    The create screen calls this before `create_challenge`, then passes the hash, payout terms and
+    verifier key to the program. POST /challenges checks the chain against the same ruleset.
+    """
+    ruleset, _config, _themes = _ruleset_for(body, body.length_seconds, body.max_players)
+    return rules.preview(ruleset)
 
 
 def _register(
@@ -471,7 +538,7 @@ def _register(
         status=state.status,
         invite_code=_new_invite_code(session),
         # New challenges are scored by Proof of Sweat; the rule set never changes after creation.
-        template=sweat.TEMPLATE if config.NEW_CHALLENGE_RULES == sweat.TEMPLATE else sweat.LEGACY_TEMPLATE,
+        template=rules.fitness_template(),  # the same choice the locked ruleset names
         creator_id=creator_id,
         mode=mode,
         organizer_name=organizer_name,
@@ -498,7 +565,15 @@ def record_join(
         # Created outside the web app (for example by our demo script): record it on first join.
         # Nobody could have shared an invite code for it yet, so it is listed as a public event.
         state = onchain_challenge(address)
+        locked = onchain_rules(address)
+        default = rules.build(mode="public", length_seconds=state.end_time - state.start_time,
+                              max_players=state.max_players, fmt=formats.DEFAULT_FORMAT, format_config={})
+        if locked is not None:
+            _check_locked(locked, default)  # scripts lock the default public rules (POST /rules)
         challenge = _register(session, address, state, "Weekly challenge", None, mode="public")
+        if locked is not None and challenge.ruleset is None:
+            challenge.ruleset = rules.canonical(default)
+            session.commit()
     elif not _can_see(session, challenge, user):
         raise HTTPException(404, "We do not know that challenge.")
     if not _is_player(session, challenge, user):
@@ -656,13 +731,16 @@ def verifier() -> dict:
     """Public: who signs Proof of Effort records, and the scoring rules they vouch for."""
     return {
         "public_key": config.VERIFIER_PUBLIC_KEY,
-        "domain": attest.DOMAIN,
-        "schema": attest.SCHEMA,
+        "domain": attest.DOMAIN_V2.decode(),
+        "schema": attest.SCHEMA_V2,
+        "message_layout": "domain(24) | program(32) | challenge(32) | rules_hash(32) | score_hash(32) | "
+                          "count(1) | winners(32 each) | shares(u16 LE each, basis points)",
         "cluster": attest.CLUSTER,
         "program": str(chain.PROGRAM_ID),
         "rules": {"version": scoring.RULES_VERSION, "sha256": scoring.rules_fingerprint()},
-        "trust": "A proof shows our verifier approved this result and that the score sheet was not changed "
-                 "afterwards. It does not prove a workout happened.",
+        "trust": "The program checks this key's Ed25519 signature on the result before paying, and pays only "
+                 "the signed winners and shares allowed by the rules locked at creation. It does not prove a "
+                 "workout happened. The oracle and verifier are separate keys on the same server.",
     }
 
 
@@ -932,6 +1010,10 @@ def score_sheet(address: str, user: db.User = Depends(current_user), session: Se
     sheet = json.loads(challenge.score_sheet)
     payout = settlement.payout_of(sheet)
     proof = json.loads(challenge.attestation) if challenge.attestation else None
+    problems = None
+    if proof:
+        problems = attest.check_any(proof, challenge=challenge.address, sheet=sheet,
+                                    ruleset_text=challenge.ruleset if proof.get("schema") == attest.SCHEMA_V2 else None)
     return {
         "sheet": sheet,
         # The exact text that was hashed, so a browser can hash it without re-creating Python's JSON.
@@ -940,7 +1022,8 @@ def score_sheet(address: str, user: db.User = Depends(current_user), session: Se
         "sha256": settlement.sheet_hash(sheet).hex(),
         "transaction": challenge.settle_tx,
         "proof": proof,
-        "proof_problems": attest.check(proof, challenge=challenge.address, sheet=sheet) if proof else None,
+        "proof_problems": problems,
+        "ruleset": challenge.ruleset,  # v2 proofs name its hash
     }
 
 

@@ -226,6 +226,16 @@ const PRIVACY: Doc = {
             <li>Wallet addresses, entry deposits and payouts, all in devnet test money.</li>
             <li>Each challenge's settings (entry fee, start and end times) and its winners' wallet addresses and payout shares.</li>
             <li>
+              A SHA-256 hash of the challenge's rules (scoring rules, length, format and so on), locked when the challenge is created.
+              When you join, your deposit is only accepted if it names that same hash. The rules text itself is kept on our server.
+            </li>
+            <li>The payout terms (for example 60 / 30 / 10 for a podium), also locked at creation.</li>
+            <li>
+              The public key of our result verifier, and, in each payout transaction, the verifier's signed result: the challenge, the
+              rules hash, the score-sheet hash, the winners' wallet addresses and their shares. Solana checks that signature before the
+              program pays anyone.
+            </li>
+            <li>
               A salted SHA-256 hash of the final score sheet: a fingerprint that proves the scores were not changed later but reveals
               nothing about them.
             </li>
@@ -236,10 +246,12 @@ const PRIVACY: Doc = {
             <li>Your email address.</li>
           </ul>
           <p>
-            When a challenge ends, our server also signs a result receipt. It holds wallet addresses, payout shares, hashes, the
-            scoring-rules version and times, but no workout data. It is stored on our server and players of that challenge can
-            download it. In Proof of Sweat challenges the score sheet also lists, per player, verified minutes, points, and one
-            salted fingerprint for each workout receipt. A fingerprint reveals nothing about the workout.
+            When a challenge ends, our server signs a result receipt (shown in the app as Proof of Sweat) with a key kept separate from
+            the key that sends payouts. It holds wallet addresses, payout shares, the rules hash and the score-sheet hash, but no workout
+            data. The signed result goes into the payout transaction, as described above, and a copy is stored on our server for players
+            of that challenge to download. Both keys are run by our server. In Proof of Sweat challenges the score sheet also lists, per
+            player, verified minutes, points, and one salted fingerprint for each workout receipt. A fingerprint reveals nothing about
+            the workout.
           </p>
           <p>
             Your wallet address is not shown on screen, but because it appears on the blockchain, anyone who links it to you could see
@@ -478,9 +490,10 @@ const TERMS: Doc = {
               cheating.
             </li>
             <li>
-              A signed result shows that our server approved it and that the scores were not changed afterwards. The Solana program
-              stores the result's fingerprint and enforces the payout conditions. It does not check workouts, and you are trusting
-              Rival's server to have read the Oura records honestly.
+              A signed result shows that our server approved it under the rules locked at creation and that the scores were not
+              changed afterwards. The Solana program stores the result's fingerprint, checks the verifier's signature at payout and
+              enforces the locked payout split. It does not check workouts, and you are trusting Rival's server to have read the Oura
+              records honestly.
             </li>
             <li>If Oura is unavailable, syncing and final scores can be delayed. An outage never adds or removes points by itself.</li>
           </ul>

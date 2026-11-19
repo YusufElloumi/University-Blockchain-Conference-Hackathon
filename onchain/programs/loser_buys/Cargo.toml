@@ -23,6 +23,8 @@ custom-panic = []
 [dependencies]
 anchor-lang = "1.2.2"
 anchor-spl = "1.2.2"
+# Reads the transaction's instruction list (for the Ed25519 check). The version Anchor already uses.
+solana-instructions-sysvar = "=3.0.1"
 
 
 [lints.rust]

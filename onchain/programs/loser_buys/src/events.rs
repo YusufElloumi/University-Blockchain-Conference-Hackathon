@@ -15,6 +15,16 @@ pub struct ChallengeCreated {
     pub max_players: u8,
 }
 
+/// Emitted with `ChallengeCreated`: the rules and payout terms are now fixed.
+#[event]
+pub struct RulesLocked {
+    pub challenge: Pubkey,
+    pub rules_hash: [u8; 32],
+    pub verifier: Pubkey,
+    pub payout: crate::state::PayoutKind,
+    pub split_bps: [u16; 3],
+}
+
 #[event]
 pub struct PlayerJoined {
     pub challenge: Pubkey,

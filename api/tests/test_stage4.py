@@ -11,10 +11,12 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
+from solders.keypair import Keypair
 from solders.pubkey import Pubkey
 from sqlalchemy import create_engine, select
 from sqlalchemy.pool import StaticPool
 
+import attest
 import auth
 import chain
 import config
@@ -28,6 +30,22 @@ from fitness.base import Activity
 from fitness.mock import SAMPLE_WEEK, MockProvider
 
 PRIVY_KEY = ec.generate_private_key(ec.SECP256R1())
+VERIFIER = Keypair()  # stands in for the server's verifier key in every test
+
+
+class _Matches:
+    """Equal to anything. Used for a pretend onchain Rules account that holds whatever rules the API chose."""
+
+    def __eq__(self, other):
+        return True
+
+    def __ne__(self, other):
+        return False
+
+
+# The default pretend Rules account: accepts whatever ruleset the API built. Tests about locked rules
+# replace `fakes.rules` with a real chain.Rules.
+ANY_RULES = SimpleNamespace(rules_hash=_Matches(), payout=_Matches(), split_bps=_Matches(), verifier=_Matches())
 CHALLENGE = "GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc"
 WALLETS = {
     "maya": "6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD",
@@ -149,13 +167,17 @@ def fakes(monkeypatch):
         lambda pid: auth.PrivyUser(pid, pid.split(":")[-1] + "@example.com", WALLETS[pid.split(":")[-1]]),
     )
     monkeypatch.setattr(config, "FITNESS_PROVIDER", "mock")
+    monkeypatch.setattr(attest, "load_verifier", lambda: VERIFIER)
+    monkeypatch.setattr(config, "VERIFIER_PUBLIC_KEY", str(VERIFIER.pubkey()))
     now = datetime.now(timezone.utc)
     onchain = SimpleNamespace(
         creator=WALLETS["maya"], buy_in=1_000_000, status="open", players=[WALLETS["maya"], WALLETS["sam"]],
-        oracle=config.ORACLE_PUBLIC_KEY, mint=config.USDC_MINT,
+        oracle=config.ORACLE_PUBLIC_KEY, mint=config.USDC_MINT, max_players=8,
         start_time=int((now - timedelta(days=2)).timestamp()), end_time=int((now + timedelta(days=5)).timestamp()),
+        rules=ANY_RULES,
     )
     monkeypatch.setattr(main, "onchain_challenge", lambda address: onchain)
+    monkeypatch.setattr(main, "onchain_rules", lambda address: onchain.rules)
     return onchain
 
 
