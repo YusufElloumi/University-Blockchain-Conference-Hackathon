@@ -39,6 +39,12 @@ Play modes (league, public, private; off-chain only):
     GET  /events/public                 open public events anyone can join
     POST /invites/redeem                enter a league or private event's invite code to see and join it
     GET  /me/challenges?mode=           also lists events the caller was invited to
+Oura connection (OAuth only; no Oura data is read yet; see api/fitness/oura.py):
+    GET    /integrations/oura            is Oura available, and is the caller connected
+    POST   /integrations/oura/start      begin connecting: returns Oura's sign-in address
+    GET    /integrations/oura/callback   Oura sends the browser here (no login); parks the code, returns to the web app
+    POST   /integrations/oura/complete   finish connecting as the signed-in user; tokens stay on the server
+    DELETE /integrations/oura            revoke at Oura where possible and delete the stored tokens
 """
 
 from __future__ import annotations
@@ -53,7 +59,7 @@ import json
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from solana.rpc.api import Client
 from solders.pubkey import Pubkey
@@ -69,14 +75,29 @@ import db
 import events
 import formats
 import fitness
+from fitness import oura
 import leaguestats
 import pickrounds
 import scores
 import scoring
+import secretbox
 import settlement
 import treasury
 
 log = logging.getLogger("loser_buys")
+
+
+class _HideOAuthQuery(logging.Filter):
+    """Keeps Oura's one-time code and state out of the server's request log."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and str(args[2]).startswith("/integrations/oura/callback?"):
+            record.args = (*args[:2], "/integrations/oura/callback?[hidden]", *args[3:])
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_HideOAuthQuery())
 
 
 @asynccontextmanager
@@ -951,3 +972,64 @@ def disconnect_fitness(user: db.User = Depends(current_user), session: Session =
     """Disconnect: deletes the caller's fitness data and their points in unsettled challenges. They stay in the pool."""
     scores.forget_user(session, user.id)
     return {"disconnected": True}
+
+
+# ---------- Oura connection (OAuth only) ----------
+
+
+class OuraStart(BaseModel):
+    return_to: str = Field(max_length=500)  # the web app page to come back to; must be one of WEB_ORIGIN
+
+
+class OuraComplete(BaseModel):
+    state: str = Field(min_length=20, max_length=200)
+
+
+def _oura(action):
+    """Runs an Oura step, turning its errors into plain HTTP errors (messages never hold tokens)."""
+    try:
+        return action()
+    except oura.OuraError as e:
+        raise HTTPException(e.status, str(e)) from None
+    except secretbox.NotConfigured:
+        log.error("Oura: TOKEN_ENCRYPTION_KEY is missing or wrong")
+        raise HTTPException(503, "Connecting Oura isn't available on this server yet.") from None
+
+
+@app.get("/integrations/oura")
+def oura_status(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    return oura.status(session, user.id)
+
+
+@app.post("/integrations/oura/start")
+def oura_start(body: OuraStart, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    return {"url": _oura(lambda: oura.start(session, user.id, body.return_to))}
+
+
+@app.get("/integrations/oura/callback", include_in_schema=False)
+def oura_callback(
+    state: str | None = None, code: str | None = None, error: str | None = None,
+    session: Session = Depends(db.get_session),
+) -> RedirectResponse:
+    """Oura's redirect. No Rival login here, so nothing is connected yet: the web app finishes it."""
+    try:
+        target = oura.callback(session, state, code, error)
+    except secretbox.NotConfigured:
+        log.error("Oura: TOKEN_ENCRYPTION_KEY is missing or wrong")
+        target = oura.back_to(oura.fallback_return(), oura="error", reason="unavailable")
+    response = RedirectResponse(target, status_code=303)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@app.post("/integrations/oura/complete")
+def oura_complete(body: OuraComplete, user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    _oura(lambda: oura.complete(session, user.id, body.state))
+    return oura.status(session, user.id)
+
+
+@app.delete("/integrations/oura")
+def oura_disconnect(user: db.User = Depends(current_user), session: Session = Depends(db.get_session)) -> dict:
+    revoked = _oura(lambda: oura.disconnect(session, user.id))
+    return {**oura.status(session, user.id), "revoked": revoked}

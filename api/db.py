@@ -1,10 +1,11 @@
 """Database setup and tables. SQLite locally, Postgres when deployed (same code through SQLAlchemy).
 
-Eleven tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
+Twelve tables: the six in the plan, plus `logged_activities` (activities typed into our own app by
 the mock and manual sources; Strava activities are never stored there), `invites` (who has redeemed
 the invite code of a league or private event),
 `pick_rounds` and `round_picks` (prediction rounds on Gemini markets), and `league_stats` (rows of a
-league's stat sheet, uploaded by the organizer).
+league's stat sheet, uploaded by the organizer), and `oauth_states` (attempts to connect an outside
+account such as Oura, each bound to one user, short-lived and single-use).
 
 A database made before Nov 17 may still hold an unused `picks` table from the old pick'em tiebreaker
 (removed: Gemini is only used through prediction rounds, and ties always split). It is left alone.
@@ -75,7 +76,10 @@ def _now() -> datetime:
 
 
 class FitnessConnection(Base):
-    """A user's link to an outside fitness service (Strava). Not used by the mock and manual sources."""
+    """A user's link to an outside fitness service (Oura; Strava later). Not used by the mock and manual sources.
+
+    Tokens are encrypted with api/secretbox.py and never leave the server.
+    """
 
     __tablename__ = "fitness_connections"
     __table_args__ = (UniqueConstraint("user_id", "provider"),)
@@ -88,6 +92,29 @@ class FitnessConnection(Base):
     refresh_token_enc: Mapped[str | None] = mapped_column(Text)
     token_expires_at: Mapped[datetime | None]
     connected_at: Mapped[datetime] = mapped_column(default=_now)
+    scopes: Mapped[str | None]  # permissions granted, space-separated, e.g. "workout heartrate"
+
+
+class OAuthState(Base):
+    """One "connect an outside account" attempt, from pressing Connect to finishing (api/fitness/oura.py).
+
+    Binds the attempt to the Rival user who started it. Only a hash of the `state` value is stored.
+    Expires after a few minutes and can be finished once.
+    """
+
+    __tablename__ = "oauth_states"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    state_hash: Mapped[str] = mapped_column(unique=True, index=True)  # SHA-256 of the state, hex
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str]
+    code_verifier_enc: Mapped[str | None] = mapped_column(Text)  # PKCE secret, encrypted; cleared after use
+    code_enc: Mapped[str | None] = mapped_column(Text)  # the provider's one-time code, encrypted; cleared after use
+    return_to: Mapped[str]  # the web app page to send the browser back to (checked against WEB_ORIGIN)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+    expires_at: Mapped[datetime]
+    returned_at: Mapped[datetime | None]  # the provider sent the browser back
+    used_at: Mapped[datetime | None]  # finished (or cancelled); never usable again
 
 
 class Challenge(Base):

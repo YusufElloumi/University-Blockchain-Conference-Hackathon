@@ -7800,3 +7800,45 @@ input[type="checkbox"] {
     color: var(--text);
   }
 }
+
+/* =========================================================================================
+   23. Oura Ring card on the dashboard rail (connection only).
+   ========================================================================================= */
+
+.oura-card {
+  display: grid;
+  gap: 12px;
+}
+
+.oura-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.oura-line {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.oura-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.oura-card .btn {
+  justify-self: start;
+}
+
+.oura-card .fine,
+.oura-card .error-text {
+  margin: 0;
+}
+
+.oura-note {
+  color: var(--green);
+}
