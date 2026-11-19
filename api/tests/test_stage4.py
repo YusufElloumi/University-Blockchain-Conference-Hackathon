@@ -320,6 +320,19 @@ def test_disconnect_deletes_activities_and_points(client, challenge):
     assert players["maya"]["points"] == 0 and players["sam"]["points"] == 1  # still in the pool, score zero
 
 
+def test_delete_my_workouts_covers_every_in_app_source(client, challenge, monkeypatch):
+    """The "Delete my workouts" button: mock and manual workouts share a table, and both go."""
+    client.post("/me/activities", json={"type": "run", "minutes": 30}, headers=make_token("maya"))
+    monkeypatch.setattr(config, "FITNESS_PROVIDER", "manual")
+    client.post("/me/activities", json={"type": "walk", "minutes": 30, "start": (
+        datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()}, headers=make_token("maya"))
+    with db.SessionLocal() as session:
+        assert session.query(db.LoggedActivity).count() == 2
+    assert client.delete("/me/fitness", headers=make_token("maya")).status_code == 200
+    with db.SessionLocal() as session:
+        assert session.query(db.LoggedActivity).count() == 0
+
+
 # ---------- Stage 5: what the screens need ----------
 
 

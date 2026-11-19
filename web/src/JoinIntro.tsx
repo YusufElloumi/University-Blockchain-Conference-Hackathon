@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StatWeights } from "./api";
-import { usdc } from "./format";
+import { termLabel, usdc } from "./format";
 import { FORMAT_INFO, goalUnit, payoutTitle, type Format, type FormatConfig } from "./formats";
 import {
   ChevronsUp,
@@ -40,19 +40,6 @@ const STAT_LINES: { key: keyof StatWeights; Icon: LucideIcon; one: string }[] = 
   { key: "assists", Icon: Handshake, one: "assist" },
   { key: "points", Icon: ClipboardList, one: "stat point" },
 ];
-
-/** "15 minutes", "1 day", "1 week", "1 month", "3 days"... */
-export function termLabel(ms: number): string {
-  const minutes = Math.round(ms / 60000);
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"}`;
-  const days = Math.round(hours / 24);
-  if (days === 7) return "1 week";
-  if (days >= 28 && days <= 31) return "1 month";
-  if (days % 7 === 0) return `${days / 7} weeks`;
-  return `${days} day${days === 1 ? "" : "s"}`;
-}
 
 /** One sentence on how this event pays, finishing "After 1 week, ...". */
 function payoutLine(format: Format, config: FormatConfig): string {

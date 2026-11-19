@@ -51,8 +51,6 @@ class LoggedProvider(FitnessProvider):
         return self._to_activity(row)
 
     def disconnect(self, session: Session, user_id: int) -> None:
-        session.execute(
-            delete(db.LoggedActivity).where(
-                db.LoggedActivity.user_id == user_id, db.LoggedActivity.source == self.name
-            )
-        )
+        # Mock and manual share this table, so a user's workouts from either source are deleted
+        # (otherwise switching FITNESS_PROVIDER would leave the other source's rows behind).
+        session.execute(delete(db.LoggedActivity).where(db.LoggedActivity.user_id == user_id))

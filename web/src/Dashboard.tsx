@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ArrowUpRight, ChevronRight, CircleHelp, LogOut, Pencil, Plus } from "lucide-react";
+import { ArrowRight, ArrowUpRight, ChevronRight, CircleHelp, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
 import type { ChallengeState, ChallengeView, Me, MyEvent } from "./api";
 import type { Session } from "./App";
 import { EventRow, eventStatus, InviteCodeBox } from "./events";
@@ -248,6 +248,8 @@ export default function Dashboard(props: {
 
           <OuraCard session={session} />
 
+          <DeleteWorkouts call={call} />
+
           <div className="rail-links">
             <button className="rail-link" onClick={() => go({ view: "help" })}>
               <CircleHelp size={16} aria-hidden /> How Rival works <ChevronRight size={15} aria-hidden />
@@ -313,5 +315,60 @@ function CompetitionCard(props: { event: MyEvent; now: number; standing?: Standi
         </span>
       </span>
     </button>
+  );
+}
+
+/**
+ * "Delete my workouts": DELETE /me/fitness removes every workout you logged, revokes and removes the Oura
+ * connection with its imported workouts and saved receipts, and removes your points in
+ * challenges that have not finished. You stay in those pools. Finished results are kept.
+ * The confirm step is part of the card, not a browser dialog.
+ */
+function DeleteWorkouts({ call }: { call: Session["call"] }) {
+  const [step, setStep] = useState<"idle" | "confirm" | "busy" | "done" | "error">("idle");
+  async function remove() {
+    setStep("busy");
+    try {
+      await call("DELETE", "/me/fitness");
+      setStep("done");
+    } catch (e) {
+      console.error(e);
+      setStep("error");
+    }
+  }
+  return (
+    <section className="card data-card">
+      <Eyebrow>Your data</Eyebrow>
+      {step === "confirm" || step === "busy" ? (
+        <>
+          <p className="muted">
+            This deletes every workout you have logged, disconnects Oura and deletes the workouts imported from it, and removes
+            your points in challenges that have not finished. You stay in those challenges with zero points. Finished results
+            are kept. This cannot be undone.
+          </p>
+          <div className="btn-row">
+            <button className="btn btn-danger btn-sm" onClick={remove} disabled={step === "busy"}>
+              {step === "busy" ? "Deleting..." : "Yes, delete them"}
+            </button>
+            <button className="btn btn-text btn-sm" onClick={() => setStep("idle")} disabled={step === "busy"}>
+              Keep them
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <button className="btn btn-quiet btn-sm btn-block" onClick={() => setStep("confirm")}>
+            <Trash2 size={15} aria-hidden /> Delete my workouts
+          </button>
+          <p className="fine" role="status">
+            {step === "done"
+              ? "Done. Your workouts and unfinished-challenge points are deleted, and Oura is disconnected. Reload to refresh this page."
+              : step === "error"
+                ? "That didn't work. Try again in a moment."
+                : "Removes your logged and Oura-imported workouts, disconnects Oura, and clears your points in unfinished challenges."}
+          </p>
+        </>
+      )}
+    </section>
   );
 }

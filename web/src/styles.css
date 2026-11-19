@@ -7952,8 +7952,7 @@ input[type="checkbox"] {
   font-weight: 600;
 }
 
-/* =========================================================================================
-   25. Proof of Sweat: the workouts tab, receipts, leaderboard indicator.
+/* ==================================================================================   25. Proof of Sweat: the workouts tab, receipts, leaderboard indicator.
    Blue = verified with strong evidence, green = points, amber = limited evidence.
    ========================================================================================= */
 
@@ -8428,4 +8427,20 @@ input[type="checkbox"] {
     margin: 0 10px 12px;
     padding: 14px;
   }
+}
+
+/* Custom challenge length: a number next to an hours/days switch. */
+.length-input {
+  display: grid;
+  grid-template-columns: minmax(0, 120px) minmax(0, 200px);
+  gap: 8px;
+  align-items: center;
+}
+
+.length-input .segmented {
+  margin-top: 0;
+}
+
+.length-input input[aria-invalid="true"] {
+  border-color: var(--danger);
 }

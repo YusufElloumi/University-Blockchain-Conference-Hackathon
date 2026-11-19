@@ -197,6 +197,12 @@ const PRIVACY: Doc = {
               <b>League organizers:</b> the stat sheets they upload and which player is matched to which sheet name.
             </li>
             <li>
+              <b>Rival admins:</b> the Rival team members on our admin list can open any challenge, including private and league
+              ones, and can end it early so it pays out by the current standings. We use this to run demos and fix stuck
+              challenges. An admin who is not playing sees the challenge's details and feed, not its leaderboard, and never sees your
+              workouts.
+            </li>
+            <li>
               <b>Anyone:</b> information on the public blockchain (next section) and the details of public events listed for anyone
               to join.
             </li>
@@ -279,8 +285,14 @@ const PRIVACY: Doc = {
               results and a random value. It holds no times, no Oura IDs and no heart-rate data.
             </li>
             <li>
-              <b>Workouts logged by hand, and full deletion.</b> There is no button yet for deleting hand-logged workouts, your saved
-              receipts or your whole account. Email us and we will delete them, within 72 hours for anything that came from Oura.
+              <b>Deleting your workouts.</b> Use <b>Delete my workouts</b> on your home screen in the app. It deletes every workout
+              you have logged, disconnects Oura (revoking Rival's access and deleting your imported workouts and saved receipts),
+              and removes your points in challenges that have not finished. You stay in those challenges with zero points. It
+              cannot be undone.
+            </li>
+            <li>
+              <b>Deleting your account.</b> There is no in-app account deletion yet. Email us and we will remove your account record
+              by hand, within 72 hours for anything that came from Oura.
               Privy keeps its own login records under its own privacy policy.
             </li>
             <li>

@@ -331,9 +331,13 @@ def _is_invited(session: Session, challenge: db.Challenge, user: db.User) -> boo
 
 
 def _can_see(session: Session, challenge: db.Challenge, user: db.User) -> bool:
-    """Public events are open to everyone. League and private events need an invite (or being in them)."""
+    """Public events are open to everyone. League and private events need an invite (or being in them).
+
+    Rival admins (ADMIN_EMAILS) can open any event, to run demos and end stuck challenges. The legal pages say so.
+    """
     return (
         _mode(challenge) == "public"
+        or _is_admin(user)
         or challenge.creator_id == user.id
         or _is_player(session, challenge, user)
         or _is_invited(session, challenge, user)
@@ -416,6 +420,12 @@ def record_challenge(
     state = onchain_challenge(body.address)
     if str(state.creator) != user.wallet_address:
         raise HTTPException(403, "Only the person who created this challenge can set it up.")
+    # Length is read from the chain, never from the browser.
+    length = timedelta(seconds=state.end_time - state.start_time)
+    if not scoring.MIN_LENGTH <= length <= scoring.MAX_LENGTH:
+        raise HTTPException(400, "A challenge must run for at least 15 minutes and at most 365 days.")
+    days = scoring.day_count(datetime.fromtimestamp(state.start_time, timezone.utc),
+                             datetime.fromtimestamp(state.end_time, timezone.utc))
     if body.scoring_source == "league_stats" and body.mode != "league":
         raise HTTPException(400, "League stats scoring is for league events only.")
     if body.stat_weights and not all(0 <= v <= 10 for v in body.stat_weights.values()):
@@ -423,7 +433,7 @@ def record_challenge(
     themes = list(dict.fromkeys(body.pick_themes))
     try:
         format_config = formats.clean_config(body.format, body.format_config,
-                                             league_stats=body.scoring_source == "league_stats")
+                                             league_stats=body.scoring_source == "league_stats", days=days)
     except formats.FormatError as e:
         raise HTTPException(400, str(e)) from e
     if bool(themes) != bool(body.round_hours):
