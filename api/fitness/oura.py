@@ -293,9 +293,17 @@ def access_token(session: Session, user_id: int) -> str:
 # ---------- status and disconnect ----------
 
 
+def granted_scopes(raw: str | None) -> set[str]:
+    """Permission names as we ask for them. Oura's newer sign-in server reports them with a prefix
+    ("extapi:workout"), the older one without ("workout"); either way we compare the plain name.
+    The raw value is stored unchanged."""
+    names = (raw or "").replace(",", " ").split()
+    return {name.removeprefix("extapi:") for name in names}
+
+
 def status(session: Session, user_id: int) -> dict:
     connection = _connection(session, user_id)
-    granted = set((connection.scopes or "").split()) if connection else set()
+    granted = granted_scopes(connection.scopes) if connection else set()
     return {
         "available": is_configured(),
         "connected": connection is not None,
