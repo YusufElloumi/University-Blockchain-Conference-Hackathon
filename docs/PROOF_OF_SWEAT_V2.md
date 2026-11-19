@@ -159,8 +159,7 @@ reference is frozen; otherwise retention is as in v1. Deleted on disconnect.
 - Pace ignores terrain and stops, which is why its effect is small.
 - The Evidence Index and the factors are engineering and game-design heuristics, not validated
   measures of authenticity, exertion or energy use. Nothing here is medical.
-- "Goal" format challenges that target points were tuned for small numbers (target up to 100);
-  with v2 a point goal is reached far sooner. Use active days as the goal, or revisit the limit.
+- The goal format counts active days only. Points targets were removed for new events; events that already locked one still settle by it.
 
 ## Live test checklist (none of this has been done yet)
 

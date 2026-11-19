@@ -95,13 +95,9 @@ def test_active_days_goal_cannot_exceed_the_days(client, fakes, name, most):
     assert reply.status_code == 200 and reply.json()["format_config"]["target"] == most
 
 
-def test_365_days_allows_the_largest_goal_and_points_goals_are_not_limited_by_days(client, fakes):
-    set_length(fakes, LENGTHS["36 hours"])
-    assert create(client, format="goal", format_config={"metric": "points", "target": 50}).status_code == 200
+def test_365_days_allows_the_largest_goal_and_points_goals_are_refused(client, fakes):
     set_length(fakes, LENGTHS["365 days"])
-    with db.SessionLocal() as session:
-        session.query(db.Challenge).delete()
-        session.commit()
+    assert create(client, format="goal", format_config={"metric": "points", "target": 50}).status_code == 400
     assert create(client, format="goal", format_config={"metric": "active_days", "target": 100}).status_code == 200
 
 
