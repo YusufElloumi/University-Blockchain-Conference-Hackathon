@@ -92,3 +92,16 @@ TOKEN_ENCRYPTION_KEY = os.environ.get("TOKEN_ENCRYPTION_KEY", "").strip()
 
 # "Add test funds": devnet USDC the server sends once per user (stands in for a card payment).
 TEST_FUNDS_UNITS = int(float(os.environ.get("TEST_FUNDS_USDC") or 5) * 10**USDC_DECIMALS)
+
+# SIMULATED treasury yield (api/liquidity.py, api/yieldsim.py). No real funds are ever lent.
+SIM_GRACE_HOURS = float(os.environ.get("GRACE_HOURS") or 12)  # wait after the end for late syncs
+SIM_WITHDRAW_HOURS = float(os.environ.get("WITHDRAW_HOURS") or 0)  # time to withdraw from the protocol
+SIM_SAFETY_HOURS = float(os.environ.get("SAFETY_HOURS") or 24)  # extra margin before payout
+SIM_BUFFER_PCT = float(os.environ.get("BUFFER_PCT") or 0.15)  # share of eligible funds never lent
+SIM_LIQUIDITY_CAP_PCT = float(os.environ.get("LIQUIDITY_CAP_PCT") or 0.02)  # max share of protocol liquidity
+SIM_APY = float(os.environ.get("APY") or 0.05)  # fallback yield rate
+SIM_REBALANCE_MINUTES = 15  # /internal/tick rebalances at most this often
+# Jupiter Lend Earn's public token list (live USDC supply rate). Optional key; keyless access is rate-limited.
+JUPITER_LEND_TOKENS_URL = "https://api.jup.ag/lend/v1/earn/tokens"
+JUPITER_API_KEY = os.environ.get("JUPITER_API_KEY", "").strip()
+SIM_LIVE_RATE = (os.environ.get("SIM_LIVE_RATE") or "1") != "0"  # 0 = always use the fallback APY (tests)
