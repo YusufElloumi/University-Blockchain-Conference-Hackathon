@@ -1095,6 +1095,13 @@ input[type="checkbox"] {
   filter: contrast(1.12) brightness(0.82);
 }
 
+/* Photos are shown fully black and white: the one-colour treatment stays on the hero film only. */
+.photo img,
+.film img,
+.starter > img {
+  filter: grayscale(1) contrast(1.12) brightness(0.82);
+}
+
 .photo::after,
 .film::after {
   content: "";
