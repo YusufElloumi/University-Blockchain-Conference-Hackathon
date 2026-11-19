@@ -68,6 +68,8 @@ def _read(data: bytes, pos: int, kind) -> tuple[object, int]:
         return str(Pubkey.from_bytes(data[pos : pos + 32])), pos + 32
     if kind == "u8":
         return data[pos], pos + 1
+    if kind == "u16":
+        return struct.unpack_from("<H", data, pos)[0], pos + 2
     if kind == "u64":
         return struct.unpack_from("<Q", data, pos)[0], pos + 8
     if kind == "i64":
@@ -89,6 +91,10 @@ def _read(data: bytes, pos: int, kind) -> tuple[object, int]:
             item, pos = _read(data, pos, inner)
             items.append(item)
         return items, pos
+    if isinstance(kind, dict) and "defined" in kind:  # a simple enum (PayoutKind): one byte, the variant's index
+        variants = _TYPES[kind["defined"]["name"]].get("variants")
+        if variants and all("fields" not in v for v in variants):
+            return variants[data[pos]]["name"], pos + 1
     raise ValueError(f"Unsupported event field type: {kind}")
 
 

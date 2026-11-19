@@ -9,7 +9,7 @@ import chain
 import formats
 from formats import Entry
 from test_stage4 import CHALLENGE, WALLETS, client, fakes, make_token, state  # noqa: F401
-from test_stage6 import fake_chain, workout  # noqa: F401
+from test_stage6 import fake_chain, program_checks, workout  # noqa: F401
 
 FULL = formats.FULL
 
@@ -118,10 +118,16 @@ def test_tied_teams_split_among_everyone_on_them():
 @pytest.fixture
 def split_chain(monkeypatch, fakes, fake_chain):
     """Also records settle_split, like the program would."""
-    def settle_split(client, oracle, address, winners, shares_bps, score_hash):
-        assert time.time() >= fakes.end_time and sum(shares_bps) == FULL
+    def settle_split(client, oracle, address, winners, groups, verifier, message, signature):
+        assert time.time() >= fakes.end_time
+        rules, fields = program_checks(address, winners, verifier, message, signature)
+        assert rules.payout == "podium", "WrongPayoutKind"
+        # The program works the shares out itself from the locked split; the signed ones must match.
+        shares_bps = formats.podium_shares(rules.split_bps, len(fakes.players), groups)
+        assert [p["bps"] for p in fields["payout"]] == shares_bps, "SharesNotAsCommitted"
         fakes.status = "settled"
-        fake_chain.append(("settle_split", [str(w) for w in winners], shares_bps, score_hash))
+        fake_chain.append(("settle_split", [str(w) for w in winners], shares_bps,
+                           bytes.fromhex(fields["score_sheet_sha256"])))
         return "split-sig"
     monkeypatch.setattr(chain, "settle_split", settle_split)
     return fake_chain

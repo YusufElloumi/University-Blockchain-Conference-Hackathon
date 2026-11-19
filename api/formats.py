@@ -101,12 +101,14 @@ class Entry:
 
 @dataclass
 class Payout:
-    shares: list[tuple[str, int]]  # (wallet, basis points), largest share first; adds up to FULL
+    shares: list[tuple[str, int]]  # (wallet, basis points) in payout order (rank order); adds up to FULL
     note: str  # one plain sentence for the feed and the result screen
     # True: pay with the program's plain `settle`, which splits the pool equally down to the last unit.
-    # False: pay with `settle_split` and these exact shares.
+    # False: a podium, paid with `settle_split`; the program works the shares out again from the split
+    # locked at creation and `groups`, and pays only if they match.
     equal: bool = True
     goal_missed: bool = False  # goal format: nobody made it, so everyone got their entry fee back
+    groups: list[int] | None = None  # podium: how many players share each paid rank, in order
 
     @property
     def wallets(self) -> list[str]:
@@ -131,22 +133,41 @@ def winner_takes_all(entries: list[Entry]) -> Payout:
     return Payout(_equal(top), "Top scorer takes the pool." if len(top) == 1 else "A tie at the top splits the pool.")
 
 
+def podium_shares(split_bps: list[int], player_count: int, groups: list[int]) -> list[int]:
+    """Podium shares in basis points, in rank order. The same rule the program applies in `settle_split`
+    (onchain/programs/loser_buys/src/instructions/settle.rs, `podium_shares`); keep the two identical.
+
+    Places nobody can fill (fewer players than places) go to first place. Players tied at a rank share
+    the places they cover equally; the rounding goes to the first of them.
+    """
+    places = [s for s in split_bps if s][:player_count]
+    places[0] += FULL - sum(places)
+    shares: list[int] = []
+    rank = 0
+    for size in groups:
+        if size < 1 or rank >= len(places):
+            raise ValueError("every tie group must start on a paid place")
+        pot = sum(places[rank : rank + size])  # the places they cover (may run past the paid places)
+        each = pot // size
+        shares += [pot - each * (size - 1)] + [each] * (size - 1)
+        rank += size
+    if rank < len(places):
+        raise ValueError("the tie groups must cover every paid place")
+    return shares
+
+
 def podium(entries: list[Entry], percents: list[int]) -> Payout:
     ranked = _ordered(entries)
-    places = [p * FULL // 100 for p in percents[: len(ranked)]]
-    places[0] += FULL - sum(places)  # places nobody can fill, and rounding, go to first
-    shares: dict[str, int] = {}
+    paid_places = min(len(percents), len(ranked))
+    groups: list[int] = []
     i = 0
-    while i < len(ranked) and i < len(places):
-        group = [e for e in ranked[i:] if e.points == ranked[i].points]  # everyone tied at this rank
-        pot = sum(places[i : i + len(group)])  # the places they cover (may run past the paid places)
-        each = pot // len(group)
-        for e in group:
-            shares[e.wallet] = each
-        shares[group[0].wallet] += pot - each * len(group)
-        i += len(group)
-    paid = sorted(((w, s) for w, s in shares.items() if s > 0), key=lambda ws: -ws[1])
-    return Payout(paid, f"Podium split {'/'.join(map(str, percents))}.", equal=len(paid) == 1)
+    while i < paid_places:
+        groups.append(sum(1 for e in ranked[i:] if e.points == ranked[i].points))  # everyone tied at this rank
+        i += groups[-1]
+    shares = podium_shares([p * 100 for p in percents], len(ranked), groups)
+    winners = [e.wallet for e in ranked[:i]]  # rank order, as the program pays them
+    return Payout(list(zip(winners, shares)), f"Podium split {'/'.join(map(str, percents))}.", equal=False,
+                  groups=groups)
 
 
 def goal_progress(entry: Entry, config: dict) -> float:

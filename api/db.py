@@ -139,6 +139,9 @@ class Challenge(Base):
     settle_tx: Mapped[str | None]  # the transaction that paid out or refunded
     score_sheet: Mapped[str | None] = mapped_column(Text)  # final points as JSON; its hash is stored onchain
     attestation: Mapped[str | None] = mapped_column(Text)  # Proof of Effort JSON (attest.py); offchain only
+    # The canonical JSON ruleset (rules.py) whose SHA-256 is locked onchain in the challenge's Rules
+    # account. None for challenges created before rules were locked: those can only be refunded.
+    ruleset: Mapped[str | None] = mapped_column(Text)
     # Where the main points come from: None or "fitness" (players log workouts), or "league_stats" (league only).
     scoring_source: Mapped[str | None]
     stat_weights: Mapped[str | None] = mapped_column(Text)  # JSON {"goals": 2, "assists": 1, "points": 0}
