@@ -76,7 +76,7 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Task | Command | Where |
 |---|---|---|
 | Build program | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh build` | repo root, PowerShell (verified Nov 14) |
-| Test program | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh test --validator legacy` | repo root (verified Nov 18, 13 passing) |
+| Test program | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh test --validator legacy` | repo root (verified Nov 18, 24 passing on branch `locked-rules`) |
 | Deploy to devnet | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh deploy --provider.cluster devnet` | repo root (verified Nov 14) |
 | Devnet smoke test | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh smoke` | repo root (verified Nov 14) |
 | Oracle from Python | `python chain.py show\|end-early\|settle <challenge> [winners]` with `ORACLE_KEYPAIR_PATH` set | `api/`, venv (verified Nov 14) |
@@ -84,11 +84,11 @@ Rows marked "verified" have been run successfully; the rest are planned.
 | Short test challenge | `wsl -d Ubuntu -- env START_IN_HOURS=0.06 LENGTH_HOURS=0.05 bash -l scripts/wsl_anchor.sh create-challenge`, then `join <address> 1` and `join <address> 2` | repo root (verified Nov 18) |
 | Devnet SOL | https://faucet.solana.com (`solana airdrop 2` is rate-limited) | browser |
 | Run API | `.venv\Scripts\python.exe -m uvicorn main:app --reload` | `api/` (verified Nov 14) |
-| Test API | `.venv\Scripts\python.exe -m pytest` (macOS: `.venv/bin/python -m pytest`) | `api/` (verified Nov 18 on Windows, 191 passing) |
+| Test API | `.venv\Scripts\python.exe -m pytest` (macOS: `.venv/bin/python -m pytest`) | `api/` (verified Nov 18 on Windows, 250 passing on `locked-rules`) |
 | Check a Proof of Effort file | `.venv\Scripts\python.exe attest.py verify <proof.json>` (file from "Download proof"; reads the hash from devnet) | `api/` (verified Nov 18) |
 | Run web | `npm run dev` (http://localhost:5173) | `web/` (verified Nov 14) |
 | Build web | `npm run build` | `web/` (verified Nov 14) |
-| Create a demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` then put the printed address in `VITE_DEMO_CHALLENGE` | repo root (verified Nov 14) |
+| Create a demo challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh create-challenge` then put the printed address in `VITE_DEMO_CHALLENGE`. The locked ruleset comes from `api/rules.py default <hours>` run through the Windows venv (or set `RULES_API=<api address>`) | repo root (verified Nov 18, locked rules) |
 | Add a test player to a challenge | `wsl -d Ubuntu -- bash -l scripts/wsl_anchor.sh join <challenge address>` (uses the `smoke-player-2` wallet; the treasury pays its buy-in) | repo root (verified Nov 14) |
 | Run the scheduler step by hand | `POST http://localhost:8000/internal/tick` with header `X-Tick-Secret: <TICK_SECRET from .env>` | anywhere (verified Nov 14) |
 | Rebuild plan PDF | `C:\Python313\python.exe scripts/build_plan_pdf.py` (the API venv has no `reportlab`) | repo root (verified Nov 14) |
@@ -124,7 +124,7 @@ Fill in as they are created. Public addresses only - never keys.
 
 | Item | Value |
 |---|---|
-| Program ID (`loser_buys`, devnet) | `FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC` (deployed Nov 14; upgraded Nov 18 with `settle_split`) |
+| Program ID (`loser_buys`, devnet) | `FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC` (deployed Nov 14; upgraded Nov 18 with `settle_split`; upgraded Nov 18 10:45 PM CST with locked rules, tx `4aRo4P5dq2yoFYR4dhdVktXCuTdH8CncVeu8b25ecMaQFm9an6iHxggPi8VTVXfoddz1at8NavUseRc8oDghHXBs`. The optional onchain IDL metadata write failed; nothing uses it) |
 | Deploy wallet public key (pays for deploys, upgrade authority) | `AYvBmTfVifruj1XMCGu5pJShLWqo9wYEa1gJFd6pT9re` |
 | Oracle public key | `6EEkAR114PYKhJJCWBiJLb342VAMNF69H6dmAB8MtFdD` |
 | Verifier public key (signs Proof of Effort results; keypair `~/.config/solana/loser-buys/verifier.json` in WSL, `VERIFIER_KEYPAIR_PATH` in `.env`, needs `VERIFIER_KEYPAIR` on Render) | `5hapcEHu65LyQhqD3Tqtrwm1ftzBnAm93c6jnc8gcway` (created Nov 18) |
@@ -133,7 +133,7 @@ Fill in as they are created. Public addresses only - never keys.
 | QuickNode Stream ID | `daf4568b-a005-4eea-aa1a-732df56eb9ff` (created Nov 14, free plan, no card asked; also in `.env` as `QUICKNODE_STREAM_ID`) |
 | Stream network / dataset / destination | Solana Devnet / Programs + Logs / webhook `POST /webhooks/quicknode` (verified Nov 14 through a cloudflared tunnel; the tunnel address changes on every restart, so update the Stream's destination URL each time until the API is deployed) |
 | Privy app ID | In `.env` as `PRIVY_APP_ID` and `VITE_PRIVY_APP_ID` (set Nov 14) |
-| Demo challenge (devnet, 1 USDC buy-in, joining closes Nov 16 about 4:30 PM CST) | `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` |
+| Demo challenge (devnet, 1 USDC buy-in, rules locked, public winner takes all, joining closes Sat Nov 21 about 10:52 PM CST, ends Nov 28) | `8ciBFCVdQcC21RpC6ot83zHPfPiRXvGh44M3z4aMSbGf` (created Nov 18; rules hash `3298fa64...`). The old demo `GNLFdSczFf1GgYXwF1nPLwzTL4Jz5QJrknAMS67vDDc` has no rules account: refund-only, 72 hours after it ends Nov 23 |
 | Neon database | Project `loser buys`, ID `noisy-truth-03069747`, branch `production`, AWS Oregon (created Nov 15, free plan). Addresses are in `.env.local`: `DATABASE_URL` (pooled, the one for Render) and `DATABASE_URL_UNPOOLED` |
 | Strava app (client ID) | TBD or not used |
 | Oura app redirect URI | `https://loser-buys-api.onrender.com/integrations/oura/callback` (client ID and secret only in Render and `.env`: `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, `OURA_REDIRECT_URI`, plus `TOKEN_ENCRYPTION_KEY`) |
@@ -185,3 +185,4 @@ Fill in as they are created. Public addresses only - never keys.
 - 2026-11-19: **Oura connection (OAuth only).** `api/fitness/oura.py`. Three steps because Oura's redirect carries no Rival login: start (signed in) -> callback (parks the encrypted code on a hashed, single-use, 10-minute `oauth_states` row) -> complete (signed in; must be the same user). PKCE S256. Scopes `workout heartrate` only. Tokens encrypted with Fernet (`api/secretbox.py`, `TOKEN_ENCRYPTION_KEY`, comma-separated keys allowed for rotation); losing the key means users reconnect. Disconnect revokes at Oura (best effort) and deletes the tokens. `DELETE /me/fitness` still deletes the Oura row too, without revoking. No Oura data is read yet; the privacy page keeps Oura marked as planned until a real account has been connected end to end.
 - 2026-11-19: **Oura data check** (`api/fitness/oura_data.py`, `GET /integrations/oura/workouts`): read-only, owner only, nothing stored. Heart rate is reported as coverage counts only, never bpm. Oura data endpoints: `https://api.ouraring.com/v2/usercollection/workout` (`start_date`/`end_date`, paged by `next_token`) and `/heartrate` (`start_datetime`/`end_datetime`). Workout fields per OpenAPI 1.43: required `id, activity, day, start_datetime, end_datetime, intensity, source`; optional `calories` (kcal), `distance` (metres), `label`. Never send Oura data to an AI service; tests use synthetic records.
 - 2026-11-18: **Custom challenge lengths**: 15 minutes to 365 days (a typo guard, not a program limit; the program only needs end after start). Enforced by `POST /challenges` from the chain values (`scoring.MIN_LENGTH` / `MAX_LENGTH`), not on script-made challenges recorded at first join. Scoring days = `scoring.day_count` (24-hour blocks, a shorter last one counts as a day); an active-days goal may not exceed it. **Admins (ADMIN_EMAILS) can open any event**, but the leaderboard stays players-only because points are shared with the group by consent. "Delete my workouts" calls `DELETE /me/fitness`, which removes all of a user's logged workouts (mock and manual) and their points in unsettled challenges.
+- 2026-11-18 (Stage 7f, branch `locked-rules`): **Locked rules, enforced onchain.** New `Rules` PDA (seeds `["rules", challenge]`: rules_hash, verifier, payout kind, podium split in basis points), written once by `create_challenge`; the `Challenge` layout is unchanged. Rulesets are canonical JSON from `api/rules.py` (`POST /rules`; stored in `challenges.ruleset`); `join_challenge(expected_rules_hash)` must quote the hash, and the browser computes it from the rules text it shows. `settle` (equal formats only) and `settle_split(tie_groups)` (podium only; the program computes the shares from the locked split) require a Solana Ed25519 check of the verifier's v2 result as the instruction right before them, read through the instructions sysvar; winners, shares and score hash come from the signed message (layout in `docs/ARCHITECTURE.md` section 4; shared fixture `onchain/shared/proof_v2_fixture.json`). If `scoring.RULES_VERSION` changes, the server refuses to settle old challenges; they are refunded. Challenges from before the upgrade have no Rules account and are refund-only. Wording: "separate keys for payouts and for signing results", never "independent parties"; no claim that a workout happened. Render needs `VERIFIER_KEYPAIR` or settlement waits.

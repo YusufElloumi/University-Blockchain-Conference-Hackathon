@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, CircleAlert, CircleCheck, Lock } from "lucide-react";
 import { rulesAddress, sha256Hex, type ChallengeInfo } from "./chain";
-import { termLabel } from "./JoinIntro";
+import { termLabel } from "./format";
 import { PublicKey } from "@solana/web3.js";
 import { Eyebrow } from "./ui";
 
