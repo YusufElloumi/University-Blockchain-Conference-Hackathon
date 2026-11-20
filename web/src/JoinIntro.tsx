@@ -23,6 +23,7 @@ import {
 export type JoinIntroProps = {
   sweat?: boolean; // Proof of Sweat: points only from Oura-verified workouts
   sweatGeneration?: number; // 2 and later: effort-weighted Sweat Points
+  sport?: string | null; // "Running" when the event counts one sport
   scoring: "fitness" | "league_stats";
   weights: StatWeights | null;
   hasPicks: boolean;
@@ -71,6 +72,7 @@ export default function JoinIntro(props: JoinIntroProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [props]);
 
+  const ouraOnly = props.sport ? `${props.sport} only, recorded by Oura Ring` : "Oura Ring workouts only";
   const rules: { Icon: LucideIcon; text: string }[] = stats
     ? STAT_LINES.filter(({ key }) => (props.weights?.[key] ?? 0) > 0).map(({ key, Icon, one }) => ({
         Icon,
@@ -80,13 +82,13 @@ export default function JoinIntro(props: JoinIntroProps) {
       ? [
           { Icon: Timer, text: "1 verified min ≈ 1 Sweat Point" },
           { Icon: ChevronsUp, text: props.sweatGeneration === 2 ? "Weighted by effort, ×0.85 to ×1.25" : "Harder sessions earn up to ×1.5" },
-          { Icon: ShieldCheck, text: "Oura Ring workouts only" },
+          { Icon: ShieldCheck, text: ouraOnly },
         ]
       : props.sweat
       ? [
           { Icon: Timer, text: "10 verified min = 1 pt" },
           { Icon: ChevronsUp, text: "Up to 6 pts a day" },
-          { Icon: ShieldCheck, text: "Oura Ring workouts only" },
+          { Icon: ShieldCheck, text: ouraOnly },
         ]
       : [
         { Icon: Timer, text: "20 active min = 1 pt" },

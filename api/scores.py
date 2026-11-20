@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import activities
 import db
 import fitness
 import formats
@@ -100,42 +101,77 @@ def evidence_of(row: db.ImportedActivity, line, effort: dict) -> dict:
     verified = line is not None and line.status == sweat.VERIFIED
     gates_passed = verified if line is not None else row.status == sweat.VERIFIED
     return sweat2.evidence_index(
-        gates_passed=gates_passed or row.status == sweat.PENDING,
+        gates_passed=gates_passed or (row.status == sweat.PENDING and (line is None or line.status == sweat.PENDING)),
         provider_source=row.provider_source,
         overlap_resolved=line is not None and line.overlap == sweat.LIMITED,
         movement_observed=effort["movement"].state == sweat2.MEASURED,
         heart=oura_sync.heart_of(row),
-        heart_pending=row.status == sweat.PENDING,
+        heart_pending=row.status == sweat.PENDING and (line is None or line.status == sweat.PENDING),
     )
+
+
+def ruleset_of(challenge: db.Challenge) -> dict | None:
+    """The challenge's locked ruleset (None for challenges from before rules were locked)."""
+    text = getattr(challenge, "ruleset", None)
+    return json.loads(text) if text else None
+
+
+def outcome_in(ruleset: dict | None, row: db.ImportedActivity) -> tuple[str, str | None]:
+    """A stored workout's (status, reason) in a challenge with this ruleset.
+
+    The workout's own checks are the same everywhere. A challenge that locked one sport adds one
+    eligibility rule: a workout whose Oura activity is not on the challenge's locked list is not
+    counted there. It is turned away before scoring, so it earns nothing and never uses up time
+    another workout could be credited for. A workout that already failed keeps its own reason.
+    """
+    if row.status != sweat.REJECTED and not activities.counts(ruleset, row.provider_activity):
+        return sweat.REJECTED, activities.REASON
+    return row.status, row.reason
+
+
+def checks_in(ruleset: dict | None, row: db.ImportedActivity) -> list[dict]:
+    """The workout's stored checks, with the activity check judged by this challenge's locked list."""
+    checks = [{"code": c.code, "result": c.result, "reason": c.reason} for c in oura_sync.checks_of(row)]
+    if row.status == sweat.REJECTED or activities.counts(ruleset, row.provider_activity):
+        return checks
+    failed = {"code": "activity", "result": sweat.FAILED, "reason": activities.REASON}
+    if any(c["code"] == "activity" for c in checks):
+        return [failed if c["code"] == "activity" else c for c in checks]
+    return [failed] + checks
 
 
 def sweat_sheet(session: Session, challenge: db.Challenge, user_id: int):
     """Proof of Sweat score for one player, from stored imported workouts only. Never calls Oura."""
     rows = imported_rows(session, challenge, user_id)
     start, end = db.utc(challenge.start_time), db.utc(challenge.end_time)
+    ruleset = ruleset_of(challenge)
     if not is_sweat2(challenge):
-        return sweat.score([sweat.Item(oura_sync.as_workout(row), row.status, row.reason) for row in rows], start, end)
+        return sweat.score([sweat.Item(oura_sync.as_workout(row), *outcome_in(ruleset, row)) for row in rows],
+                           start, end)
     reference, _ = reference_of(session, challenge, user_id)
-    return score_rows(rows, reference, start, end, engine_of(challenge))
+    return score_rows(rows, reference, start, end, engine_of(challenge), ruleset)
 
 
-def score_rows(rows: list[db.ImportedActivity], reference: dict | None, start: datetime, end: datetime, engine):
+def score_rows(rows: list[db.ImportedActivity], reference: dict | None, start: datetime, end: datetime, engine,
+               ruleset: dict | None = None):
     """Effort-weighted score for one player's stored workouts over [start, end), under `engine`'s rules.
 
     Pass 1, effort left out: which workouts count here and whether any overlapped. That settles each
     workout's Evidence Index, which sets how much of its effort bonus counts. Pass 2 scores with it.
     Overlap and window results do not depend on multipliers, so the two passes always agree.
     """
-    plain = engine.score([engine.Item(oura_sync.as_workout(row), row.status, row.reason) for row in rows], start, end)
+    plain = engine.score([engine.Item(oura_sync.as_workout(row), *outcome_in(ruleset, row)) for row in rows],
+                         start, end)
     items = []
     for row in rows:
         workout = oura_sync.as_workout(row)
         multiplier = engine.D(1)
-        if row.status == sweat.VERIFIED:
+        status, reason = outcome_in(ruleset, row)
+        if status == sweat.VERIFIED:
             effort = effort_of(row, reference, engine)
             share = engine.reliability(evidence_of(row, plain.lines.get(workout.ref), effort)["index"])
             multiplier = engine.final_multiplier(effort["multiplier"], share)
-        items.append(engine.Item(workout, row.status, row.reason, multiplier))
+        items.append(engine.Item(workout, status, reason, multiplier))
     return engine.score(items, start, end)
 
 

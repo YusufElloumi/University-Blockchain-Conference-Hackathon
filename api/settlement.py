@@ -91,6 +91,7 @@ def sweat_section(session: Session, challenge: db.Challenge, players: list[str],
     v2 = scores.is_sweat2(challenge)
     engine = scores.engine_of(challenge) if v2 else sweat
     fingerprint = engine.rules_fingerprint()
+    ruleset = scores.ruleset_of(challenge)
     listed = []
     for wallet in players:
         user = users.get(wallet)
@@ -103,7 +104,7 @@ def sweat_section(session: Session, challenge: db.Challenge, players: list[str],
                 line = sheet.lines.get(oura_sync.as_workout(row).ref)
                 if line is None:
                     continue
-                payload = receipt_payload(challenge.address, wallet, fingerprint, row, line)
+                payload = receipt_payload(challenge.address, wallet, fingerprint, row, line, ruleset=ruleset)
                 if v2:
                     # v2 receipts add the Evidence Index and the score breakdown, under the v2 rules.
                     reference, _ = scores.reference_of(session, challenge, user.id)
@@ -124,9 +125,9 @@ def sweat_section(session: Session, challenge: db.Challenge, players: list[str],
 
 
 def receipt_payload(challenge: str, wallet: str, fingerprint: str, row: db.ImportedActivity, line: sweat.Line,
-                    salt: str | None = None) -> dict:
+                    salt: str | None = None, ruleset: dict | None = None) -> dict:
     """One workout's result in one challenge, bound to that challenge, wallet, program and rule set."""
-    checks = [{"code": c.code, "result": c.result, "reason": c.reason} for c in oura_sync.checks_of(row)]
+    checks = scores.checks_in(ruleset, row)
     checks += [
         {"code": "window", "result": line.window, "reason": line.reason if line.window == sweat.FAILED else None},
         {"code": "duplicate", "result": line.overlap, "reason": line.reason if line.overlap != sweat.PASSED else None},
@@ -150,6 +151,8 @@ def receipt_payload(challenge: str, wallet: str, fingerprint: str, row: db.Impor
         "result": line.status,
         "assurance": row.assurance if line.status == sweat.VERIFIED else None,
         "reason": line.reason or row.reason,
+        # Present only when the challenge locked one sport, so receipts of other challenges are unchanged.
+        **({"activities_counted": ruleset["activities"]["selection"]} if (ruleset or {}).get("activities") else {}),
         "checks": checks,
         "salt": salt or secrets.token_hex(16),
     }

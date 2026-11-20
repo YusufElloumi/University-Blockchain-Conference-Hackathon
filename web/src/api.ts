@@ -1,5 +1,6 @@
 // Calls to our own API server. Calls about a person carry their Privy login token.
 
+import type { ActivitiesView } from "./activities";
 import type { Format, FormatConfig } from "./formats";
 import type { Mode } from "./modes";
 
@@ -48,6 +49,8 @@ export type ChallengeView = {
   format: Format; // how the pool is paid; fixed when the event was created
   format_config: FormatConfig;
   format_summary: string; // one plain sentence
+  /** Which activities count: all exercise, or the one sport locked at creation. */
+  activities?: ActivitiesView;
   /** Which fitness rules apply, fixed at creation. */
   rules?: { name: string; version: string; sha256: string | null; proof_of_sweat: boolean; summary: string; generation?: number };
   // The ruleset locked onchain at creation (api/rules.py). The browser hashes `ruleset` itself.

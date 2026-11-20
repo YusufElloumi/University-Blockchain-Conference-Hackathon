@@ -20,6 +20,8 @@ type Ruleset = {
     stat_weights: Record<string, number> | null;
   };
   workouts: { count: string[]; never_count: string[] };
+  // Present only when the event counts one sport (api/activities.py). Missing: all supported exercise.
+  activities?: { selection: string; label: string; oura_activities: string[] };
   consent_required: boolean;
   format: { name: string } & Record<string, unknown>;
   payout: { kind: string; split_bps: number[] };
@@ -88,6 +90,16 @@ export function LockedRulesCard({ info, ruleset }: { info: ChallengeInfo; rulese
         ? "Only workouts synced from Oura that pass the checks. Nothing typed into the app counts."
         : "Passed checks and hand-typed (marked unverified). Rejected ones never count.",
     ],
+    ...(sweat
+      ? ([
+          [
+            "Activities",
+            r.activities
+              ? `${r.activities.label} only. Workouts Oura records as any other activity earn no points here.`
+              : "All supported exercise.",
+          ],
+        ] as [string, string][])
+      : []),
     ["Runs for", termLabel(r.length_seconds * 1000)],
     ["Players", `Up to ${r.max_players}. Only players who agree to share their points can score.`],
     [

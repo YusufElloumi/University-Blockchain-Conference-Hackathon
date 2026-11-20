@@ -7,6 +7,7 @@ import { Check, ChevronLeft, Minus, Plus } from "lucide-react";
 import { FORMATS, FORMAT_INFO, PODIUM_PRESETS, goalUnit, type Format, type FormatConfig } from "./formats";
 import { MODE_INFO, ModeBadge, type Mode } from "./modes";
 import { Eyebrow } from "./ui";
+import { ACTIVITY_CHOICES } from "./activities";
 
 
 const BUY_INS = [1, 2, 5];
@@ -116,6 +117,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const [startDay, setStartDay] = useState(() => isoDay(addDays(today, 1)));
   const [lastDay, setLastDay] = useState(() => isoDay(addDays(today, 7)));
   const [source, setSource] = useState<Source>("fitness");
+  const [activity, setActivity] = useState(ACTIVITY_CHOICES[0]); // "What activities count?"
   const [weights, setWeights] = useState<StatWeights>({ goals: 2, assists: 1, points: 0 });
   const [picksOn, setPicksOn] = useState(true);
   const [themes, setThemes] = useState<string[]>(["basketball", "general"]);
@@ -127,6 +129,9 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
   const setGoalTarget = (n: number) => setGoalText(String(Math.min(100, Math.max(1, n))));
   const [teamNames, setTeamNames] = useState(["Team A", "Team B"]);
   const usesStats = mode === "league" && source === "league_stats";
+  // One sport can be chosen only where Oura names each workout's activity (Proof of Sweat scoring).
+  const canPickSport = !usesStats && sweatRules;
+  const sport = canPickSport ? activity : ACTIVITY_CHOICES[0];
   const metric = "active_days" as const; // a goal is a number of active days
   // Stat sheets have no active days, so league-stats events can't use the goal format.
   const formatChoices = usesStats ? FORMATS.filter((f) => f !== "goal") : FORMATS;
@@ -183,6 +188,7 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
         round_hours: rounds ? roundEvery.hours : null,
         format,
         format_config: formatConfig,
+        activities: sport.id,
       };
       // 1. The server turns the settings into a ruleset; its hash and the payout terms are locked onchain.
       const locked = await call<RulesPreview>("POST", "/rules", {
@@ -496,45 +502,72 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
                 ))}
               </div>
             ) : (
-              <ul className="rule-list">
-                {sweatRules && (config.new_challenge_rules?.generation ?? 0) >= 2 ? (
-                  <>
-                    <li>
-                      <b>+1</b> about a point per Oura-verified minute
-                    </li>
-                    <li>
-                      <b>×</b> {config.new_challenge_rules?.generation === 2 ? "weighted by effort, 0.85 to 1.25" : "up to 1.5 for harder sessions the data backs up"}
-                    </li>
-                    <li>
-                      <b>60</b> minutes a day count in full, then less
-                    </li>
-                  </>
-                ) : sweatRules ? (
-                  <>
-                    <li>
-                      <b>+1</b> every 10 Oura-verified minutes
-                    </li>
-                    <li>
-                      <b>6</b> max a day
-                    </li>
-                    <li>
-                      <b>Oura</b> players connect a ring to score
-                    </li>
-                  </>
-                ) : (
-                  <>
-                    <li>
-                      <b>+1</b> 20 active minutes in a day
-                    </li>
-                    <li>
-                      <b>+1</b> every 5 km
-                    </li>
-                    <li>
-                      <b>3</b> max a day
-                    </li>
-                  </>
+              <>
+                {canPickSport && (
+                  <div className="field">
+                    <span className="field-label" id="activities-label">
+                      What activities count?
+                    </span>
+                    <div className="chips" role="radiogroup" aria-labelledby="activities-label">
+                      {ACTIVITY_CHOICES.map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={o === activity}
+                          className={o === activity ? "chip on" : "chip"}
+                          onClick={() => setActivity(o)}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="fine" aria-live="polite">
+                      {activity.line}
+                      {activity.id !== "all" && " Locked with the rules when the event is created."}
+                    </p>
+                  </div>
                 )}
-              </ul>
+                <ul className="rule-list">
+                  {sweatRules && (config.new_challenge_rules?.generation ?? 0) >= 2 ? (
+                    <>
+                      <li>
+                        <b>+1</b> about a point per Oura-verified minute
+                      </li>
+                      <li>
+                        <b>×</b> {config.new_challenge_rules?.generation === 2 ? "weighted by effort, 0.85 to 1.25" : "up to 1.5 for harder sessions the data backs up"}
+                      </li>
+                      <li>
+                        <b>60</b> minutes a day count in full, then less
+                      </li>
+                    </>
+                  ) : sweatRules ? (
+                    <>
+                      <li>
+                        <b>+1</b> every 10 Oura-verified minutes
+                      </li>
+                      <li>
+                        <b>6</b> max a day
+                      </li>
+                      <li>
+                        <b>Oura</b> players connect a ring to score
+                      </li>
+                    </>
+                  ) : (
+                    <>
+                      <li>
+                        <b>+1</b> 20 active minutes in a day
+                      </li>
+                      <li>
+                        <b>+1</b> every 5 km
+                      </li>
+                      <li>
+                        <b>3</b> max a day
+                      </li>
+                    </>
+                  )}
+                </ul>
+              </>
             )}
           </section>
 
@@ -599,6 +632,12 @@ export default function CreateChallenge({ mode, session }: { mode: Mode; session
                 <dt>Scoring</dt>
                 <dd>{usesStats ? "League stats" : "Fitness"}</dd>
               </div>
+              {canPickSport && (
+                <div>
+                  <dt>Activities</dt>
+                  <dd>{sport.label}</dd>
+                </div>
+              )}
               <div>
                 <dt>Picks</dt>
                 <dd>{rounds ? roundEvery.label : "Off"}</dd>

@@ -19,6 +19,7 @@ import { FORMAT_INFO, type Format } from "./formats";
 import { MODE_INFO, ModeBadge } from "./modes";
 import { ConnectFitness, ProofCard } from "./Proof";
 import { LockedRulesCard, payoutLockedLine } from "./LockedRules";
+import { sportLabel } from "./activities";
 import SweatWorkouts from "./Sweat";
 import { EmptyState, Eyebrow, Skeleton } from "./ui";
 import {
@@ -321,6 +322,7 @@ export default function ChallengePage(props: { address: string; session: Session
           <div className="ch-hero-meta">
             {mode && <ModeBadge mode={mode} />}
             {state?.challenge?.organizer_name && <span>Hosted by {state.challenge.organizer_name}</span>}
+            {sportLabel(state?.challenge?.activities) && <span>{sportLabel(state?.challenge?.activities)} only</span>}
           </div>
           <div className={`status-pill ${phase}`}>
             {phase === "live" && <span className="live-dot" />}
@@ -436,6 +438,8 @@ export default function ChallengePage(props: { address: string; session: Session
                 <span>
                   Share my challenge points with this group. They see points only, never my activities.
                   {state?.challenge?.rules?.proof_of_sweat && " Points come from workouts Rival reads from my connected Oura account."}
+                  {sportLabel(state?.challenge?.activities) &&
+                    ` Only ${sportLabel(state?.challenge?.activities)!.toLowerCase()} workouts count in this event.`}
                 </span>
               </label>
               <button className="btn btn-primary btn-block" onClick={onConsentOnly} disabled={busy || !consent}>
@@ -524,7 +528,13 @@ export default function ChallengePage(props: { address: string; session: Session
             {tab === "table" && <Table state={state} phase={phase} />}
             {tab === "feed" && <Feed state={state} now={now} />}
             {tab === "me" && !statsScored && state?.challenge?.rules?.proof_of_sweat && (
-              <SweatWorkouts session={session} address={address} live={phase === "live" || phase === "ended"} onScored={loadState} />
+              <SweatWorkouts
+                session={session}
+                address={address}
+                live={phase === "live" || phase === "ended"}
+                sport={sportLabel(state.challenge.activities)}
+                onScored={loadState}
+              />
             )}
             {tab === "me" && !statsScored && !state?.challenge?.rules?.proof_of_sweat && (
               <MyWorkouts
@@ -542,6 +552,7 @@ export default function ChallengePage(props: { address: string; session: Session
         <JoinIntro
           sweat={!!state?.challenge?.rules?.proof_of_sweat}
           sweatGeneration={state?.challenge?.rules?.generation}
+          sport={sportLabel(state?.challenge?.activities)}
           scoring={state?.challenge?.scoring_source ?? "fitness"}
           weights={state?.challenge?.stat_weights ?? null}
           hasPicks={!!state?.challenge?.round_hours}

@@ -109,7 +109,7 @@ export function Lane({ n, label }: { n: string; label?: string }) {
 export const STEPS = [
   {
     title: "Start a challenge",
-    text: "Name it, pick an entry fee and a length, from a quick fifteen minutes to a full week.",
+    text: "Name it, pick an entry fee and a length, and choose what counts: all exercise or a single sport.",
   },
   {
     title: "Bring your people",
