@@ -68,6 +68,29 @@ holds 519 made-up workouts scored by the server's real functions (`api/sweat_sam
 - `npm run check:sweat` (in `web/`, Node 22.18+) fails if the browser gives a different answer for any of them.
 - After changing a rule: `python sweat_sample.py write` in `api/`, then both checks, and commit the two files.
 
+## Which activities count (per challenge)
+
+The creator picks "All exercise" (the default) or one sport: running, walking, hiking, cycling or strength
+training (`api/activities.py`). This is an eligibility rule on top of the checks above, not part of the v3
+numbers, so the v3 fingerprint is unchanged.
+
+- One sport adds an `activities` entry to the challenge's ruleset: the exact list of Oura activity names that
+  count (compared in lower case, punctuation removed). The ruleset's hash is locked onchain at creation and
+  quoted by every join, so the choice cannot change afterwards. Scoring reads the list from the stored ruleset.
+- A workout Oura records as anything else earns nothing in that challenge. Its receipt shows the activity check
+  as failed with `activity_not_in_challenge`. It is set aside before overlaps are worked out, so it never uses
+  up time a matching workout could score. The stored workout is untouched and still counts in other challenges.
+- A matching workout must still pass every mandatory check. A "run" at 60 km/h fails the plausibility check
+  and scores zero; it is not merely rated lower.
+- Strength training has no distance, and that is never held against it: the plausibility check passes with
+  `no_distance`, the movement factor is neutral (1.00), and with full heart-rate coverage the Evidence Index is
+  92, which still counts the whole effort adjustment.
+- "All exercise" adds nothing to the ruleset. Every activity in the curated list
+  (`fitness/oura_sync.ACTIVITY_MAP`) counts, as before.
+
+Limit: Oura's API gives the activity as free text with no published closed list. A name that is not on a
+challenge's list does not count, so the lists should be checked against real ring data.
+
 ## What Solana does and does not do
 
 Unchanged from v2. Workouts are verified offchain by Rival's server. The program holds the entry

@@ -145,6 +145,7 @@ const REASON: Record<string, string> = {
   unknown_source: "Oura didn't say how this workout was recorded.",
   unauthorized_provider: "It didn't come through your connected Oura account.",
   unsupported_activity: "This type of activity isn't counted yet.",
+  activity_not_in_challenge: "This event counts one sport, and Oura recorded this workout as a different activity.",
   missing_time: "Oura sent it without a usable start and end time.",
   ends_before_start: "Its end time is before its start time.",
   too_long: "It runs for more than 24 hours.",
@@ -163,6 +164,17 @@ const REASON: Record<string, string> = {
   third_party_source: "Its heart rate came from a third-party device, which we rate cautiously.",
   quality_warning: "Some heart-rate readings were unusable and were left out.",
   no_distance: "No distance was recorded, which is fine.",
+};
+
+/** A few words for the workout list, where the full sentence would not fit. */
+const SHORT_REASON: Record<string, string> = {
+  activity_not_in_challenge: "different activity",
+  unsupported_activity: "activity not supported",
+  manual_entry: "entered by hand",
+  too_fast: "speed not believable",
+  under_minimum: "under 10 minutes",
+  under_minimum_in_window: "under 10 minutes in this event",
+  duplicate_time: "overlaps another workout",
 };
 
 const worst = (results: (Result | undefined)[]): Result | null => {
@@ -581,9 +593,10 @@ function ReceiptV2(props: {
               <details>
                 <summary>
                   <i aria-hidden />
-                  <span>{PART_INFO[p.key].label}</span>
+                  {/* A failed required check of any kind zeroes this part, so name it for what it is. */}
+                  <span>{p.reason === "gate_failed" ? "Required checks" : PART_INFO[p.key].label}</span>
                   <em>
-                    {p.state === "unavailable" ? "Not observed" : p.state === "failed" ? "Failed" : p.state === "pending" ? "Pending" : ""}
+                    {p.state === "unavailable" ? "Not observed" : p.state === "failed" ? "Not passed" : p.state === "pending" ? "Pending" : ""}
                   </em>
                   <b>
                     {p.points}
@@ -591,7 +604,9 @@ function ReceiptV2(props: {
                   </b>
                 </summary>
                 <p>
-                  {PART_INFO[p.key].what}
+                  {p.reason === "gate_failed"
+                    ? "A required check below did not pass, so this part scores zero."
+                    : PART_INFO[p.key].what}
                   {p.sub && ` Here: coverage ${p.sub.coverage}/15, recorded as exercise ${p.sub.exercise_tagged}/5, spread ${p.sub.distribution}/3, clean ${p.sub.validity}/2.`}
                   {p.reason && REASON[p.reason] ? ` ${REASON[p.reason]}` : ""}
                 </p>
@@ -765,7 +780,8 @@ function WorkoutReceipt({ w, rulesVersion }: { w: Workout; rulesVersion: string 
           <span className="fine">
             {w.start ? `${when(w.start)} · ` : ""}
             {status.label}
-            {w.v2 && w.result !== "pending" ? ` · Evidence ${w.v2.evidence.index}` : ""}
+            {w.result === "rejected" && SHORT_REASON[w.reason ?? ""] ? ` · ${SHORT_REASON[w.reason ?? ""]}` : ""}
+            {w.v2 && w.result === "verified" ? ` · Evidence ${w.v2.evidence.index}` : ""}
           </span>
         </span>
         <span className="sweat-row-points">
@@ -845,18 +861,25 @@ export default function SweatWorkouts(props: {
   session: Session;
   address: string;
   live: boolean; // the challenge is running or waiting for final syncs
+  sport?: string | null; // "Running" when the event counts one sport; null when all exercise counts
   onScored: () => void;
 }) {
   const { call, go } = props.session;
   const [data, setData] = useState<SweatReply | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [note, setNote] = useState<{ good: boolean; text: string } | null>(null);
+  // Why nothing could be shown: "not_player" (not in this event yet) or "error". Without this a failed
+  // request looked the same as one still loading.
+  const [failed, setFailed] = useState<"not_player" | "error" | null>(null);
 
   const load = useCallback(
     () =>
       call<SweatReply>("GET", `/me/sweat?challenge=${props.address}`)
-        .then(setData)
-        .catch(() => setData(null)),
+        .then((reply) => {
+          setData(reply);
+          setFailed(null);
+        })
+        .catch((e) => setFailed(e instanceof ApiError && e.status === 404 ? "not_player" : "error")),
     [call, props.address],
   );
   useEffect(() => {
@@ -878,6 +901,22 @@ export default function SweatWorkouts(props: {
     }
   }
 
+  if (data === null && failed === "not_player")
+    return (
+      <EmptyState
+        icon={<Footprints size={20} strokeWidth={1.75} />}
+        title="Your workouts show up here"
+        text="Join this challenge and your Oura-recorded workouts appear here with their checks. Only you can see them."
+      />
+    );
+  if (data === null && failed)
+    return (
+      <EmptyState icon={<Footprints size={20} strokeWidth={1.75} />} title="Couldn't load your workouts" text="Check your connection and try again.">
+        <button className="btn btn-quiet btn-sm" onClick={load}>
+          Try again
+        </button>
+      </EmptyState>
+    );
   if (data === null) return <Skeleton rows={3} height={64} />;
 
   const workouts: Workout[] = data.final
@@ -899,7 +938,10 @@ export default function SweatWorkouts(props: {
             <h2 className="sweat-title">
               Proof of <em className="serif">Sweat.</em>
             </h2>
-            <p className="sweat-rule">{data.rules?.summary}</p>
+            <p className="sweat-rule">
+              {data.rules?.summary}
+              {props.sport && ` This event counts ${props.sport.toLowerCase()} only.`}
+            </p>
           </div>
           <span className="icon-tile">
             <ShieldCheck size={18} strokeWidth={1.75} aria-hidden />

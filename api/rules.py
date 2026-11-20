@@ -25,6 +25,7 @@ import hashlib
 import json
 import sys
 
+import activities as activity_rules
 import attest
 import chain
 import config
@@ -91,10 +92,23 @@ def build(
     pick_themes: list[str] | None = None,
     round_hours: int | None = None,
     verifier: str | None = None,
+    activities: str | None = None,
 ) -> dict:
-    """The ruleset as a dict. `format_config` must already be cleaned (formats.clean_config)."""
+    """The ruleset as a dict. `format_config` must already be cleaned (formats.clean_config).
+
+    `activities` is the "What activities count?" choice (api/activities.py). "all" (the default) adds
+    nothing, so those rulesets are exactly what they were before the choice existed. One sport adds an
+    `activities` entry listing the Oura activity names that count; it is hashed with everything else.
+    """
     scored = scoring_rules(scoring_source)
+    try:
+        restriction = activity_rules.locked(activities)
+    except activity_rules.ActivityError as e:
+        raise RulesError(str(e)) from e
+    if restriction and scored.get("name") not in (sweat.TEMPLATE, sweat2.TEMPLATE, sweat3.TEMPLATE):
+        raise RulesError("Choosing one sport needs Proof of Sweat scoring, where Oura names each workout's activity.")
     return {
+        **({"activities": restriction} if restriction else {}),
         "schema": SCHEMA,
         "network": "solana-devnet",
         "program": str(chain.PROGRAM_ID),

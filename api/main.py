@@ -74,6 +74,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import activities as activity_rules
 import attest
 import config
 import auth
@@ -278,6 +279,8 @@ class RuleSettings(BaseModel):
     round_hours: Literal[pickrounds.ROUND_CHOICES] | None = None  # type: ignore[valid-type]
     format: Literal[formats.FORMATS] = formats.DEFAULT_FORMAT  # type: ignore[valid-type]
     format_config: dict | None = None  # the format's settings; see formats.clean_config
+    # "What activities count?": all exercise, or one sport (api/activities.py). Locked in the ruleset.
+    activities: Literal[activity_rules.CHOICES] = activity_rules.ALL  # type: ignore[valid-type]
 
 
 class RulesPreview(RuleSettings):
@@ -404,6 +407,8 @@ def _challenge_view(challenge: db.Challenge) -> dict:
         "format_summary": formats.describe(*formats.of(challenge)),
         # Which fitness rules apply, fixed at creation: Proof of Sweat (Oura-verified) or the earlier rules.
         "rules": scores.rules_of(challenge),
+        # Which activities count: "all" or the one sport locked in the ruleset at creation.
+        "activities": activity_rules.view(scores.ruleset_of(challenge)),
         **_rules_view(challenge),
     }
 
@@ -496,11 +501,15 @@ def _ruleset_for(body: RuleSettings, length_seconds: int, max_players: int) -> t
         raise HTTPException(400, str(e)) from e
     if bool(themes) != bool(body.round_hours):
         raise HTTPException(400, "Choose at least one theme and how often a round opens, or turn picks off.")
-    ruleset = rules.build(
-        mode=body.mode, length_seconds=length_seconds, max_players=max_players, fmt=body.format,
-        format_config=format_config, scoring_source=body.scoring_source,
-        stat_weights=body.stat_weights, pick_themes=themes, round_hours=body.round_hours if themes else None,
-    )
+    try:
+        ruleset = rules.build(
+            mode=body.mode, length_seconds=length_seconds, max_players=max_players, fmt=body.format,
+            format_config=format_config, scoring_source=body.scoring_source,
+            stat_weights=body.stat_weights, pick_themes=themes, round_hours=body.round_hours if themes else None,
+            activities=body.activities,
+        )
+    except rules.RulesError as e:
+        raise HTTPException(400, str(e)) from e
     return ruleset, format_config, themes
 
 
@@ -1272,10 +1281,10 @@ def oura_sync_now(user: db.User = Depends(current_user), session: Session = Depe
     return {**summary, "status": oura.status(session, user.id)}
 
 
-def _row_view(row: db.ImportedActivity, line, detail: dict | None = None) -> dict:
+def _row_view(row: db.ImportedActivity, line, detail: dict | None = None, ruleset: dict | None = None) -> dict:
     """One imported workout for its owner. `line` is its result in a challenge, when one was asked for;
     `detail` is the v2 Evidence Index and score breakdown (scores.sweat2_detail)."""
-    checks = [{"code": c.code, "result": c.result, "reason": c.reason} for c in oura_sync.checks_of(row)]
+    checks = scores.checks_in(ruleset, row)
     if not checks and row.status == "pending":
         checks = [{"code": "evidence", "result": sweat.PENDING, "reason": None}]
     result, reason = row.status, row.reason
@@ -1352,7 +1361,8 @@ def my_sweat(
 
             def view(row: db.ImportedActivity) -> dict:
                 line = sheet.lines.get(oura_sync.as_workout(row).ref)
-                return _row_view(row, line, scores.sweat2_detail(row, line, reference, scores.engine_of(found)) if scores.is_sweat2(found) else None)
+                return _row_view(row, line, scores.sweat2_detail(row, line, reference, scores.engine_of(found))
+                                 if scores.is_sweat2(found) else None, ruleset=scores.ruleset_of(found))
 
             reply["workouts"] = [view(row) for row in reversed(rows)]
             reply["points"], reply["eligible_minutes"] = sheet.total, sheet.eligible_minutes
