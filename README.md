@@ -1,30 +1,82 @@
-# Loser Buys
+# Rival
 
 **Out-move your friends. Winner takes the pool.**
 
 University Blockchain Conference Hackathon 2026. Track: Consumer Applications. Chain award: Solana. Bounties: QuickNode Streams, Gemini Prediction Markets.
 Team: Yusuf Elloumi, Shaan Bhasin, Rohan Bhasin, Mahdi Khani.
 
-A friend group starts a fitness challenge. Each person chips in a buy-in, workouts earn points, and at the end the pool is paid to whoever is top of the table. The pool is held and paid out by a program on Solana, so no friend has to hold the money and nobody can run off with it.
+Rival turns fitness into a competition. Friends put in a USDC entry fee, earn points from Oura-synced workouts, and the prize pool is paid out automatically by a program on Solana, so no friend has to hold the money and nobody can run off with it.
 
-**Demo only: Solana devnet and test tokens. No real money.**
+**Demo · Devnet USDC only, no real money.**
 
 | | |
 |---|---|
-| Live app | Not deployed yet |
-| Demo video | Not recorded yet |
+| Live app | [rival-app.ca](https://rival-app.ca/) |
+| Demo video | [YouTube](https://youtu.be/nQOAayYhMf0?si=au2psdjcDwtmyALQ) |
 | Program ID (devnet) | [`FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC`](https://explorer.solana.com/address/FeCj36zk7YNkdfKZXjfjSmftqpJv9C68uBNSvtRt3ssC?cluster=devnet) |
 
-## What using it looks like
+(The program, repo and service names still use the project's working name, `loser_buys` / Loser Buys.)
+
+## Inspiration
+
+We come from a very competitive friend group. For years we've kept a running win/loss tally across everything from video games and sports to fitness and academics.
+
+We believe you're the average of the five people you spend the most time with. We wanted to turn that idea into a platform where friends push each other to improve through healthy competition and accountability.
+
+## What it does
+
+- Friends contribute USDC entry fees, earn points through Oura-synced workouts, and compete for a prize pool that is distributed automatically.
+- Four competition formats: **winner takes all**, **podium**, **goals**, and **teams**, with events from 15 minutes to 365 days.
+- Competition rules are locked onchain before anyone joins, while personal fitness data stays private. Users sign up with just an email; wallets and transactions are handled in the background.
+- Recreational and beer-league teams can compete on points from customizable league rules, with bonus points from Gemini Prediction Markets picks.
+
+### What using it looks like
 
 1. Sign in with an email code. There is no wallet to install, no seed phrase, and no fee to think about.
 2. Tap "Add test funds" (this stands in for paying by card).
-3. Start a challenge: name it, pick a buy-in, how long friends can join, and how long it runs. Share the invite link.
-4. Friends open the link, agree to share their points with the group, and tap "Join for 1 USDC".
-5. Log workouts. The league table shows each player's points and which days they were active.
-6. When time is up, the program pays the pool to the top scorer. Ties split it. If fewer than two people joined, everyone is refunded.
+3. Start a challenge: name it, pick an entry fee, a format, which activities count, and the dates. Share the invite link.
+4. Friends open the link, check the locked rules, agree to share their points with the group, and tap "Join for 1 USDC".
+5. Connect Oura. Synced workouts are scored by **Proof of Sweat** and the leaderboard updates.
+6. When time is up, the program pays the pool according to the locked rules. Ties split it. If fewer than two people joined, everyone is refunded.
 
-Scoring ("Daily Mover"): 1 point for a day with at least 20 active minutes, plus 1 point for every 5 km that day, capped at 3 points a day.
+## How we built it
+
+- **Solana program** in Rust and Anchor: manages prize pools, locks competition rules, and checks signed results before paying out.
+- **Privy** for email login and embedded wallets, plus automatic gas funding, so users never touch crypto infrastructure.
+- **Frontend:** React and Vite. **Backend:** Python FastAPI with Neon Postgres, hosted on Render.
+- **QuickNode Streams** listen for our program's onchain events and deliver real-time updates through a webhook.
+- **Oura OAuth** integration and a custom **Proof of Sweat** scoring engine that weighs workout duration, effort, and evidence quality.
+- **Gemini Prediction Markets API** for pick-based bonus rounds.
+- Claude Code and Grok as agentic coding assistants throughout development.
+
+## Challenges we ran into
+
+- We first explored Strava but hit subscription requirements and restrictive API terms, including limits on data visibility and AI usage.
+- Oura's OAuth needed a custom three-step flow, because the authorization redirect does not carry the user's login session.
+- We wanted Solana Confidential Compute for private fitness scoring, but with no public SDK or devnet program we could not integrate TEEs during the hackathon (see [the plan below](#planned-solana-confidential-compute-when-its-onchain-verifier-is-public)).
+- Public devnet RPC rate limits, while learning Rust and Anchor from scratch.
+
+## Accomplishments we're proud of
+
+- Crypto is practically invisible: email sign-in, embedded wallets, and automatic gas funding mean no seed phrases and no gas prompts.
+- Competition rules and payout conditions are enforced onchain, so outcomes follow predefined smart contract logic.
+- A working Oura integration and an explainable Proof of Sweat scoring engine that produces downloadable, independently checkable results.
+- A polished, end-to-end product on a public website.
+
+## What we learned
+
+- Iterating quickly and testing ideas produced a much better product than trying to plan every detail upfront.
+- Third-party API restrictions can reshape a product's architecture and force you to find alternatives.
+- How to balance privacy and transparency: sensitive fitness data stays offchain while competition outcomes stay checkable.
+- How to connect authentication, external APIs, blockchain infrastructure, and smart contracts into one application.
+
+## What's next for Rival
+
+- Real USDC deposits and yield-generating prize pools through Jupiter Lend (today a [simulation](#treasury-and-yield-simulated)).
+- Move fitness scoring into Solana Confidential Compute (TEEs) once public infrastructure is available.
+- More fitness integrations: Strava, Apple Health, and Runna.
+- A mobile app, to make workout tracking and competing more seamless.
+- Most importantly, an official launch aimed at recreational and beer-league teams, using player statistics and prediction markets to bring healthy competition and accountability into existing communities.
 
 ## How it works
 
@@ -201,7 +253,7 @@ When a challenge settles, a **verifier key** signs a short record of the result.
 
 Each workout also gets a state in each challenge, shown only to its owner: **Passed checks**, **Counts · unverified** (typed in by hand), or **Not counted**, with the reason (outside the dates, overlapping, impossibly fast, and so on).
 
-### What we'd build next
+### Trust improvements we'd build next
 
 - **Solana Confidential Compute for the verifier** (planned, not built; details below).
 - **A dispute window:** a set time between the signed result and the payout in which players can challenge it.
@@ -233,8 +285,8 @@ Each workout also gets a state in each challenge, shown only to its owner: **Pas
 
 - **Real (devnet):** entry fees, the prize pool and every payout are real devnet USDC transactions handled by our Anchor program. Every result is signed by the verifier key, and its score-sheet hash is stored onchain, so players can check the scores were not changed after payout.
 - **Simulated:** treasury yield (see [Treasury and yield (simulated)](#treasury-and-yield-simulated)); no real funds are lent.
-- **Simulated:** the workouts. They are sample data (`mock`, made to look like a watch recording) or typed in by hand (`manual`, labelled unverified). Both go through the same checks.
-- **Not built yet:** live fitness sync. The app shows "Connect a fitness app · Coming soon" and says so. We do not show Strava's button or logo, because their brand rules reserve it for a working Strava sign-in.
+- **Real:** workouts in new challenges come from the player's own connected Oura account and are scored by Proof of Sweat. Older demo challenges also accept sample data (`mock`) or hand-typed workouts (`manual`, labelled unverified).
+- **Not built yet:** Strava, Apple Health, and Runna. We do not show Strava's button or logo, because their brand rules reserve it for a working Strava sign-in.
 - **Trust:** the program checks the verifier's signature and the locked rules and split at payout. That shows our verifier approved the result; it does not prove a workout happened. Independent verifier hardware and a dispute window are planned, not built.
 
 ## Treasury and yield (simulated)
@@ -305,7 +357,7 @@ The escrow program itself would deposit its vault into [Jupiter Lend Earn by CPI
 
 - Other players see your **name, points, and active days only**, and only after you tick "Share my challenge points with this group". Your activities are visible only to you.
 - **No fitness data goes onchain.** The program receives winner addresses and a salted hash.
-- Every data source sits behind one interface, `FitnessProvider` (`api/fitness/`). Today there are two: `mock` (demo data that looks like a watch recording) and `manual` (self-reported, labelled unverified). `FITNESS_PROVIDER` in `.env` picks one.
+- Every data source sits behind one interface, `FitnessProvider` (`api/fitness/`): **Oura** (`oura.py`, `oura_sync.py`; OAuth with PKCE, scopes `workout heartrate`, tokens encrypted at rest, revoked and deleted on disconnect), plus `mock` (demo data) and `manual` (self-reported, labelled unverified). Oura data is never sent to any AI service, no bpm values leave the server, and imported workouts are deleted 7 days after the last challenge that used them.
 - **Strava is designed but not connected.** Creating a Strava API app needs a paid subscription, and Strava's API terms raise open questions for a shared leaderboard. `docs/STRAVA_FLOW.md` describes the intended integration and the rules it must keep (no Strava data to AI services, 7-day retention, delete on disconnect). Nothing outside `api/fitness/` would change.
 
 ## Run it locally
@@ -385,7 +437,8 @@ The program tests need Rust, the Solana CLI, Anchor 1.2.2, Node 22, and Yarn, on
 onchain/            Anchor workspace: the loser_buys program (Rust), its tests, devnet scripts, built IDL
 web/                React + Vite web app
 api/                FastAPI server
-  fitness/          FitnessProvider interface with the mock and manual sources
+  fitness/          FitnessProvider interface: Oura (OAuth + sync), mock and manual sources
+  sweat3.py         Proof of Sweat v3 scoring (v1 and v2 kept for older challenges)
   scoring.py        Daily Mover rules and anti-cheat (pure functions)
   settlement.py     final scores, winners, score-sheet hash, settle and refund
   events.py         QuickNode webhook: signature check, event decoding, feed
@@ -402,8 +455,7 @@ docs/               SETUP.md (teammate setup, macOS and Windows), ARCHITECTURE.m
 ## Known limits
 
 - Devnet only, by design. The app and the server refuse any non-devnet RPC address.
-- Workouts are demo data or self-reported until a verified source such as Strava is connected.
-- One scoring template.
+- Oura is the only verified workout source; an Oura record is a device recording, not cryptographic proof that a workout happened.
 - The 72-hour refund timeout is in the program but is not covered by an automated test, because the local test validator's clock cannot be moved forward.
 - Results depend on our server's oracle and verifier keys (see "Trust and security"). The program limits what they can do but cannot check workouts.
 

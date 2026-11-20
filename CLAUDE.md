@@ -138,7 +138,7 @@ Fill in as they are created. Public addresses only - never keys.
 | Neon database | Project `loser buys`, ID `noisy-truth-03069747`, branch `production`, AWS Oregon (created Nov 15, free plan). Addresses are in `.env.local`: `DATABASE_URL` (pooled, the one for Render) and `DATABASE_URL_UNPOOLED` |
 | Strava app (client ID) | TBD or not used |
 | Oura app redirect URI | `https://loser-buys-api.onrender.com/integrations/oura/callback` (client ID and secret only in Render and `.env`: `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, `OURA_REDIRECT_URI`, plus `TOKEN_ENCRYPTION_KEY`) |
-| Deployed web URL | TBD: Render static site `loser-buys-web` (not created yet) |
+| Deployed web URL | https://rival-app.ca/ (demo video: https://youtu.be/nQOAayYhMf0) |
 | Deployed API URL | `https://loser-buys-api.onrender.com` (live Nov 15) |
 
 ## Decisions log
