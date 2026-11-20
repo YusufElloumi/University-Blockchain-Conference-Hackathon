@@ -44,3 +44,8 @@ Thumbs.db
 # Hosting
 .vercel/
 .neon
+
+# Demo recording scripts: saved logins, outputs, and local installs
+scripts/demo/state/
+scripts/demo/out/
+scripts/demo/node_modules/
